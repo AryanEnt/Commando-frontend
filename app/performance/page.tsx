@@ -1,0 +1,198 @@
+"use client";
+
+import Link from "next/link";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  api,
+  type PerformanceEvaluation,
+  type ProfileListItem,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { formatDate } from "@/lib/dates";
+import { SearchableSelect } from "@/components/SearchableSelect";
+import {
+  EmptyState,
+  ErrorState,
+  FilterBar,
+  LoadingState,
+  PageHeader,
+  Panel,
+  SelectField,
+  TableSkeleton,
+  TextInput,
+} from "@/components/ui";
+
+export default function PerformancePage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading performance…" />}>
+      <PerformanceContent />
+    </Suspense>
+  );
+}
+
+function PerformanceContent() {
+  const { token, hasPermission } = useAuth();
+  const searchParams = useSearchParams();
+  const [items, setItems] = useState<PerformanceEvaluation[]>([]);
+  const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
+  const [profileId, setProfileId] = useState("");
+  const [source, setSource] = useState(searchParams.get("source") ?? "");
+  const [search, setSearch] = useState("");
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const canCreate = hasPermission("PERFORMANCE_CREATE");
+
+  useEffect(() => {
+    setSource(searchParams.get("source") ?? "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!token) return;
+    void api.getProfiles(token).then((res) => setProfiles(res.data.profiles));
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!token) return;
+      setLoading(true);
+      try {
+        const res = await api.getPerformanceEvaluations(token, {
+          profileId: profileId || undefined,
+          source: (source as "TEAM_LEAD" | "COMMANDO") || undefined,
+          search: search || undefined,
+          pageSize: 50,
+        });
+        if (!cancelled) {
+          setItems(res.data.evaluations);
+          setTotal(res.data.total);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, profileId, source, search]);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Performance"
+        description="Historical evaluations with metric scores and source attribution."
+        actions={
+          canCreate ? (
+            <Link
+              href="/performance/new"
+              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              New evaluation
+            </Link>
+          ) : undefined
+        }
+      />
+
+      <FilterBar>
+        <div className="min-w-[12rem] flex-1">
+          <TextInput
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search evaluations…"
+          />
+        </div>
+        <SearchableSelect
+          label="Profile"
+          value={profileId}
+          onChange={setProfileId}
+          placeholder="All profiles"
+          options={profiles.map((p) => ({
+            value: p.id,
+            label: p.displayName,
+            hint: p.team.name,
+          }))}
+        />
+        <SelectField
+          label="Source"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
+          <option value="">All sources</option>
+          <option value="TEAM_LEAD">Team Lead</option>
+          <option value="COMMANDO">Commando</option>
+        </SelectField>
+      </FilterBar>
+
+      {error && <ErrorState message={error} />}
+      {loading && <TableSkeleton />}
+      {!loading && !error && items.length === 0 && (
+        <EmptyState
+          title="No evaluations yet"
+          description={
+            source
+              ? `No ${source} evaluations in scope.`
+              : "Performance evaluations will appear here."
+          }
+        />
+      )}
+
+      {!loading && items.length > 0 && (
+        <Panel title={`Evaluations · ${total} total`} tone="history">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-white text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Evaluated</th>
+                  <th className="px-3 py-2">Sales Executive</th>
+                  <th className="px-3 py-2">Source</th>
+                  <th className="px-3 py-2">Rating</th>
+                  <th className="px-3 py-2">Avg metric</th>
+                  <th className="px-3 py-2">Verdict</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                      {formatDate(item.evaluatedAt)}
+                    </td>
+                    <td className="px-3 py-2">{item.profile.displayName}</td>
+                    <td className="px-3 py-2">{item.source}</td>
+                    <td className="px-3 py-2">
+                      {item.rating != null ? item.rating.toFixed(2) : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {item.averageMetricScore != null
+                        ? item.averageMetricScore.toFixed(1)
+                        : "—"}
+                    </td>
+                    <td className="max-w-xs truncate px-3 py-2">
+                      {item.verdict ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Link
+                        href={`/performance/${item.id}`}
+                        className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
