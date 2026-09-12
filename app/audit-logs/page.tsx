@@ -1,18 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type AuditLogItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import {
+  formatActorMeta,
+  formatActorName,
+  humanizeCode,
+} from "@/lib/admin-labels";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
+import {
+  AdminPageShell,
+  AdminToolbar,
+} from "@/components/admin/AdminPageShell";
+import { AdminTable, AdminTd, AdminTh } from "@/components/admin/AdminTable";
 import {
   Button,
   DateTimeCell,
   EmptyState,
   ErrorState,
-  FilterBar,
-  PageHeader,
-  Panel,
   TableSkeleton,
   TextInput,
 } from "@/components/ui";
@@ -22,17 +30,30 @@ export default function AuditLogsPage() {
   const [items, setItems] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
   const [entityType, setEntityType] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [actions, setActions] = useState<string[]>([]);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const pageSize = 25;
 
   const allowed =
     user?.roleCode === "SUPER_ADMIN" && hasPermission("AUDIT_VIEW");
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (action) n += 1;
+    if (entityType) n += 1;
+    if (from) n += 1;
+    if (to) n += 1;
+    return n;
+  }, [action, entityType, from, to]);
 
   useEffect(() => {
     if (!token || !allowed) return;
@@ -52,6 +73,8 @@ export default function AuditLogsPage() {
           search: search || undefined,
           action: action || undefined,
           entityType: entityType || undefined,
+          from: from ? new Date(from).toISOString() : undefined,
+          to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
           page,
           pageSize,
         });
@@ -62,7 +85,7 @@ export default function AuditLogsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load");
+          setError(err instanceof Error ? err.message : "Failed to load audit log");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -71,144 +94,201 @@ export default function AuditLogsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, allowed, search, action, entityType, page]);
+  }, [token, allowed, search, action, entityType, from, to, page, pageSize, reloadKey]);
 
   if (!allowed) {
     return (
-      <ErrorState message="Only Super Admin may view the audit trail." />
+      <ErrorState message="Only Super Admin may view the audit log." />
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  function clearFilters() {
+    setAction("");
+    setEntityType("");
+    setFrom("");
+    setTo("");
+    setPage(1);
+  }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Audit Trail"
-        description="Who did what, and when. Governance history for the organization."
-      />
+    <AdminPageShell
+      breadcrumb={[{ label: "Audit Log" }]}
+      title="Audit Log"
+      description="Track important changes and administrative activity across the platform. Records are immutable."
+      toolbar={
+        <div className="space-y-3">
+          <AdminToolbar>
+            <div className="min-w-[14rem] flex-1">
+              <TextInput
+                label="Search"
+                value={search}
+                onChange={(e) => {
+                  setPage(1);
+                  setSearch(e.target.value);
+                }}
+                placeholder="Search actions, resources, or IDs…"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mb-0.5"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((v) => !v)}
+            >
+              Filters{activeFilterCount ? ` · ${activeFilterCount}` : ""}
+            </Button>
+            {(search || activeFilterCount > 0) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mb-0.5"
+                onClick={() => {
+                  setSearch("");
+                  clearFilters();
+                }}
+              >
+                Clear all
+              </Button>
+            )}
+          </AdminToolbar>
 
-      <FilterBar>
-        <div className="min-w-[12rem] flex-1">
-          <TextInput
-            label="Search"
-            value={search}
-            onChange={(e) => {
-              setPage(1);
-              setSearch(e.target.value);
-            }}
-            placeholder="Search action / entity…"
-          />
+          {filtersOpen ? (
+            <div className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SearchableSelect
+                label="Action"
+                value={action}
+                onChange={(id) => {
+                  setPage(1);
+                  setAction(id);
+                }}
+                placeholder="All actions"
+                options={actions.map((a) => ({
+                  value: a,
+                  label: humanizeCode(a),
+                }))}
+              />
+              <SearchableSelect
+                label="Resource"
+                value={entityType}
+                onChange={(id) => {
+                  setPage(1);
+                  setEntityType(id);
+                }}
+                placeholder="All resources"
+                options={entityTypes.map((t) => ({
+                  value: t,
+                  label: humanizeCode(t),
+                }))}
+              />
+              <TextInput
+                label="From"
+                type="date"
+                value={from}
+                onChange={(e) => {
+                  setPage(1);
+                  setFrom(e.target.value);
+                }}
+              />
+              <TextInput
+                label="To"
+                type="date"
+                value={to}
+                onChange={(e) => {
+                  setPage(1);
+                  setTo(e.target.value);
+                }}
+              />
+            </div>
+          ) : null}
         </div>
-        <SearchableSelect
-          label="Action"
-          value={action}
-          onChange={(id) => {
-            setPage(1);
-            setAction(id);
-          }}
-          placeholder="All actions"
-          options={actions.map((a) => ({ value: a, label: a }))}
+      }
+    >
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => setReloadKey((k) => k + 1)}
         />
-        <SearchableSelect
-          label="Entity type"
-          value={entityType}
-          onChange={(id) => {
-            setPage(1);
-            setEntityType(id);
-          }}
-          placeholder="All entities"
-          options={entityTypes.map((t) => ({ value: t, label: t }))}
-        />
-      </FilterBar>
+      )}
 
-      {error && <ErrorState message={error} />}
+      {!loading && !error && (
+        <p className="text-sm text-[var(--color-ink-muted)]">
+          {total} event{total === 1 ? "" : "s"}
+          {activeFilterCount || search ? " matching filters" : ""}
+        </p>
+      )}
+
       {loading && <TableSkeleton rows={8} />}
+
       {!loading && !error && items.length === 0 && (
         <EmptyState
           title="No audit events"
-          description="Mutating actions across the platform will appear here."
+          description="Mutating actions across the platform appear here as an immutable history."
         />
       )}
 
       {!loading && items.length > 0 && (
         <>
-          <Panel title={`Audit events · ${total}`} tone="history">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-white text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">When</th>
-                    <th className="px-3 py-2">Actor</th>
-                    <th className="px-3 py-2">Action</th>
-                    <th className="px-3 py-2">Entity</th>
-                    <th className="px-3 py-2">Entity ID</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-t border-slate-100">
-                      <td className="whitespace-nowrap px-3 py-2">
-                        <DateTimeCell value={item.createdAt} />
-                      </td>
-                      <td className="px-3 py-2">
-                        {item.actor
-                          ? `${item.actor.firstName} ${item.actor.lastName}`
-                          : "—"}
-                        {item.actor && (
-                          <div className="text-xs text-slate-500">
-                            {item.actor.roleCode}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-sm">
-                        {item.action.replaceAll("_", " ").toLowerCase()}
-                      </td>
-                      <td className="px-3 py-2">{item.entityType.replaceAll("_", " ")}</td>
-                      <td className="max-w-[8rem] truncate px-3 py-2 font-mono text-xs">
-                        {item.entityId ?? "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Link
-                          href={`/audit-logs/${item.id}`}
-                          className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+          <AdminTable>
+            <thead>
+              <tr>
+                <AdminTh>Timestamp</AdminTh>
+                <AdminTh>User</AdminTh>
+                <AdminTh>Action</AdminTh>
+                <AdminTh>Resource</AdminTh>
+                <AdminTh>Record</AdminTh>
+                <AdminTh className="text-right"> </AdminTh>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} className="group">
+                  <AdminTd className="whitespace-nowrap text-[var(--color-ink-muted)]">
+                    <DateTimeCell value={item.createdAt} />
+                  </AdminTd>
+                  <AdminTd>
+                    <div className="font-medium">
+                      {formatActorName(item.actor)}
+                    </div>
+                    {item.actor ? (
+                      <div className="text-xs text-[var(--color-ink-muted)]">
+                        {formatActorMeta(item.actor)}
+                      </div>
+                    ) : null}
+                  </AdminTd>
+                  <AdminTd>{humanizeCode(item.action)}</AdminTd>
+                  <AdminTd>{humanizeCode(item.entityType)}</AdminTd>
+                  <AdminTd className="max-w-[10rem] truncate font-mono text-xs text-[var(--color-ink-muted)]">
+                    {item.entityId ?? "—"}
+                  </AdminTd>
+                  <AdminTd className="text-right">
+                    <Link
+                      href={`/audit-logs/${item.id}`}
+                      className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+                    >
+                      View
+                    </Link>
+                  </AdminTd>
+                </tr>
+              ))}
+            </tbody>
+          </AdminTable>
 
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">
-              Page {page} of {totalPages} · {total} total
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            disabled={loading}
+            noun="events"
+            pageSizeOptions={[25, 50, 100]}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => {
+              setPage(1);
+              setPageSize(n);
+            }}
+          />
         </>
       )}
-    </div>
+    </AdminPageShell>
   );
 }

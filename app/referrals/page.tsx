@@ -6,6 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { api, type Referral } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
+import { personName } from "@/lib/labels";
+import {
+  isPendingTeamLeadReview,
+  referralStatusLabel,
+} from "@/lib/referral-phase";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Button,
@@ -19,15 +24,6 @@ import {
   TableSkeleton,
   TextInput,
 } from "@/components/ui";
-
-const STATUSES = [
-  "",
-  "SUBMITTED",
-  "ACKNOWLEDGED",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "REJECTED",
-] as const;
 
 export default function ReferralsPage() {
   return (
@@ -87,12 +83,18 @@ function ReferralsContent() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canRequestSe = user?.roleCode === "COMMANDO_EXECUTIVE";
+  const isTeamLead =
+    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "SUPER_ADMIN";
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Interventions"
-        description="Commando requests Team Lead approval. Closing a handoff does not end an active assignment."
+        description={
+          isTeamLead
+            ? "Review Commando requests and provide management context."
+            : "Request Team Lead approval, then execute the intervention."
+        }
         actions={
           canRequestSe ? (
             <Link
@@ -114,7 +116,7 @@ function ReferralsContent() {
               setPage(1);
               setSearch(e.target.value);
             }}
-            placeholder="Search referrals…"
+            placeholder="Search by SE, reason…"
           />
         </div>
         <SelectField
@@ -126,11 +128,11 @@ function ReferralsContent() {
           }}
         >
           <option value="">All statuses</option>
-          {STATUSES.filter(Boolean).map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          <option value="SUBMITTED">Needs review</option>
+          <option value="ACKNOWLEDGED">Awaiting acknowledgement</option>
+          <option value="IN_PROGRESS">In progress</option>
+          <option value="COMPLETED">Handoff closed</option>
+          <option value="REJECTED">Rejected</option>
         </SelectField>
       </FilterBar>
 
@@ -141,7 +143,7 @@ function ReferralsContent() {
           title="No requests found"
           description={
             status
-              ? `No requests with status ${status}.`
+              ? "No requests match this filter."
               : "Commando requests and handoffs will appear here."
           }
           actionHref={canRequestSe ? "/referrals/request" : undefined}
@@ -151,48 +153,71 @@ function ReferralsContent() {
 
       {!loading && referrals.length > 0 && (
         <>
-          <Panel title={`Referrals · ${total}`}>
+          <Panel title={`Requests · ${total}`}>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-white text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">Profile</th>
+                    <th className="px-3 py-2">Sales Executive</th>
                     <th className="px-3 py-2">Commando</th>
-                    <th className="px-3 py-2">Team Lead</th>
-                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Reason</th>
                     <th className="px-3 py-2">Submitted</th>
+                    <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody>
-                  {referrals.map((r) => (
-                    <tr key={r.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{r.profileName}</div>
-                        <div className="text-xs text-slate-500">{r.team.name}</div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.commando.firstName} {r.commando.lastName}
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.teamLead.firstName} {r.teamLead.lastName}
-                      </td>
-                      <td className="px-3 py-2">
-                        <StatusBadge status={r.status} />
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {formatDate(r.createdAt)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Link
-                          href={`/referrals/${r.id}`}
-                          className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {referrals.map((r) => {
+                    const needsReview = isPendingTeamLeadReview(r);
+                    const actionLabel =
+                      isTeamLead && needsReview
+                        ? "Review"
+                        : r.status === "ACKNOWLEDGED" &&
+                            user?.roleCode === "COMMANDO_EXECUTIVE"
+                          ? "Acknowledge"
+                          : "View";
+                    return (
+                      <tr key={r.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{r.profileName}</div>
+                          <div className="text-xs text-slate-500">
+                            {r.team.name}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">{personName(r.commando)}</td>
+                        <td className="max-w-[14rem] px-3 py-2">
+                          <span className="line-clamp-2 text-[var(--color-ink-muted)]">
+                            {r.requestReason || r.recommendationFocus || "—"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">
+                          {formatDate(r.createdAt)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusBadge
+                            status={r.status}
+                            label={
+                              needsReview
+                                ? "Needs review"
+                                : referralStatusLabel(r)
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Link
+                            href={`/referrals/${r.id}`}
+                            className={
+                              needsReview && isTeamLead
+                                ? "font-medium text-[var(--color-brand)] hover:underline"
+                                : "text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                            }
+                          >
+                            {actionLabel}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -139,7 +139,7 @@ function ReviewRow({
 }
 
 export default function CreateSalesExecutivePage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -168,6 +168,10 @@ export default function CreateSalesExecutivePage() {
   });
 
   const canCreate = hasPermission("SALES_EXECUTIVE_CREATE");
+  const canViewUsers = hasPermission("USER_VIEW");
+  const isTeamLead = user?.roleCode === "TEAM_LEAD";
+  const exitHref = canViewUsers ? "/users" : "/profiles";
+  const exitLabel = canViewUsers ? "Users" : "Sales Executives";
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === form.teamId) ?? null,
     [teams, form.teamId],
@@ -177,7 +181,14 @@ export default function CreateSalesExecutivePage() {
 
   useEffect(() => {
     if (!token) return;
-    void api.getTeams(token).then((res) => setTeams(res.data.teams));
+    void api.getTeams(token).then((res) => {
+      setTeams(res.data.teams);
+      if (res.data.teams.length === 1) {
+        setForm((prev) =>
+          prev.teamId ? prev : { ...prev, teamId: res.data.teams[0]!.id },
+        );
+      }
+    });
   }, [token]);
 
   function validateStep(currentStep: number): boolean {
@@ -316,12 +327,21 @@ export default function CreateSalesExecutivePage() {
               >
                 Open profile
               </Link>
-              <Link
-                href={`/users/${success.userId}`}
-                className="inline-flex h-10 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
-              >
-                Open user
-              </Link>
+              {canViewUsers ? (
+                <Link
+                  href={`/users/${success.userId}`}
+                  className="inline-flex h-10 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
+                >
+                  Open user
+                </Link>
+              ) : (
+                <Link
+                  href="/profiles"
+                  className="inline-flex h-10 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
+                >
+                  Back to team
+                </Link>
+              )}
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -336,7 +356,7 @@ export default function CreateSalesExecutivePage() {
                     email: "",
                     password: "",
                     isActive: "true",
-                    teamId: "",
+                    teamId: teams.length === 1 ? teams[0]!.id : "",
                     displayName: "",
                     employeeCode: "",
                   });
@@ -348,13 +368,17 @@ export default function CreateSalesExecutivePage() {
           </div>
         </div>
         <p className="text-center text-sm text-[var(--color-ink-muted)]">
-          <Link href="/users" className="text-[var(--color-brand)] hover:underline">
-            Back to Users
+          <Link href={exitHref} className="text-[var(--color-brand)] hover:underline">
+            Back to {exitLabel}
           </Link>
-          {" · "}
-          <Link href="/profiles" className="text-[var(--color-brand)] hover:underline">
-            Sales Executives
-          </Link>
+          {canViewUsers ? (
+            <>
+              {" · "}
+              <Link href="/profiles" className="text-[var(--color-brand)] hover:underline">
+                Sales Executives
+              </Link>
+            </>
+          ) : null}
         </p>
       </div>
     );
@@ -365,21 +389,22 @@ export default function CreateSalesExecutivePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
-            User management
+            {isTeamLead ? "Team management" : "User management"}
           </p>
           <h1 className="mt-1 text-[1.75rem] font-semibold tracking-tight text-[var(--color-ink)]">
-            Create Sales Executive
+            {isTeamLead ? "Add Sales Executive" : "Create Sales Executive"}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-[var(--color-ink-muted)]">
-            One guided flow: login account, team assignment, and Sales Executive
-            profile — created together so nothing is left half-configured.
+            {isTeamLead
+              ? "Create a login account and profile for someone on your team — in one guided flow."
+              : "One guided flow: login account, team assignment, and Sales Executive profile — created together so nothing is left half-configured."}
           </p>
         </div>
         <Link
-          href="/users"
+          href={exitHref}
           className="text-sm font-medium text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:underline"
         >
-          Cancel to Users
+          Cancel to {exitLabel}
         </Link>
       </div>
 
@@ -484,63 +509,91 @@ export default function CreateSalesExecutivePage() {
 
               {step === 1 && (
                 <>
-                  <SearchableSelect
-                    label="Team"
-                    value={form.teamId}
-                    onChange={(id) => {
-                      setForm({ ...form, teamId: id });
-                      setFieldErrors((prev) => ({ ...prev, teamId: "" }));
-                    }}
-                    placeholder="Search or select team…"
-                    allowClear={false}
-                    options={teams.map((t) => ({
-                      value: t.id,
-                      label: t.name,
-                      hint: t.description ?? undefined,
-                    }))}
-                  />
-                  {fieldErrors.teamId && (
-                    <p className="text-xs text-[var(--status-danger)]">
-                      {fieldErrors.teamId}
+                  {isTeamLead ? (
+                    <p className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-ink-muted)]">
+                      You can only add Sales Executives to teams you lead.
                     </p>
-                  )}
-                  {selectedTeam ? (
+                  ) : null}
+                  {teams.length === 1 ? (
                     <div className="rounded-[var(--radius-md)] border border-[var(--status-success-ring)] bg-[var(--status-success-bg)] px-4 py-3">
-                      <p className="text-sm font-semibold text-[var(--color-ink)]">
-                        {selectedTeam.name}
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+                        Team
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[var(--color-ink)]">
+                        {teams[0]!.name}
                       </p>
                       <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                        {selectedTeam.description ||
+                        {teams[0]!.description ||
                           "The Sales Executive profile will be linked to this team."}
                       </p>
-                      {(selectedTeam.memberCount != null ||
-                        selectedTeam.profileCount != null) && (
-                        <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-                          {selectedTeam.memberCount != null
-                            ? `${selectedTeam.memberCount} members`
-                            : null}
-                          {selectedTeam.memberCount != null &&
-                          selectedTeam.profileCount != null
-                            ? " · "
-                            : null}
-                          {selectedTeam.profileCount != null
-                            ? `${selectedTeam.profileCount} Sales Executives`
-                            : null}
+                    </div>
+                  ) : (
+                    <>
+                      <SearchableSelect
+                        label="Team"
+                        value={form.teamId}
+                        onChange={(id) => {
+                          setForm({ ...form, teamId: id });
+                          setFieldErrors((prev) => ({ ...prev, teamId: "" }));
+                        }}
+                        placeholder="Search or select team…"
+                        allowClear={false}
+                        options={teams.map((t) => ({
+                          value: t.id,
+                          label: t.name,
+                          hint: t.description ?? undefined,
+                        }))}
+                      />
+                      {fieldErrors.teamId && (
+                        <p className="text-xs text-[var(--status-danger)]">
+                          {fieldErrors.teamId}
                         </p>
                       )}
-                    </div>
-                  ) : teams.length === 0 ? (
-                    <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-ink-muted)]">
-                      No teams yet.{" "}
-                      <Link
-                        href="/teams"
-                        className="font-medium text-[var(--color-brand)] hover:underline"
-                      >
-                        Create a team
-                      </Link>{" "}
-                      before continuing.
-                    </div>
-                  ) : null}
+                      {selectedTeam ? (
+                        <div className="rounded-[var(--radius-md)] border border-[var(--status-success-ring)] bg-[var(--status-success-bg)] px-4 py-3">
+                          <p className="text-sm font-semibold text-[var(--color-ink)]">
+                            {selectedTeam.name}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                            {selectedTeam.description ||
+                              "The Sales Executive profile will be linked to this team."}
+                          </p>
+                          {(selectedTeam.memberCount != null ||
+                            selectedTeam.profileCount != null) && (
+                            <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
+                              {selectedTeam.memberCount != null
+                                ? `${selectedTeam.memberCount} members`
+                                : null}
+                              {selectedTeam.memberCount != null &&
+                              selectedTeam.profileCount != null
+                                ? " · "
+                                : null}
+                              {selectedTeam.profileCount != null
+                                ? `${selectedTeam.profileCount} Sales Executives`
+                                : null}
+                            </p>
+                          )}
+                        </div>
+                      ) : teams.length === 0 ? (
+                        <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-ink-muted)]">
+                          {isTeamLead
+                            ? "You are not assigned to a team yet. Ask a Super Admin to place you on a team before onboarding Sales Executives."
+                            : (
+                              <>
+                                No teams yet.{" "}
+                                <Link
+                                  href="/teams"
+                                  className="font-medium text-[var(--color-brand)] hover:underline"
+                                >
+                                  Create a team
+                                </Link>{" "}
+                                before continuing.
+                              </>
+                            )}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </>
               )}
 
@@ -631,7 +684,7 @@ export default function CreateSalesExecutivePage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => router.push("/users")}
+                    onClick={() => router.push(exitHref)}
                     disabled={submitting}
                   >
                     Cancel

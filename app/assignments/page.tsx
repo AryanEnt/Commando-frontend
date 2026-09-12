@@ -10,6 +10,7 @@ import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/lib/toast-context";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
   EmptyState,
@@ -38,6 +39,9 @@ function AssignmentsContent() {
   const [currentOnly, setCurrentOnly] = useState(
     searchParams.get("currentOnly") === "true",
   );
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<
@@ -61,9 +65,14 @@ function AssignmentsContent() {
       if (!token) return;
       setLoading(true);
       try {
-        const res = await api.getAssignments(token, { currentOnly });
+        const res = await api.getAssignments(token, {
+          currentOnly,
+          page,
+          pageSize,
+        });
         if (!cancelled) {
           setAssignments(res.data.assignments);
+          setTotal(res.data.total);
           setError(null);
         }
       } catch (err) {
@@ -77,7 +86,7 @@ function AssignmentsContent() {
     return () => {
       cancelled = true;
     };
-  }, [token, currentOnly]);
+  }, [token, currentOnly, page, pageSize]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,8 +112,13 @@ function AssignmentsContent() {
         teamLeadUserId: "",
         teamId: "",
       });
-      const res = await api.getAssignments(token, { currentOnly });
+      const res = await api.getAssignments(token, {
+        currentOnly,
+        page,
+        pageSize,
+      });
       setAssignments(res.data.assignments);
+      setTotal(res.data.total);
     } catch (err) {
       pushToast(
         err instanceof Error ? err.message : "Failed to create assignment",
@@ -130,7 +144,10 @@ function AssignmentsContent() {
         <SegmentedControl
           ariaLabel="Assignment scope"
           value={currentOnly ? "active" : "all"}
-          onChange={(v) => setCurrentOnly(v === "active")}
+          onChange={(v) => {
+            setPage(1);
+            setCurrentOnly(v === "active");
+          }}
           options={[
             { value: "active", label: "Current only" },
             { value: "all", label: "All history" },
@@ -216,8 +233,8 @@ function AssignmentsContent() {
         <Panel
           title={
             currentOnly
-              ? `Active assignments · ${assignments.length}`
-              : `All assignments · ${assignments.length}`
+              ? `Active assignments · ${total}`
+              : `All assignments · ${total}`
           }
           tone={currentOnly ? "active" : "history"}
         >
@@ -263,6 +280,20 @@ function AssignmentsContent() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-3 pb-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="assignments"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

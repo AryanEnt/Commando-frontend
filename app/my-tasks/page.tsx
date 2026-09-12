@@ -6,6 +6,7 @@ import { api, type SupportTask } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   EmptyState,
   ErrorState,
@@ -31,6 +32,8 @@ export default function MyTasksPage() {
   const { token, hasPermission, user } = useAuth();
   const [view, setView] = useState<ViewMode>("active");
   const [tasks, setTasks] = useState<SupportTask[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,16 +49,35 @@ export default function MyTasksPage() {
       try {
         const params =
           view === "overdue"
-            ? { filter: "overdue" as const, search: search || undefined, pageSize: 50 }
+            ? {
+                filter: "overdue" as const,
+                search: search || undefined,
+                page,
+                pageSize,
+              }
             : view === "completed"
-              ? { filter: "completed" as const, search: search || undefined, pageSize: 50 }
-            : view === "dueSoon"
-              ? { view: "active" as const, search: search || undefined, pageSize: 50 }
-              : {
-                  view: view === "history" ? ("history" as const) : ("active" as const),
+              ? {
+                  filter: "completed" as const,
                   search: search || undefined,
-                  pageSize: 50,
-                };
+                  page,
+                  pageSize,
+                }
+              : view === "dueSoon"
+                ? {
+                    view: "active" as const,
+                    search: search || undefined,
+                    page: 1,
+                    pageSize: 50,
+                  }
+                : {
+                    view:
+                      view === "history"
+                        ? ("history" as const)
+                        : ("active" as const),
+                    search: search || undefined,
+                    page,
+                    pageSize,
+                  };
         const res = await api.getSupportTasks(token, params);
         if (!cancelled) {
           let next = res.data.tasks;
@@ -83,7 +105,7 @@ export default function MyTasksPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, view, search]);
+  }, [token, view, search, page, pageSize]);
 
   if (!hasPermission("SALES_SUPPORT_TASK_VIEW")) {
     return (
@@ -117,7 +139,10 @@ export default function MyTasksPage() {
         <SegmentedControl
           ariaLabel="Task view"
           value={view}
-          onChange={setView}
+          onChange={(v) => {
+            setPage(1);
+            setView(v);
+          }}
           options={[
             { value: "active", label: "Active" },
             { value: "dueSoon", label: "Due soon" },
@@ -130,7 +155,10 @@ export default function MyTasksPage() {
           <TextInput
             label="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Title or profile…"
           />
         </div>
@@ -248,6 +276,22 @@ export default function MyTasksPage() {
               </tbody>
             </table>
           </div>
+          {view !== "dueSoon" ? (
+            <div className="mt-3 px-3 pb-3">
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                disabled={loading}
+                noun="tasks"
+                onPageChange={setPage}
+                onPageSizeChange={(n) => {
+                  setPage(1);
+                  setPageSize(n);
+                }}
+              />
+            </div>
+          ) : null}
         </Panel>
       )}
     </div>

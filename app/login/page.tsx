@@ -4,11 +4,12 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
+import { resolveOwnSalesProfileId } from "@/lib/own-profile";
 import { useToast } from "@/lib/toast-context";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, token } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -16,18 +17,36 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!loading && user) {
+  async function goHome(roleCode: string, accessToken: string) {
+    if (roleCode === "SALES_EXECUTIVE") {
+      try {
+        const profileId = await resolveOwnSalesProfileId(accessToken);
+        if (profileId) {
+          router.replace(`/profiles/${profileId}`);
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
     router.replace("/dashboard");
   }
+
+  useEffect(() => {
+    if (!loading && user && token) {
+      void goHome(user.roleCode, token);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, token]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      await login(email, password);
+      const data = await login(email, password);
       pushToast("Signed in.", "success");
-      router.replace("/dashboard");
+      await goHome(data.user.roleCode, data.accessToken);
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -38,6 +57,14 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] text-sm text-[var(--color-ink-muted)]">
+        {user ? "Redirecting…" : "Loading…"}
+      </div>
+    );
   }
 
   return (

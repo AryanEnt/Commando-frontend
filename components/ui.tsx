@@ -1,12 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import {
+  useEffect,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
+import { Icons } from "@/components/icons";
 
 const inputClass =
   "mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
 
 const labelClass = "block text-sm font-medium text-[var(--color-ink)]";
+
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonSize = "sm" | "md" | "lg";
+
+function buttonClassName(
+  variant: ButtonVariant,
+  size: ButtonSize,
+  className = "",
+) {
+  return `btn btn-${variant} btn-${size} ${className}`.trim();
+}
 
 export function PageHeader({
   title,
@@ -29,7 +48,9 @@ export function PageHeader({
           </p>
         )}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </div>
   );
 }
@@ -40,28 +61,40 @@ export function Button({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "sm" | "md";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }) {
-  const variants = {
-    primary:
-      "bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-60",
-    secondary:
-      "border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] hover:bg-[var(--color-surface-2)] disabled:opacity-60",
-    danger:
-      "border border-[var(--status-danger-ring)] bg-[var(--color-surface)] text-[var(--status-danger)] hover:bg-[var(--status-danger-bg)] disabled:opacity-60",
-    ghost: "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] disabled:opacity-60",
-  };
-  const sizes = {
-    sm: "h-8 px-2.5 text-xs",
-    md: "h-9 px-3.5 text-sm",
-  };
   return (
     <button
       type="button"
-      className={`inline-flex items-center justify-center rounded-[var(--radius-sm)] font-medium transition duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${variants[variant]} ${sizes[size]} ${className}`}
+      className={buttonClassName(variant, size, className)}
       {...props}
     />
+  );
+}
+
+export function ButtonLink({
+  href,
+  variant = "primary",
+  size = "md",
+  className = "",
+  children,
+  ...props
+}: {
+  href: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+  children: ReactNode;
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "className">) {
+  return (
+    <Link
+      href={href}
+      className={buttonClassName(variant, size, className)}
+      {...props}
+    >
+      {children}
+    </Link>
   );
 }
 
@@ -81,13 +114,23 @@ export function Field({
   return (
     <label className={labelClass}>
       {label}
-      {required ? <span className="text-red-600"> *</span> : null}
+      {required ? (
+        <span className="text-[var(--status-danger)]" aria-hidden>
+          {" "}
+          *
+        </span>
+      ) : null}
       {children}
       {hint && !error ? (
-        <span className="mt-1 block text-xs font-normal text-slate-500">{hint}</span>
+        <span className="mt-1 block text-xs font-normal text-[var(--color-ink-muted)]">
+          {hint}
+        </span>
       ) : null}
       {error ? (
-        <span className="mt-1 block text-xs font-normal text-red-600" role="alert">
+        <span
+          className="mt-1 block text-xs font-normal text-[var(--status-danger)]"
+          role="alert"
+        >
           {error}
         </span>
       ) : null}
@@ -164,7 +207,7 @@ export function SelectField({
 
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-3">
+    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
       {children}
     </div>
   );
@@ -185,7 +228,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex rounded border border-slate-300 bg-white p-0.5 text-sm"
+      className="inline-flex rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5 text-sm"
     >
       {options.map((opt) => {
         const active = value === opt.value;
@@ -211,8 +254,11 @@ export function SegmentedControl<T extends string>({
 
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="rounded border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-600">
-      <div className="mx-auto mb-3 h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">
+      <div
+        className="mx-auto mb-3 h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-line-strong)] border-t-[var(--color-brand)]"
+        aria-hidden
+      />
       {label}
     </div>
   );
@@ -221,7 +267,7 @@ export function LoadingState({ label = "Loading…" }: { label?: string }) {
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded bg-slate-200/80 ${className}`}
+      className={`animate-pulse rounded-[var(--radius-sm)] bg-[var(--color-line)]/70 ${className}`}
       aria-hidden
     />
   );
@@ -229,7 +275,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)]">
       <div className="space-y-3 p-4">
         <Skeleton className="h-4 w-1/3" />
         {Array.from({ length: rows }).map((_, i) => (
@@ -247,29 +293,65 @@ export function EmptyState({
   actionHref,
   actionLabel,
   action,
+  icon = "emptyInbox",
 }: {
   title: string;
   description?: string;
   actionHref?: string;
   actionLabel?: string;
   action?: ReactNode;
+  /** Line-art icon from the shared set. Pass null to hide. */
+  icon?:
+    | "emptyClipboard"
+    | "emptyInbox"
+    | "emptyUsers"
+    | "emptySupport"
+    | "emptySearch"
+    | "tasks"
+    | "reviews"
+    | "monitoring"
+    | "feedback"
+    | null;
 }) {
+  const Icon =
+    icon == null
+      ? null
+      : icon === "emptyClipboard"
+        ? Icons.emptyClipboard
+        : icon === "emptyInbox"
+          ? Icons.emptyInbox
+          : icon === "emptyUsers"
+            ? Icons.emptyUsers
+            : icon === "emptySupport"
+              ? Icons.emptySupport
+              : icon === "emptySearch"
+                ? Icons.emptySearch
+                : icon === "tasks"
+                  ? Icons.tasks
+                  : icon === "reviews"
+                    ? Icons.reviews
+                    : icon === "monitoring"
+                      ? Icons.monitoring
+                      : Icons.feedback;
+
   return (
     <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-10 text-center">
-      <p className="text-sm font-medium text-slate-800">{title}</p>
+      {Icon ? (
+        <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]">
+          <Icon size={20} />
+        </span>
+      ) : null}
+      <p className="text-sm font-medium text-[var(--color-ink)]">{title}</p>
       {description && (
-        <p className="mx-auto mt-1 max-w-md text-sm text-slate-600">
+        <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-ink-muted)]">
           {description}
         </p>
       )}
       {action}
       {!action && actionHref && actionLabel && (
-        <Link
-          href={actionHref}
-          className="mt-4 inline-block rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm text-white hover:bg-[var(--color-brand-hover)]"
-        >
-          {actionLabel}
-        </Link>
+        <div className="mt-4 flex justify-center">
+          <ButtonLink href={actionHref}>{actionLabel}</ButtonLink>
+        </div>
       )}
     </div>
   );
@@ -284,18 +366,20 @@ export function ErrorState({
 }) {
   return (
     <div
-      className="rounded border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800"
+      className="rounded-[var(--radius-md)] border border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)] px-4 py-4 text-sm text-[var(--status-danger)]"
       role="alert"
     >
-      <p>{message}</p>
+      <p className="font-medium">Something went wrong</p>
+      <p className="mt-1 text-[var(--color-ink)]">{message}</p>
       {onRetry && (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-3"
           onClick={onRetry}
-          className="mt-3 rounded border border-red-300 bg-white px-3 py-1.5 text-xs text-red-900 hover:bg-red-50"
         >
           Try again
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -319,7 +403,7 @@ export function MetricCard({
       href={href}
       className="group block cursor-pointer border border-[var(--color-line)] bg-[var(--color-surface)] p-4 transition duration-150 hover:border-[var(--color-line-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] rounded-[var(--radius-md)]"
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+      <p className="text-[11px] font-medium text-[var(--color-ink-subtle)]">
         {label}
       </p>
       <p
@@ -343,13 +427,13 @@ export function ReadOnlyPanel({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface-2)] p-4 text-sm text-[var(--color-ink)]">
       {title ? (
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
           {title} · read-only
         </p>
       ) : (
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
           Read-only
         </p>
       )}
@@ -365,12 +449,16 @@ export function DateTimeCell({
   value: string | Date | null | undefined;
   showTime?: boolean;
 }) {
-  if (!value) return <span className="text-slate-400">—</span>;
+  if (!value) {
+    return <span className="text-[var(--color-ink-subtle)]">—</span>;
+  }
   const d = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return <span className="text-slate-400">—</span>;
+  if (Number.isNaN(d.getTime())) {
+    return <span className="text-[var(--color-ink-subtle)]">—</span>;
+  }
   return (
     <span className="inline-flex flex-col leading-tight">
-      <span className="tabular-nums text-slate-800">
+      <span className="tabular-nums text-[var(--color-ink)]">
         {d.toLocaleDateString(undefined, {
           year: "numeric",
           month: "short",
@@ -379,7 +467,7 @@ export function DateTimeCell({
         })}
       </span>
       {showTime && (
-        <span className="text-xs tabular-nums text-slate-500">
+        <span className="text-xs tabular-nums text-[var(--color-ink-muted)]">
           {d.toLocaleTimeString(undefined, {
             hour: "2-digit",
             minute: "2-digit",
@@ -406,17 +494,22 @@ export function Panel({
   actions?: ReactNode;
 }) {
   const tones = {
-    default: "border-slate-200",
-    active: "border-emerald-200",
-    history: "border-slate-300",
+    default: "border-[var(--color-line)]",
+    active: "border-[var(--status-success-ring)]",
+    history: "border-[var(--color-line-strong)]",
   };
   const headers = {
-    default: "border-slate-100 bg-slate-50 text-slate-600",
-    active: "border-emerald-100 bg-emerald-50 text-emerald-800",
-    history: "border-slate-200 bg-slate-100 text-slate-700",
+    default:
+      "border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]",
+    active:
+      "border-[var(--status-success-ring)] bg-[var(--status-success-bg)] text-[var(--status-success)]",
+    history:
+      "border-[var(--color-line)] bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]",
   };
   return (
-    <div className={`overflow-hidden rounded border bg-white ${tones[tone]}`}>
+    <div
+      className={`overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-surface)] ${tones[tone]}`}
+    >
       {title && (
         <div
           className={`flex items-start justify-between gap-3 border-b px-3 py-2 ${headers[tone]}`}
@@ -460,19 +553,36 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onCancel]);
+
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-ink)]/40 p-4 overlay-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onCancel();
+      }}
     >
-      <div className="w-full max-w-md rounded border border-slate-200 bg-white p-4 shadow-lg">
-        <h2 id="confirm-title" className="text-base font-semibold text-slate-900">
+      <div className="dialog-panel w-full max-w-md rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-md)]">
+        <h2
+          id="confirm-title"
+          className="text-base font-semibold text-[var(--color-ink)]"
+        >
           {title}
         </h2>
-        <p className="mt-2 text-sm text-slate-600">{message}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--color-ink-muted)]">
+          {message}
+        </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel}
@@ -584,41 +694,78 @@ export function LifecycleStepper({
     stages.findIndex((s) => s.key === current),
   );
   return (
-    <ol className="flex flex-wrap items-start gap-0">
+    <ol className="flex w-full min-w-0 items-start gap-0 overflow-x-auto pb-1">
       {stages.map((stage, i) => {
         const done = i < idx;
         const active = i === idx;
         return (
-          <li key={stage.key} className="flex min-w-[4.5rem] flex-1 items-start">
-            <div className="flex w-full flex-col items-center text-center">
-              <div className="flex w-full items-center">
-                <span
-                  className={`h-px flex-1 ${i === 0 ? "bg-transparent" : done || active ? "bg-[var(--color-brand)]" : "bg-[var(--color-line)]"}`}
-                  aria-hidden
-                />
-                <span
-                  className={`progress-dot ${done ? "is-done" : ""} ${active ? "is-current" : ""}`}
-                />
-                <span
-                  className={`h-px flex-1 ${i === stages.length - 1 ? "bg-transparent" : done ? "bg-[var(--color-brand)]" : "bg-[var(--color-line)]"}`}
-                  aria-hidden
-                />
-              </div>
-              <p
-                className={`mt-2 text-[11px] font-medium ${
-                  active
-                    ? "text-[var(--color-brand)]"
-                    : done
-                      ? "text-[var(--color-ink)]"
-                      : "text-[var(--color-ink-subtle)]"
+          <li
+            key={stage.key}
+            className="flex min-w-[5.5rem] flex-1 flex-col items-center"
+          >
+            <div className="flex w-full items-center">
+              <span
+                className={`h-px flex-1 transition-colors duration-200 ${
+                  i === 0
+                    ? "bg-transparent"
+                    : done || active
+                      ? "bg-[var(--color-brand)]"
+                      : "bg-[var(--color-line)]"
                 }`}
+                aria-hidden
+              />
+              <span
+                className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition duration-200 ${
+                  done
+                    ? "border-[var(--color-brand)] bg-[var(--color-brand)] text-white"
+                    : active
+                      ? "border-[var(--color-brand)] bg-[var(--color-surface)] text-[var(--color-brand)] shadow-[0_0_0_3px_var(--color-brand-soft)]"
+                      : "border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[var(--color-ink-subtle)]"
+                }`}
+                aria-current={active ? "step" : undefined}
               >
-                {stage.label}
-              </p>
-              <p className="sr-only">
-                {active ? "Current stage" : done ? "Completed" : "Upcoming"}
-              </p>
+                {done ? (
+                  <Icons.check size={12} />
+                ) : (
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      active
+                        ? "bg-[var(--color-brand)]"
+                        : "bg-[var(--color-line-strong)]"
+                    }`}
+                  />
+                )}
+              </span>
+              <span
+                className={`h-px flex-1 transition-colors duration-200 ${
+                  i === stages.length - 1
+                    ? "bg-transparent"
+                    : done
+                      ? "bg-[var(--color-brand)]"
+                      : "bg-[var(--color-line)]"
+                }`}
+                aria-hidden
+              />
             </div>
+            <p
+              className={`mt-2.5 max-w-[7.5rem] text-center text-[12px] leading-snug ${
+                active
+                  ? "font-semibold text-[var(--color-ink)]"
+                  : done
+                    ? "font-medium text-[var(--color-ink)]"
+                    : "font-medium text-[var(--color-ink-subtle)]"
+              }`}
+            >
+              {stage.label}
+            </p>
+            {active && stage.hint ? (
+              <p className="mt-0.5 max-w-[8.5rem] text-center text-[11px] leading-snug text-[var(--color-ink-muted)]">
+                {stage.hint}
+              </p>
+            ) : null}
+            <p className="sr-only">
+              {active ? "Current stage" : done ? "Completed" : "Upcoming"}
+            </p>
           </li>
         );
       })}
@@ -638,17 +785,26 @@ export function AttentionList({
         <li key={item.href}>
           <Link
             href={item.href}
-            className="flex items-start justify-between gap-3 px-1 py-2.5 hover:bg-[var(--color-surface-2)]"
+            className="group flex items-center justify-between gap-3 px-1 py-2.5 hover:bg-[var(--color-surface-2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus)]"
           >
-            <span>
-              <span className="block text-sm font-medium text-[var(--color-ink)]">
+            <span className="min-w-0">
+              <span
+                className="block truncate text-sm font-medium text-[var(--color-ink)]"
+                title={item.title}
+              >
                 {item.title}
               </span>
-              <span className="text-xs text-[var(--color-ink-muted)]">
+              <span
+                className="block truncate text-xs text-[var(--color-ink-muted)]"
+                title={item.meta}
+              >
                 {item.meta}
               </span>
             </span>
-            <span className="text-xs text-[var(--color-brand)]">Open</span>
+            <Icons.chevron
+              size={16}
+              className="shrink-0 text-[var(--color-ink-subtle)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"
+            />
           </Link>
         </li>
       ))}
@@ -659,42 +815,72 @@ export function AttentionList({
 export function Drawer({
   open,
   title,
+  description,
   onClose,
   children,
+  footer,
+  size = "md",
 }: {
   open: boolean;
   title: string;
+  description?: string;
   onClose: () => void;
   children: ReactNode;
+  footer?: ReactNode;
+  size?: "md" | "lg";
 }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
+  const widths = {
+    md: "max-w-md",
+    lg: "max-w-lg",
+  };
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
         type="button"
-        className="absolute inset-0 bg-[var(--color-ink)]/30"
-        aria-label="Close details"
+        className="overlay-backdrop absolute inset-0 bg-[var(--color-ink)]/30"
+        aria-label="Close panel"
         onClick={onClose}
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-title"
-        className="relative flex h-full w-full max-w-md flex-col border-l border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]"
+        className={`drawer-panel relative flex h-full w-full ${widths[size]} flex-col border-l border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]`}
       >
-        <div className="flex items-center justify-between border-b border-[var(--color-line)] px-4 py-3">
-          <h2 id="drawer-title" className="text-sm font-semibold">
-            {title}
-          </h2>
-          <button
-            type="button"
-            className="text-sm text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
-            onClick={onClose}
-          >
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
+          <div className="min-w-0">
+            <h2
+              id="drawer-title"
+              className="text-base font-semibold tracking-tight"
+            >
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        {footer ? (
+          <div className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3">
+            {footer}
+          </div>
+        ) : null}
       </aside>
     </div>
   );

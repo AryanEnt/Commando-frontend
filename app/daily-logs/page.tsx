@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { api, type ActivityType, type DailyLog } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
-  Button,
   EmptyState,
   ErrorState,
   FilterBar,
@@ -21,11 +21,11 @@ export default function DailyLogsPage() {
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [activityTypeId, setActivityTypeId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const pageSize = 10;
   const canCreate = hasPermission("DAILY_LOG_CREATE");
 
   useEffect(() => {
@@ -63,9 +63,7 @@ export default function DailyLogsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, search, activityTypeId, page]);
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  }, [token, search, activityTypeId, page, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -158,32 +156,18 @@ export default function DailyLogsPage() {
               </section>
             );
           })}
-        </div>
-      )}
-
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-600">
-            Page {page} of {totalPages} · {total} total
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next
-            </Button>
-          </div>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            disabled={loading}
+            noun="logs"
+            onPageChange={setPage}
+            onPageSizeChange={(n) => {
+              setPage(1);
+              setPageSize(n);
+            }}
+          />
         </div>
       )}
     </div>

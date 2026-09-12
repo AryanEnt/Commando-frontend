@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type RoleAssignment } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -16,8 +16,18 @@ import {
 } from "@/components/ui";
 
 export default function RoleAssignmentDetailPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading role assignment…" />}>
+      <RoleAssignmentDetail />
+    </Suspense>
+  );
+}
+
+function RoleAssignmentDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
   const { token, hasPermission } = useAuth();
   const [item, setItem] = useState<RoleAssignment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +78,11 @@ export default function RoleAssignmentDetailPage() {
         shouldDo: shouldDo.map((s) => s.trim()).filter(Boolean),
         shouldNotDo: shouldNotDo.map((s) => s.trim()).filter(Boolean),
       });
-      router.replace(`/role-assignments/${res.data.roleAssignment.id}`);
+      const nextId = res.data.roleAssignment.id;
+      const qs = returnTo
+        ? `?returnTo=${encodeURIComponent(returnTo)}`
+        : "";
+      router.replace(`/role-assignments/${nextId}${qs}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save");
     } finally {
@@ -76,14 +90,25 @@ export default function RoleAssignmentDetailPage() {
     }
   }
 
+  const backHref =
+    returnTo ||
+    (item
+      ? `/profiles/${item.salesExecutiveProfileId}/support`
+      : "/role-assignments");
+  const backLabel = item
+    ? `← Back to ${item.profile.displayName}`
+    : returnTo
+      ? "← Back"
+      : "← Role Assignments";
+
   if (error && !item) {
     return (
       <div className="space-y-2">
         <Link
-          href="/role-assignments"
-          className="text-sm text-slate-600 underline"
+          href={returnTo || "/role-assignments"}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
         >
-          ← Role Assignments
+          {returnTo ? "← Back" : "← Role Assignments"}
         </Link>
         <ErrorState message={error} />
       </div>
@@ -103,10 +128,10 @@ export default function RoleAssignmentDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
-            href="/role-assignments"
-            className="text-sm text-slate-600 underline"
+            href={backHref}
+            className="text-sm font-medium text-[var(--color-brand)] hover:underline"
           >
-            ← Role Assignments
+            {backLabel}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
             {item.profile.displayName}
@@ -255,7 +280,9 @@ export default function RoleAssignmentDetailPage() {
           </div>
           {isHistorical && (
             <p className="text-xs text-[var(--color-ink-muted)]">
-              This version is historical ({item.status.replaceAll("_", " ").toLowerCase()}) and cannot be edited.
+              This version is historical (
+              {item.status.replaceAll("_", " ").toLowerCase()}) and cannot be
+              edited.
             </p>
           )}
         </div>

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   EmptyState,
   ErrorState,
@@ -25,6 +26,8 @@ export default function ActionItemsPage() {
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [profileId, setProfileId] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +48,8 @@ export default function ActionItemsPage() {
           view,
           profileId: profileId || undefined,
           search: search || undefined,
-          pageSize: 50,
+          page,
+          pageSize,
         });
         if (!cancelled) {
           setItems(res.data.actionItems);
@@ -63,7 +67,7 @@ export default function ActionItemsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, view, profileId, search]);
+  }, [token, view, profileId, search, page, pageSize]);
 
   function personName(p: { firstName: string; lastName: string } | null) {
     if (!p) return "—";
@@ -91,7 +95,10 @@ export default function ActionItemsPage() {
         <SegmentedControl
           ariaLabel="Action items view"
           value={view}
-          onChange={setView}
+          onChange={(v) => {
+            setPage(1);
+            setView(v);
+          }}
           options={[
             { value: "active", label: "Active" },
             { value: "history", label: "History" },
@@ -101,14 +108,20 @@ export default function ActionItemsPage() {
           <TextInput
             label="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Title or notes…"
           />
         </div>
         <SearchableSelect
           label="Profile"
           value={profileId}
-          onChange={setProfileId}
+          onChange={(id) => {
+            setPage(1);
+            setProfileId(id);
+          }}
           placeholder="All profiles"
           options={profiles.map((p) => ({
             value: p.id,
@@ -184,6 +197,20 @@ export default function ActionItemsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-3 pb-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="action items"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

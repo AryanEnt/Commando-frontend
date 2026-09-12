@@ -171,11 +171,12 @@ export default function CommandoRequestPage() {
         )}
 
         <TextArea
-          label="Why do you want to intervene?"
+          label="Why are you requesting this intervention?"
           value={requestReason}
           onChange={(e) => setRequestReason(e.target.value)}
           rows={4}
           required
+          hint="Keep this to the need for intervention — the Team Lead provides the management packet."
         />
 
         <TextArea

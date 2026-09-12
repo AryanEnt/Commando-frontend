@@ -16,7 +16,10 @@ type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ user: AuthUser; accessToken: string }>;
   logout: () => Promise<void>;
   hasPermission: (code: string) => boolean;
 };
@@ -79,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(TOKEN_KEY, res.data.accessToken);
     setToken(res.data.accessToken);
     setUser(res.data.user);
+    return res.data;
   }, []);
 
   const logout = useCallback(async () => {

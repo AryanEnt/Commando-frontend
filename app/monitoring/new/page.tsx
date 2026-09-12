@@ -1,83 +1,67 @@
 "use client";
 
 import Link from "next/link";
-import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api, ApiError, type MonitoringCategory } from "@/lib/api";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { api, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
-import { SearchableSelect } from "@/components/SearchableSelect";
+import { MonitoringSessionForm } from "@/components/monitoring/MonitoringSessionForm";
+import { StatusBadge } from "@/components/StatusBadge";
 import {
-  Button,
+  Avatar,
   ErrorState,
-  SelectField,
-  TextArea,
+  LoadingState,
+  Skeleton,
 } from "@/components/ui";
 
-const RESPONSE_VALUES = ["YES", "NO", "NA"] as const;
-
 export default function NewMonitoringPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading form…" />}>
+      <NewMonitoringContent />
+    </Suspense>
+  );
+}
+
+function NewMonitoringContent() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
-  const [categories, setCategories] = useState<MonitoringCategory[]>([]);
-  const [profileId, setProfileId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [observation, setObservation] = useState("");
-  const [responseOverrides, setResponseOverrides] = useState<
-    Record<string, string>
-  >({});
-  const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const lockedProfileId = searchParams.get("profileId") ?? "";
+  const [profileId, setProfileId] = useState(lockedProfileId);
+  const [profile, setProfile] = useState<ProfileListItem | null>(null);
+  const [profileLoading, setProfileLoading] = useState(Boolean(lockedProfileId));
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
-    void api.getMonitoringCategories(token).then((res) => {
-      setCategories(res.data.categories.filter((c) => c.isActive));
-    });
-  }, [token]);
+    if (lockedProfileId) setProfileId(lockedProfileId);
+  }, [lockedProfileId]);
 
-  const selectedCategory = useMemo(
-    () => categories.find((c) => c.id === categoryId) ?? null,
-    [categories, categoryId],
-  );
-
-  const responses = useMemo(() => {
-    if (!selectedCategory) return {} as Record<string, string>;
-    const next: Record<string, string> = {};
-    for (const item of selectedCategory.checklistItems) {
-      next[item.id] = responseOverrides[item.id] ?? "YES";
+  useEffect(() => {
+    if (!token || !profileId) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
     }
-    return next;
-  }, [selectedCategory, responseOverrides]);
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!token || !selectedCategory) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await api.createMonitoringRecord(token, {
-        salesExecutiveProfileId: profileId,
-        categoryId,
-        observation: observation.trim() || null,
-        responses: selectedCategory.checklistItems.map((item) => ({
-          checklistItemId: item.id,
-          value: responses[item.id] ?? "NA",
-        })),
+    let cancelled = false;
+    setProfileLoading(true);
+    void api
+      .getProfile(token, profileId)
+      .then((res) => {
+        if (cancelled) return;
+        setProfile(res.data.profile);
+      })
+      .catch(() => {
+        if (!cancelled) setProfile(null);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
       });
-      pushToast("Monitoring session saved", "success");
-      router.push(`/monitoring/${res.data.record.id}`);
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to create";
-      setError(msg);
-      pushToast(msg, "error");
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [token, profileId]);
 
   if (!hasPermission("MONITORING_CREATE")) {
     return (
@@ -85,92 +69,135 @@ export default function NewMonitoringPage() {
     );
   }
 
+  const backHref = profileId
+    ? `/profiles/${profileId}/monitoring`
+    : "/monitoring";
+  const displayName = profile?.displayName ?? "Sales Executive";
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link href="/monitoring" className="text-sm text-slate-600 underline">
-          ← Monitoring
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          New monitoring session
-        </h1>
-        <p className="text-sm text-slate-600">
-          Saves as a new historical record — previous sessions are never
-          overwritten.
-        </p>
-      </div>
-
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 rounded border border-slate-200 bg-white p-4"
-      >
-        <ProfileSearchSelect value={profileId} onChange={setProfileId} />
-
-        <SearchableSelect
-          label="Category"
-          value={categoryId}
-          onChange={(id) => {
-            setCategoryId(id);
-            setResponseOverrides({});
-          }}
-          placeholder="Select category…"
-          allowClear={false}
-          options={categories.map((c) => ({
-            value: c.id,
-            label: c.name,
-          }))}
-        />
-
-        {selectedCategory && (
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium text-slate-800">Checklist</h2>
-            {selectedCategory.checklistItems.length === 0 && (
-              <p className="text-sm text-amber-800">
-                No active checklist items for this category.
-              </p>
-            )}
-            {selectedCategory.checklistItems.map((item) => (
-              <SelectField
-                key={item.id}
-                label={item.label}
-                value={responses[item.id] ?? "YES"}
-                onChange={(e) =>
-                  setResponseOverrides({
-                    ...responseOverrides,
-                    [item.id]: e.target.value,
-                  })
-                }
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-4">
+        <nav className="text-xs text-[var(--color-ink-muted)]">
+          <Link href="/profiles" className="hover:text-[var(--color-ink)]">
+            Sales Executives
+          </Link>
+          {profileId ? (
+            <>
+              <span className="mx-1.5">/</span>
+              <Link
+                href={`/profiles/${profileId}`}
+                className="hover:text-[var(--color-ink)]"
               >
-                {RESPONSE_VALUES.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </SelectField>
-            ))}
+                {displayName}
+              </Link>
+              <span className="mx-1.5">/</span>
+              <Link
+                href={`/profiles/${profileId}/monitoring`}
+                className="hover:text-[var(--color-ink)]"
+              >
+                Monitoring
+              </Link>
+              <span className="mx-1.5">/</span>
+              <span className="text-[var(--color-ink)]">New Session</span>
+            </>
+          ) : (
+            <>
+              <span className="mx-1.5">/</span>
+              <Link href="/monitoring" className="hover:text-[var(--color-ink)]">
+                Monitoring
+              </Link>
+              <span className="mx-1.5">/</span>
+              <span className="text-[var(--color-ink)]">New Session</span>
+            </>
+          )}
+        </nav>
+
+        <Link
+          href={backHref}
+          className="inline-flex text-sm font-medium text-[var(--color-brand)] hover:underline"
+        >
+          {profileId ? `← Back to ${displayName}` : "← Monitoring"}
+        </Link>
+
+        {profileLoading ? (
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+        ) : profile ? (
+          <div className="flex items-start gap-3">
+            <Avatar name={profile.displayName} size="lg" />
+            <div>
+              <h1 className="text-[1.75rem] font-semibold tracking-tight text-[var(--color-ink)]">
+                New Monitoring Session
+              </h1>
+              <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                {profile.displayName}
+                {" · "}
+                Sales Executive
+                {profile.team?.name ? ` · ${profile.team.name}` : ""}
+              </p>
+              {profile.currentAssignment ? (
+                <div className="mt-2">
+                  <StatusBadge status={profile.currentAssignment.status} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <h1 className="text-[1.75rem] font-semibold tracking-tight text-[var(--color-ink)]">
+              New Monitoring Session
+            </h1>
+            <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+              Record observations and performance against the selected
+              checklist.
+            </p>
           </div>
         )}
+      </div>
 
-        <TextArea
-          label="Free-form observations"
-          rows={4}
-          value={observation}
-          onChange={(e) => setObservation(e.target.value)}
+      {!lockedProfileId ? (
+        <div className="rounded border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <ProfileSearchSelect value={profileId} onChange={setProfileId} />
+        </div>
+      ) : null}
+
+      {error ? <ErrorState message={error} /> : null}
+
+      {profileId && profile ? (
+        <MonitoringSessionForm
+          profileId={profileId}
+          profileName={profile.displayName}
+          submitting={submitting}
+          setSubmitting={setSubmitting}
+          setError={setError}
+          onSuccess={(recordId) => {
+            // Form already toasts; navigate without a second toast.
+            router.push(`/monitoring/${recordId}`);
+          }}
         />
-
-        {error && <ErrorState message={error} />}
-
-        <Button
-          type="submit"
-          disabled={
-            submitting ||
-            !selectedCategory ||
-            selectedCategory.checklistItems.length === 0
-          }
-        >
-          {submitting ? "Saving…" : "Save session"}
-        </Button>
-      </form>
+      ) : profileId && profileLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : !profileId ? (
+        <div className="rounded border border-dashed border-[var(--color-line-strong)] px-4 py-10 text-center">
+          <p className="text-sm font-medium text-[var(--color-ink)]">
+            Select a Sales Executive
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-ink-muted)]">
+            Choose who this monitoring session is for before loading the
+            checklist.
+          </p>
+        </div>
+      ) : (
+        <ErrorState message="Unable to load Sales Executive profile." />
+      )}
     </div>
   );
 }

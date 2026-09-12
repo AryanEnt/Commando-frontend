@@ -87,8 +87,8 @@ function NewDailyLogForm() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href={form.salesExecutiveProfileId ? `/profiles/${form.salesExecutiveProfileId}` : "/profiles"} className="text-sm text-slate-600 underline">
-          ← Workspace
+        <Link href={form.salesExecutiveProfileId ? `/profiles/${form.salesExecutiveProfileId}/coaching` : "/profiles"} className="text-sm font-medium text-[var(--color-brand)] hover:underline">
+          ← Back to workspace
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New daily log
@@ -102,12 +102,18 @@ function NewDailyLogForm() {
         onSubmit={onSubmit}
         className="space-y-4 rounded border border-slate-200 bg-white p-4"
       >
-        <ProfileSearchSelect
-          value={form.salesExecutiveProfileId}
-          onChange={(id) =>
-            setForm({ ...form, salesExecutiveProfileId: id })
-          }
-        />
+        {preselectedProfileId ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Sales Executive is locked from workspace context.
+          </p>
+        ) : (
+          <ProfileSearchSelect
+            value={form.salesExecutiveProfileId}
+            onChange={(id) =>
+              setForm({ ...form, salesExecutiveProfileId: id })
+            }
+          />
+        )}
 
         <SearchableSelect
           label="Activity type"

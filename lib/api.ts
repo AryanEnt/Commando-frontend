@@ -106,15 +106,27 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  getProfiles(token: string, params?: { search?: string; teamId?: string; includeHistory?: boolean }) {
+  getProfiles(token: string, params?: {
+    search?: string;
+    teamId?: string;
+    includeHistory?: boolean;
+    page?: number;
+    pageSize?: number;
+  }) {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.teamId) sp.set("teamId", params.teamId);
     if (params?.includeHistory) sp.set("includeHistory", "true");
-    sp.set("pageSize", "50");
+    if (params?.page) sp.set("page", String(params.page));
+    sp.set("pageSize", String(params?.pageSize ?? 10));
     const q = sp.toString() ? `?${sp}` : "";
     return request<{
-      data: { profiles: ProfileListItem[]; total: number };
+      data: {
+        profiles: ProfileListItem[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
     }>(`/api/profiles${q}`, { token });
   },
   getProfile(token: string, id: string) {
@@ -182,18 +194,29 @@ export const api = {
   },
   getAssignments(
     token: string,
-    params?: { profileId?: string; currentOnly?: boolean; status?: string },
+    params?: {
+      profileId?: string;
+      currentOnly?: boolean;
+      status?: string;
+      page?: number;
+      pageSize?: number;
+    },
   ) {
     const sp = new URLSearchParams();
     if (params?.profileId) sp.set("profileId", params.profileId);
     if (params?.currentOnly) sp.set("currentOnly", "true");
     if (params?.status) sp.set("status", params.status);
-    sp.set("pageSize", "50");
+    if (params?.page) sp.set("page", String(params.page));
+    sp.set("pageSize", String(params?.pageSize ?? 10));
     const q = sp.toString() ? `?${sp}` : "";
-    return request<{ data: { assignments: Assignment[]; total: number } }>(
-      `/api/assignments${q}`,
-      { token },
-    );
+    return request<{
+      data: {
+        assignments: Assignment[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
+    }>(`/api/assignments${q}`, { token });
   },
   getAssignment(token: string, id: string) {
     return request<{ data: { assignment: Assignment } }>(
@@ -529,12 +552,38 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  getActivityTypes(token: string, includeInactive = false) {
-    const q = includeInactive ? "?includeInactive=true" : "";
-    return request<{ data: { activityTypes: ActivityType[] } }>(
-      `/api/activity-types${q}`,
-      { token },
-    );
+  getActivityTypes(
+    token: string,
+    params?:
+      | boolean
+      | {
+          includeInactive?: boolean;
+          search?: string;
+          page?: number;
+          pageSize?: number;
+          catalog?: boolean;
+        },
+  ) {
+    const opts =
+      typeof params === "boolean"
+        ? { includeInactive: params, catalog: !params }
+        : params ?? { catalog: true };
+    const sp = new URLSearchParams();
+    if (opts.includeInactive) sp.set("includeInactive", "true");
+    if (opts.search) sp.set("search", opts.search);
+    if (opts.catalog) sp.set("catalog", "true");
+    if (opts.page) sp.set("page", String(opts.page));
+    sp.set("pageSize", String(opts.pageSize ?? (opts.catalog ? 100 : 10)));
+    const q = sp.toString() ? `?${sp}` : "";
+    return request<{
+      data: {
+        activityTypes: ActivityType[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages?: number;
+      };
+    }>(`/api/activity-types${q}`, { token });
   },
   createActivityType(
     token: string,
@@ -694,12 +743,38 @@ export const api = {
       { method: "POST", token },
     );
   },
-  getMonitoringCategories(token: string, includeInactive = false) {
-    const q = includeInactive ? "?includeInactive=true" : "";
-    return request<{ data: { categories: MonitoringCategory[] } }>(
-      `/api/monitoring/categories${q}`,
-      { token },
-    );
+  getMonitoringCategories(
+    token: string,
+    params?:
+      | boolean
+      | {
+          includeInactive?: boolean;
+          search?: string;
+          page?: number;
+          pageSize?: number;
+          catalog?: boolean;
+        },
+  ) {
+    const opts =
+      typeof params === "boolean"
+        ? { includeInactive: params, catalog: !params }
+        : params ?? { catalog: true };
+    const sp = new URLSearchParams();
+    if (opts.includeInactive) sp.set("includeInactive", "true");
+    if (opts.search) sp.set("search", opts.search);
+    if (opts.catalog) sp.set("catalog", "true");
+    if (opts.page) sp.set("page", String(opts.page));
+    sp.set("pageSize", String(opts.pageSize ?? (opts.catalog ? 100 : 10)));
+    const q = sp.toString() ? `?${sp}` : "";
+    return request<{
+      data: {
+        categories: MonitoringCategory[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages?: number;
+      };
+    }>(`/api/monitoring/categories${q}`, { token });
   },
   createMonitoringCategory(
     token: string,
@@ -792,6 +867,72 @@ export const api = {
       { token },
     );
   },
+  getEffectiveMonitoringChecklist(
+    token: string,
+    profileId: string,
+    categoryId: string,
+  ) {
+    const q = `?categoryId=${encodeURIComponent(categoryId)}`;
+    return request<{
+      data: {
+        category: { id: string; code: string; name: string; description: string | null };
+        items: EffectiveMonitoringChecklistItem[];
+        canCustomize: boolean;
+      };
+    }>(`/api/monitoring/profiles/${profileId}/checklist${q}`, { token });
+  },
+  addSeMonitoringChecklistItem(
+    token: string,
+    profileId: string,
+    body: {
+      categoryId: string;
+      label: string;
+      description?: string | null;
+      sortOrder?: number;
+      scope?: "SE" | "SESSION";
+    },
+  ) {
+    return request<{
+      data: {
+        item: EffectiveMonitoringChecklistItem;
+        persisted: boolean;
+      };
+    }>(`/api/monitoring/profiles/${profileId}/checklist/items`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+  removeSeMonitoringChecklistItem(
+    token: string,
+    profileId: string,
+    itemId: string,
+  ) {
+    return request<{ data: { item: { id: string; isActive: boolean } } }>(
+      `/api/monitoring/profiles/${profileId}/checklist/items/${itemId}`,
+      { method: "DELETE", token },
+    );
+  },
+  removeMonitoringTemplateItemFromSe(
+    token: string,
+    profileId: string,
+    body: { categoryId: string; templateItemId: string },
+  ) {
+    return request<{ data: { item: unknown } }>(
+      `/api/monitoring/profiles/${profileId}/checklist/remove-template`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  restoreMonitoringTemplateItemForSe(
+    token: string,
+    profileId: string,
+    body: { categoryId: string; templateItemId: string },
+  ) {
+    return request<{ data: { item: unknown } }>(
+      `/api/monitoring/profiles/${profileId}/checklist/restore-template`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
   createMonitoringRecord(
     token: string,
     body: {
@@ -799,7 +940,19 @@ export const api = {
       categoryId: string;
       observation?: string | null;
       observedAt?: string;
-      responses: Array<{ checklistItemId: string; value: string }>;
+      responses: Array<{
+        checklistItemId?: string;
+        seChecklistItemId?: string;
+        label?: string;
+        description?: string | null;
+        sourceType?: "TEMPLATE" | "CUSTOM" | "SESSION";
+        sortOrder?: number;
+        value: string;
+      }>;
+      supportInvolvement?: {
+        none?: boolean;
+        salesSupportUserIds?: string[];
+      };
     },
   ) {
     return request<{ data: { record: MonitoringRecord } }>("/api/monitoring", {
@@ -807,6 +960,79 @@ export const api = {
       token,
       body: JSON.stringify(body),
     });
+  },
+  getSalesSupportLinks(
+    token: string,
+    params?: {
+      profileId?: string;
+      isActive?: boolean;
+      page?: number;
+      pageSize?: number;
+    },
+  ) {
+    const sp = new URLSearchParams();
+    if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.isActive !== undefined) {
+      sp.set("isActive", String(params.isActive));
+    }
+    if (params?.page) sp.set("page", String(params.page));
+    if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
+    const q = sp.toString() ? `?${sp}` : "";
+    return request<{
+      data: {
+        links: SalesSupportLink[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
+    }>(`/api/sales-support-links${q}`, { token });
+  },
+  getSeSupportTeam(token: string, profileId: string) {
+    return request<{ data: SeSupportTeamContext }>(
+      `/api/sales-support-links/profiles/${profileId}/team`,
+      { token },
+    );
+  },
+  getEligibleSupportUsers(
+    token: string,
+    params?: { search?: string; profileId?: string },
+  ) {
+    const sp = new URLSearchParams();
+    if (params?.search) sp.set("search", params.search);
+    if (params?.profileId) sp.set("profileId", params.profileId);
+    const q = sp.toString() ? `?${sp}` : "";
+    return request<{ data: { users: EligibleSupportUser[] } }>(
+      `/api/sales-support-links/options/support-users${q}`,
+      { token },
+    );
+  },
+  assignSalesSupportLink(
+    token: string,
+    body: {
+      salesExecutiveProfileId: string;
+      salesSupportUserId: string;
+      responsibilityType?: string | null;
+      note?: string | null;
+    },
+  ) {
+    return request<{ data: { link: SalesSupportLink } }>(
+      "/api/sales-support-links",
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  endSalesSupportLink(
+    token: string,
+    id: string,
+    body?: { note?: string | null },
+  ) {
+    return request<{ data: { link: SalesSupportLink } }>(
+      `/api/sales-support-links/${id}/end`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify(body ?? {}),
+      },
+    );
   },
   getSyncEvaluations(
     token: string,
@@ -867,11 +1093,18 @@ export const api = {
     params?: {
       search?: string;
       view?: "active" | "history" | "all";
-      filter?: "active" | "completed" | "overdue" | "historical" | "all";
-      status?: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+      filter?:
+        | "active"
+        | "completed"
+        | "overdue"
+        | "historical"
+        | "blocked"
+        | "all";
+      status?: SupportTask["status"];
       priority?: "HIGH" | "MEDIUM" | "LOW";
       profileId?: string;
       salesSupportUserId?: string;
+      salesSupportLinkId?: string;
       page?: number;
       pageSize?: number;
     },
@@ -885,6 +1118,9 @@ export const api = {
     if (params?.profileId) sp.set("profileId", params.profileId);
     if (params?.salesSupportUserId) {
       sp.set("salesSupportUserId", params.salesSupportUserId);
+    }
+    if (params?.salesSupportLinkId) {
+      sp.set("salesSupportLinkId", params.salesSupportLinkId);
     }
     if (params?.page) sp.set("page", String(params.page));
     sp.set("pageSize", String(params?.pageSize ?? 20));
@@ -909,10 +1145,13 @@ export const api = {
     body: {
       title: string;
       description?: string | null;
+      purpose?: string | null;
       salesExecutiveProfileId: string;
       salesSupportUserId: string;
       priority?: "HIGH" | "MEDIUM" | "LOW";
       dueDate?: string | null;
+      shouldDo?: string[];
+      shouldNotDo?: string[];
     },
   ) {
     return request<{ data: { task: SupportTask } }>("/api/support-tasks", {
@@ -927,11 +1166,13 @@ export const api = {
     body: {
       title?: string;
       description?: string | null;
+      purpose?: string | null;
       priority?: "HIGH" | "MEDIUM" | "LOW";
       dueDate?: string | null;
       salesSupportUserId?: string;
-      status?: "PENDING" | "IN_PROGRESS" | "COMPLETED";
-      completionNotes?: string | null;
+      reassignReason?: string | null;
+      shouldDo?: string[];
+      shouldNotDo?: string[];
     },
   ) {
     return request<{ data: { task: SupportTask } }>(
@@ -943,13 +1184,24 @@ export const api = {
     token: string,
     id: string,
     body: {
-      status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+      status: SupportTask["status"];
       completionNotes?: string | null;
+      blockedReason?: string | null;
     },
   ) {
     return request<{ data: { task: SupportTask } }>(
       `/api/support-tasks/${id}/status`,
       { method: "PATCH", token, body: JSON.stringify(body) },
+    );
+  },
+  addSupportTaskProgressNote(
+    token: string,
+    id: string,
+    body: { body: string },
+  ) {
+    return request<{ data: { task: SupportTask } }>(
+      `/api/support-tasks/${id}/progress-notes`,
+      { method: "POST", token, body: JSON.stringify(body) },
     );
   },
   getRoleAssignmentTemplates(token: string) {
@@ -1773,6 +2025,17 @@ export type MonitoringCategory = {
   checklistItems: MonitoringChecklistItem[];
 };
 
+export type EffectiveMonitoringChecklistItem = {
+  id: string;
+  checklistItemId: string | null;
+  seChecklistItemId: string | null;
+  label: string;
+  description: string | null;
+  code: string | null;
+  sortOrder: number;
+  sourceType: "TEMPLATE" | "CUSTOM" | "SESSION";
+};
+
 export type MonitoringRecord = {
   id: string;
   salesExecutiveProfileId: string;
@@ -1805,7 +2068,14 @@ export type MonitoringRecord = {
   updatedAt: string;
   responses: Array<{
     id: string;
-    checklistItemId: string;
+    checklistItemId: string | null;
+    seChecklistItemId?: string | null;
+    labelSnapshot?: string;
+    descriptionSnapshot?: string | null;
+    codeSnapshot?: string | null;
+    sortOrderSnapshot?: number;
+    sourceType?: string;
+    isCustom?: boolean;
     checklistItem: {
       id: string;
       code: string;
@@ -1816,6 +2086,66 @@ export type MonitoringRecord = {
     value: string;
     createdAt: string;
   }>;
+  supportInvolvements?: Array<{
+    id: string;
+    salesSupportUserId: string;
+    displayNameSnapshot: string;
+    responsibilityTypeSnapshot: string | null;
+    salesSupportLinkId?: string | null;
+  }>;
+};
+
+export type SalesSupportUserBrief = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: { code: string };
+};
+
+export type EligibleSupportUser = SalesSupportUserBrief;
+
+export type SalesSupportLink = {
+  id: string;
+  salesExecutiveProfileId: string;
+  profile: {
+    id: string;
+    displayName: string;
+    userId: string;
+    teamId: string;
+    team?: { id: string; name: string };
+  };
+  salesSupportUserId: string;
+  supportUser: SalesSupportUserBrief;
+  responsibilityType: string | null;
+  note: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  isActive: boolean;
+  assignedById: string | null;
+  assignedBy: SalesSupportUserBrief | null;
+  endedById: string | null;
+  endedBy: SalesSupportUserBrief | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SeSupportTeamContext = {
+  profile: {
+    id: string;
+    displayName: string;
+    team: { id: string; name: string };
+  };
+  commando: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    assignmentId: string;
+    status: string;
+  } | null;
+  activeSupport: SalesSupportLink[];
+  history: SalesSupportLink[];
 };
 
 export type SyncSupportLink = {
@@ -1895,12 +2225,20 @@ export type SupportTask = {
   id: string;
   title: string;
   description: string | null;
+  purpose: string | null;
   priority: "HIGH" | "MEDIUM" | "LOW";
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+  status:
+    | "PENDING"
+    | "ACCEPTED"
+    | "IN_PROGRESS"
+    | "BLOCKED"
+    | "COMPLETED";
   dueDate: string | null;
   isOverdue: boolean;
   completedAt: string | null;
   completionNotes: string | null;
+  blockedReason: string | null;
+  blockedAt: string | null;
   salesExecutiveProfileId: string;
   profile: {
     id: string;
@@ -1941,6 +2279,42 @@ export type SupportTask = {
     teamId: string;
   } | null;
   salesSupportLinkId: string | null;
+  salesSupportLink: {
+    id: string;
+    isActive: boolean;
+    startedAt: string;
+    endedAt: string | null;
+    responsibilityType: string | null;
+  } | null;
+  shouldDo: Array<{ id: string; text: string; sortOrder: number }>;
+  shouldNotDo: Array<{ id: string; text: string; sortOrder: number }>;
+  progressNotes: Array<{
+    id: string;
+    body: string;
+    createdAt: string;
+    createdBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: { code: string };
+    };
+  }>;
+  assignmentHistory: Array<{
+    id: string;
+    fromSupportUserId: string | null;
+    toSupportUserId: string;
+    salesSupportLinkId: string | null;
+    reason: string | null;
+    changedBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: { code: string };
+    };
+    createdAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -2354,7 +2728,18 @@ export type ControlTowerAlert = {
   count: number;
 };
 
+export type ControlTowerActivityItem = {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  createdAt: string;
+  actor: { id: string; name: string; roleCode: string } | null;
+  metadata: unknown;
+};
+
 export type ControlTowerData = {
+  generatedAt?: string;
   metrics: {
     users: { total: number; active: number; inactive: number };
     teams: number;
@@ -2394,6 +2779,7 @@ export type ControlTowerData = {
       profileName: string;
     }>;
   };
+  recentActivity?: ControlTowerActivityItem[];
 };
 
 export type OrganizationStructure = {

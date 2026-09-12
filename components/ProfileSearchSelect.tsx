@@ -29,7 +29,11 @@ export function ProfileSearchSelect({
     const handle = window.setTimeout(() => {
       setLoading(true);
       api
-        .getProfiles(token, { search: search || undefined, teamId })
+        .getProfiles(token, {
+          search: search || undefined,
+          teamId,
+          pageSize: 25,
+        })
         .then((res) => setProfiles(res.data.profiles))
         .finally(() => setLoading(false));
     }, 200);

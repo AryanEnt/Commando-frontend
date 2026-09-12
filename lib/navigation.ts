@@ -12,40 +12,145 @@ export type NavItem = {
   section?: string;
 };
 
+const WORK = "Work";
+const ADMINISTRATION = "Administration";
+const GOVERNANCE = "Governance";
+
 export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
   TEAM_LEAD: [
-    { href: "/dashboard", label: "Dashboard", permission: "DASHBOARD_VIEW", section: "Workspace" },
-    { href: "/profiles", label: "Sales Executives", permission: "PROFILE_VIEW", section: "People" },
-    { href: "/referrals", label: "Interventions", permission: "REFERRAL_VIEW", section: "Work" },
+    {
+      href: "/dashboard",
+      label: "Home",
+      permission: "DASHBOARD_VIEW",
+      section: WORK,
+    },
+    {
+      href: "/profiles",
+      label: "Sales Executives",
+      permission: "PROFILE_VIEW",
+      section: WORK,
+    },
+    {
+      href: "/referrals",
+      label: "Interventions",
+      permission: "REFERRAL_VIEW",
+      section: WORK,
+    },
   ],
 
   COMMANDO_EXECUTIVE: [
-    { href: "/dashboard", label: "Dashboard", permission: "DASHBOARD_VIEW", section: "Workspace" },
-    { href: "/profiles", label: "Sales Executives", permission: "PROFILE_VIEW", section: "People" },
-    { href: "/referrals", label: "Interventions", permission: "REFERRAL_VIEW", section: "Work" },
-    { href: "/assignments", label: "History", permission: "ASSIGNMENT_VIEW", section: "Work" },
+    {
+      href: "/dashboard",
+      label: "Home",
+      permission: "DASHBOARD_VIEW",
+      section: WORK,
+    },
+    {
+      href: "/profiles",
+      label: "Sales Executives",
+      permission: "PROFILE_VIEW",
+      section: WORK,
+    },
+    {
+      href: "/referrals",
+      label: "Interventions",
+      permission: "REFERRAL_VIEW",
+      section: WORK,
+    },
+    {
+      href: "/assignments",
+      label: "History",
+      permission: "ASSIGNMENT_VIEW",
+      section: WORK,
+    },
   ],
 
   SALES_EXECUTIVE: [
-    { href: "/dashboard", label: "Dashboard", permission: "DASHBOARD_VIEW", section: "Workspace" },
-    { href: "/profiles", label: "My workspace", permission: "PROFILE_VIEW", section: "Workspace" },
+    // Primary nav is built dynamically in AppShell from the SE's own workspace.
+    {
+      href: "/dashboard",
+      label: "My workspace",
+      permission: "DASHBOARD_VIEW",
+      section: WORK,
+    },
   ],
 
   SALES_SUPPORT_EXECUTIVE: [
-    { href: "/dashboard", label: "Dashboard", permission: "DASHBOARD_VIEW", section: "Workspace" },
-    { href: "/profiles", label: "Sales Executives", permission: "PROFILE_VIEW", section: "People" },
-    { href: "/my-tasks", label: "My tasks", permission: "SALES_SUPPORT_TASK_VIEW", section: "Work" },
+    {
+      href: "/dashboard",
+      label: "My workspace",
+      permission: "DASHBOARD_VIEW",
+      section: "My work",
+    },
+    {
+      href: "/my-tasks",
+      label: "My tasks",
+      permission: "SALES_SUPPORT_TASK_VIEW",
+      section: "My work",
+    },
+    {
+      href: "/sync-evaluations",
+      label: "Sync evaluations",
+      permission: "SYNC_EVAL_VIEW",
+      section: "My work",
+    },
+    {
+      href: "/role-assignments",
+      label: "Role assignments",
+      permission: "ROLE_ASSIGNMENT_VIEW",
+      section: "My work",
+    },
   ],
 
   SUPER_ADMIN: [
-    { href: "/dashboard", label: "Dashboard", permission: "DASHBOARD_VIEW", section: "Workspace" },
-    { href: "/profiles", label: "Sales Executives", permission: "PROFILE_VIEW", section: "People" },
-    { href: "/users", label: "Users", permission: "USER_VIEW", section: "People" },
-    { href: "/teams", label: "Teams", permission: "TEAM_VIEW", section: "People" },
-    { href: "/reports", label: "Reports", permission: "REPORT_VIEW", section: "Insight" },
-    { href: "/activity-types", label: "Activity types", permission: "ACTIVITY_TYPE_MANAGE", section: "Administration" },
-    { href: "/monitoring-checklists", label: "Checklists", permission: "MONITORING_CHECKLIST_MANAGE", section: "Administration" },
-    { href: "/audit-logs", label: "Audit", permission: "AUDIT_VIEW", section: "Administration" },
+    {
+      href: "/dashboard",
+      label: "Control Tower",
+      permission: "DASHBOARD_VIEW",
+      section: GOVERNANCE,
+    },
+    {
+      href: "/profiles",
+      label: "Sales Executives",
+      permission: "PROFILE_VIEW",
+      section: GOVERNANCE,
+    },
+    {
+      href: "/referrals",
+      label: "Interventions",
+      permission: "REFERRAL_VIEW",
+      section: GOVERNANCE,
+    },
+    {
+      href: "/reports",
+      label: "Reports",
+      permission: "REPORT_VIEW",
+      section: GOVERNANCE,
+    },
+    {
+      href: "/users",
+      label: "Users",
+      permission: "USER_VIEW",
+      section: ADMINISTRATION,
+    },
+    {
+      href: "/teams",
+      label: "Teams",
+      permission: "TEAM_VIEW",
+      section: ADMINISTRATION,
+    },
+    {
+      href: "/configuration",
+      label: "Configuration",
+      permission: "ACTIVITY_TYPE_MANAGE",
+      section: ADMINISTRATION,
+    },
+    {
+      href: "/audit-logs",
+      label: "Audit & History",
+      permission: "AUDIT_VIEW",
+      section: ADMINISTRATION,
+    },
   ],
 };
 
@@ -64,13 +169,26 @@ export function pathMatches(pathname: string, href: string): boolean {
   if (pathname.startsWith("/sales-executives") && pathOnly === "/profiles") {
     return true;
   }
+  if (
+    pathOnly === "/configuration" &&
+    (pathname.startsWith("/activity-types") ||
+      pathname.startsWith("/monitoring-checklists"))
+  ) {
+    return true;
+  }
   if (!pathname.startsWith(`${pathOnly}/`)) return false;
   if (pathname === `${pathOnly}/new`) return false;
   return true;
 }
 
+export function profileIdFromPathname(pathname: string): string | null {
+  const match = pathname.match(/^\/profiles\/([^/]+)/);
+  if (!match?.[1] || match[1] === "new") return null;
+  return match[1];
+}
+
 export const ROUTE_LABELS: Record<string, string> = {
-  dashboard: "Dashboard",
+  dashboard: "Home",
   users: "Users",
   "sales-executives": "Sales Executives",
   teams: "Teams",
@@ -81,19 +199,26 @@ export const ROUTE_LABELS: Record<string, string> = {
   swot: "SWOT",
   "daily-logs": "Daily coaching",
   "weekly-reviews": "Weekly Reviews",
-  monitoring: "Live Monitoring",
-  "monitoring-checklists": "Monitoring Checklists",
+  monitoring: "Monitoring",
+  "monitoring-checklists": "Checklists",
   "sync-evaluations": "Sync Evaluation",
   "role-assignments": "Role Assignment",
   eisenhower: "Eisenhower",
   "action-items": "Action Items",
   "my-tasks": "My Tasks",
   feedback: "Feedback",
-  performance: "Progress",
-  "activity-types": "Configuration",
+  performance: "Goals",
+  "activity-types": "Activity Types",
+  configuration: "Configuration",
   kpi: "KPI",
   reports: "Reports",
   "commando-performance": "Commando Performance",
-  "audit-logs": "Audit Trail",
+  "audit-logs": "Audit & History",
   new: "Create",
+  coaching: "Coaching",
+  reviews: "Weekly Reviews",
+  actions: "Actions",
+  support: "Support",
+  interventions: "Interventions",
+  history: "History",
 };

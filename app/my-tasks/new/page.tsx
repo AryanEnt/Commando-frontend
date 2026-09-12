@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type SyncSupportLink } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -12,26 +12,62 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   Button,
   ErrorState,
+  LoadingState,
   SelectField,
   TextArea,
   TextInput,
 } from "@/components/ui";
 
 export default function NewSupportTaskPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading form…" />}>
+      <NewSupportTaskForm />
+    </Suspense>
+  );
+}
+
+function NewSupportTaskForm() {
   const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lockedProfileId = searchParams.get("profileId") ?? "";
+  const returnTo = searchParams.get("returnTo");
+
   const [links, setLinks] = useState<SyncSupportLink[]>([]);
+  const [lockedProfileName, setLockedProfileName] = useState<string | null>(
+    null,
+  );
   const [form, setForm] = useState({
     title: "",
     description: "",
-    salesExecutiveProfileId: "",
+    purpose: "",
+    salesExecutiveProfileId: lockedProfileId,
     salesSupportUserId: "",
     priority: "MEDIUM" as "HIGH" | "MEDIUM" | "LOW",
     dueDate: "",
   });
+  const [shouldDo, setShouldDo] = useState<string[]>([""]);
+  const [shouldNotDo, setShouldNotDo] = useState<string[]>([""]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (lockedProfileId) {
+      setForm((f) => ({ ...f, salesExecutiveProfileId: lockedProfileId }));
+    }
+  }, [lockedProfileId]);
+
+  useEffect(() => {
+    if (!token || !lockedProfileId) {
+      setLockedProfileName(null);
+      return;
+    }
+    void api
+      .getProfile(token, lockedProfileId)
+      .then((res) => setLockedProfileName(res.data.profile.displayName))
+      .catch(() => setLockedProfileName(null));
+  }, [token, lockedProfileId]);
 
   useEffect(() => {
     if (!token || !form.salesExecutiveProfileId) {
@@ -54,15 +90,24 @@ export default function NewSupportTaskPage() {
       const res = await api.createSupportTask(token, {
         title: form.title.trim(),
         description: form.description.trim() || null,
+        purpose: form.purpose.trim() || null,
         salesExecutiveProfileId: form.salesExecutiveProfileId,
         salesSupportUserId: form.salesSupportUserId,
         priority: form.priority,
         dueDate: form.dueDate
           ? new Date(`${form.dueDate}T00:00:00.000Z`).toISOString()
           : null,
+        shouldDo: shouldDo.map((s) => s.trim()).filter(Boolean),
+        shouldNotDo: shouldNotDo.map((s) => s.trim()).filter(Boolean),
       });
       pushToast("Support task created", "success");
-      router.push(`/my-tasks/${res.data.task.id}`);
+      if (returnTo) {
+        router.push(returnTo);
+      } else if (lockedProfileId) {
+        router.push(`/profiles/${lockedProfileId}/support`);
+      } else {
+        router.push(`/my-tasks/${res.data.task.id}`);
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Create failed";
       setError(msg);
@@ -74,15 +119,27 @@ export default function NewSupportTaskPage() {
 
   if (!hasPermission("SALES_SUPPORT_TASK_CREATE")) {
     return (
-      <ErrorState message="Only Commandos can create Sales Support tasks." />
+      <ErrorState message="You do not have permission to create Sales Support tasks." />
     );
   }
+
+  const backHref =
+    returnTo ||
+    (lockedProfileId
+      ? `/profiles/${lockedProfileId}/support`
+      : "/my-tasks");
+  const backLabel = lockedProfileId
+    ? `← Back to ${lockedProfileName ?? "Sales Executive"}`
+    : "← Support Tasks";
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/my-tasks" className="text-sm text-slate-600 underline">
-          ← Support Tasks
+        <Link
+          href={backHref}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+        >
+          {backLabel}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New support task
@@ -106,21 +163,84 @@ export default function NewSupportTaskPage() {
           onChange={(e) => setForm({ ...form, title: e.target.value })}
         />
         <TextArea
-          label="Description / details"
-          rows={4}
+          label="What needs to be done / purpose"
+          rows={3}
+          value={form.purpose}
+          onChange={(e) => setForm({ ...form, purpose: e.target.value })}
+        />
+        <TextArea
+          label="Additional details"
+          rows={3}
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
-        <ProfileSearchSelect
-          value={form.salesExecutiveProfileId}
-          onChange={(id) =>
-            setForm({
-              ...form,
-              salesExecutiveProfileId: id,
-              salesSupportUserId: "",
-            })
-          }
-        />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">DO</p>
+            <button
+              type="button"
+              className="text-xs text-[var(--color-brand)] hover:underline"
+              onClick={() => setShouldDo([...shouldDo, ""])}
+            >
+              + Add
+            </button>
+          </div>
+          {shouldDo.map((value, index) => (
+            <input
+              key={index}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              value={value}
+              onChange={(e) => {
+                const next = [...shouldDo];
+                next[index] = e.target.value;
+                setShouldDo(next);
+              }}
+            />
+          ))}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">DON&apos;T</p>
+            <button
+              type="button"
+              className="text-xs text-[var(--color-brand)] hover:underline"
+              onClick={() => setShouldNotDo([...shouldNotDo, ""])}
+            >
+              + Add
+            </button>
+          </div>
+          {shouldNotDo.map((value, index) => (
+            <input
+              key={index}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              value={value}
+              onChange={(e) => {
+                const next = [...shouldNotDo];
+                next[index] = e.target.value;
+                setShouldNotDo(next);
+              }}
+            />
+          ))}
+        </div>
+        {lockedProfileId ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Sales Executive:{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {lockedProfileName ?? "Loading…"}
+            </span>
+          </p>
+        ) : (
+          <ProfileSearchSelect
+            value={form.salesExecutiveProfileId}
+            onChange={(id) =>
+              setForm({
+                ...form,
+                salesExecutiveProfileId: id,
+                salesSupportUserId: "",
+              })
+            }
+          />
+        )}
         <SearchableSelect
           label="Sales Support Executive"
           value={form.salesSupportUserId}

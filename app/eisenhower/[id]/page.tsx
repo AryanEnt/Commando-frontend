@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
   ApiError,
@@ -42,7 +42,18 @@ const STATUSES: EisenhowerStatus[] = [
 ];
 
 export default function EisenhowerTaskDetailPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <EisenhowerTaskDetail />
+    </Suspense>
+  );
+}
+
+function EisenhowerTaskDetail() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const returnTo = searchParams.get("returnTo");
   const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const [task, setTask] = useState<EisenhowerTask | null>(null);
@@ -104,6 +115,9 @@ export default function EisenhowerTaskDetailPage() {
       setTask(res.data.task);
       setEditing(false);
       pushToast("Task updated", "success");
+      if (returnTo) {
+        router.push(returnTo);
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to save";
       setError(msg);
@@ -130,10 +144,12 @@ export default function EisenhowerTaskDetailPage() {
     }
   }
 
+  const backHref = returnTo || "/eisenhower";
+
   if (error && !task) {
     return (
       <div className="space-y-2">
-        <Link href="/eisenhower" className="text-sm text-slate-600 underline">
+        <Link href={backHref} className="text-sm text-slate-600 underline">
           ← Eisenhower
         </Link>
         <ErrorState message={error} />
@@ -141,6 +157,10 @@ export default function EisenhowerTaskDetailPage() {
     );
   }
   if (!task) return <LoadingState />;
+
+  const backLabel = returnTo
+    ? `← Back to ${task.profile.displayName}`
+    : "← Eisenhower";
 
   const detailPanel = task.isHistory ? (
     <ReadOnlyPanel title="Eisenhower task">
@@ -206,8 +226,8 @@ export default function EisenhowerTaskDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/eisenhower" className="text-sm text-slate-600 underline">
-            ← Eisenhower
+          <Link href={backHref} className="text-sm text-slate-600 underline">
+            {backLabel}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
             {task.title}

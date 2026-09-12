@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
-import { Button, ErrorState, TextArea } from "@/components/ui";
+import {
+  Button,
+  ErrorState,
+  LoadingState,
+  TextArea,
+} from "@/components/ui";
 
 type FormState = {
   salesExecutiveProfileId: string;
@@ -17,22 +22,62 @@ type FormState = {
   threat: string;
 };
 
+const SWOT_CREATOR_ROLES = new Set([
+  "TEAM_LEAD",
+  "COMMANDO_EXECUTIVE",
+  "SALES_EXECUTIVE",
+]);
+
 export default function NewSwotPage() {
-  const { token, hasPermission, user } = useAuth();
+  return (
+    <Suspense fallback={<LoadingState label="Loading form…" />}>
+      <NewSwotForm />
+    </Suspense>
+  );
+}
+
+function NewSwotForm() {
+  const { token, hasPermission, user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lockedProfileId = searchParams.get("profileId") ?? "";
+  const returnTo = searchParams.get("returnTo");
+
   const [form, setForm] = useState<FormState>({
-    salesExecutiveProfileId: "",
+    salesExecutiveProfileId: lockedProfileId,
     strength: "",
     weakness: "",
     opportunity: "",
     threat: "",
   });
+  const [lockedProfileName, setLockedProfileName] = useState<string | null>(
+    null,
+  );
   const [ownProfileName, setOwnProfileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const canCreate =
-    hasPermission("SWOT_CREATE") && user?.roleCode !== "SUPER_ADMIN";
+    Boolean(user) &&
+    hasPermission("SWOT_CREATE") &&
+    SWOT_CREATOR_ROLES.has(user!.roleCode);
+
+  useEffect(() => {
+    if (lockedProfileId) {
+      setForm((prev) => ({
+        ...prev,
+        salesExecutiveProfileId: lockedProfileId,
+      }));
+    }
+  }, [lockedProfileId]);
+
+  useEffect(() => {
+    if (!token || !lockedProfileId) return;
+    void api
+      .getProfile(token, lockedProfileId)
+      .then((res) => setLockedProfileName(res.data.profile.displayName))
+      .catch(() => setLockedProfileName(null));
+  }, [token, lockedProfileId]);
 
   useEffect(() => {
     if (!token || user?.roleCode !== "SALES_EXECUTIVE") return;
@@ -56,12 +101,28 @@ export default function NewSwotPage() {
     setError(null);
     try {
       const res = await api.createSwot(token, form);
-      router.push(`/swot/${res.data.swot.id}`);
+      router.push(
+        returnTo
+          ? returnTo
+          : form.salesExecutiveProfileId
+            ? `/profiles/${form.salesExecutiveProfileId}/performance`
+            : `/swot/${res.data.swot.id}`,
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to create");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading) {
+    return <LoadingState label="Checking permissions…" />;
+  }
+
+  if (user?.roleCode === "SUPER_ADMIN") {
+    return (
+      <ErrorState message="Super Admin is governance-only and cannot create SWOT analyses. Sign in as Commando, Team Lead, or Sales Executive." />
+    );
   }
 
   if (!canCreate) {
@@ -77,11 +138,20 @@ export default function NewSwotPage() {
         ? "COMMANDO"
         : "SALES_EXECUTIVE";
 
+  const backHref =
+    returnTo ||
+    (form.salesExecutiveProfileId
+      ? `/profiles/${form.salesExecutiveProfileId}`
+      : "/swot");
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/swot" className="text-sm text-slate-600 underline">
-          ← SWOT
+        <Link
+          href={backHref}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+        >
+          ← Back
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           Create SWOT
@@ -99,6 +169,13 @@ export default function NewSwotPage() {
         {user?.roleCode === "SALES_EXECUTIVE" ? (
           <p className="text-sm text-slate-600">
             Profile: {ownProfileName ?? "Loading…"}
+          </p>
+        ) : lockedProfileId ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Sales Executive:{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {lockedProfileName ?? "Loading…"}
+            </span>
           </p>
         ) : (
           <ProfileSearchSelect

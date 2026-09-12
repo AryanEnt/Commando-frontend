@@ -41,13 +41,15 @@ export function interventionStageFromAssignment(
 export function referralNextAction(status: string): string {
   switch (status) {
     case "SUBMITTED":
-      return "Review the Team Lead packet, then acknowledge. That starts (or links) the active assignment.";
+      return "Waiting for Team Lead review and management context.";
     case "ACKNOWLEDGED":
-      return "This Sales Executive is on your active list. Start coaching when you begin work.";
+      return "Review the Team Lead management packet, then acknowledge & start the intervention.";
     case "IN_PROGRESS":
       return "Coach from the Sales Executive workspace. Closing this handoff does not end the assignment.";
     case "COMPLETED":
       return "This handoff is closed. If the assignment is still Active, coaching continues until you Complete intervention.";
+    case "REJECTED":
+      return "This request was rejected. No intervention was started.";
     default:
       return "No further action on this referral.";
   }

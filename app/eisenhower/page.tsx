@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
   EmptyState,
@@ -87,6 +88,8 @@ function EisenhowerContent() {
     EisenhowerTask[]
   > | null>(null);
   const [tasks, setTasks] = useState<EisenhowerTask[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +122,8 @@ function EisenhowerContent() {
             month: month || undefined,
             category: (category as EisenhowerCategory) || undefined,
             status: (status as EisenhowerStatus) || undefined,
-            pageSize: 50,
+            page,
+            pageSize,
           });
           if (!cancelled) {
             setTasks(res.data.tasks);
@@ -138,7 +142,7 @@ function EisenhowerContent() {
     return () => {
       cancelled = true;
     };
-  }, [token, view, month, profileId, category, status]);
+  }, [token, view, month, profileId, category, status, page, pageSize]);
 
   const isCurrentMonth = useMemo(
     () => month === currentMonthValue(),
@@ -170,7 +174,10 @@ function EisenhowerContent() {
             <SegmentedControl
               ariaLabel="Eisenhower view"
               value={view}
-              onChange={setView}
+              onChange={(v) => {
+                setPage(1);
+                setView(v);
+              }}
               options={[
                 { value: "matrix", label: "Matrix" },
                 { value: "list", label: "List / History" },
@@ -194,13 +201,19 @@ function EisenhowerContent() {
             type="month"
             className="mt-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
             value={month}
-            onChange={(e) => setMonth(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setMonth(e.target.value);
+            }}
           />
         </Field>
         <SearchableSelect
           label="Profile"
           value={profileId}
-          onChange={setProfileId}
+          onChange={(id) => {
+            setPage(1);
+            setProfileId(id);
+          }}
           placeholder="All profiles"
           options={profiles.map((p) => ({
             value: p.id,
@@ -212,7 +225,10 @@ function EisenhowerContent() {
             <SelectField
               label="Category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                setPage(1);
+                setCategory(e.target.value);
+              }}
             >
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (
@@ -224,7 +240,10 @@ function EisenhowerContent() {
             <SelectField
               label="Status"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                setPage(1);
+                setStatus(e.target.value);
+              }}
             >
               <option value="">All statuses</option>
               <option value="OPEN">OPEN</option>
@@ -350,6 +369,20 @@ function EisenhowerContent() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-3 pb-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="tasks"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

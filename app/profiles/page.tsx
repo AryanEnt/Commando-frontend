@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, type ProfileListItem, type Team } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
   EmptyState,
   ErrorState,
   FilterBar,
+  LoadingState,
   PageHeader,
   Panel,
   SelectField,
@@ -21,16 +24,52 @@ import {
 } from "@/components/ui";
 
 export default function ProfilesPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading Sales Executives…" />}>
+      <ProfilesPageInner />
+    </Suspense>
+  );
+}
+
+function ProfilesPageInner() {
   const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [includeHistory, setIncludeHistory] = useState(false);
+  const [search, setSearch] = useState(searchParams.get("q") ?? "");
+  const [includeHistory, setIncludeHistory] = useState(
+    searchParams.get("includeHistory") === "1",
+  );
+  const [page, setPage] = useState(
+    Math.max(1, Number(searchParams.get("page") ?? "1") || 1),
+  );
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<
     { id: string; email: string; firstName: string; lastName: string; role: { code: string } }[]
   >([]);
   const [loading, setLoading] = useState(true);
+
+  // Individual roles don't use the roster — AppShell also redirects.
+  useEffect(() => {
+    if (!token) return;
+    if (user?.roleCode === "SALES_EXECUTIVE") {
+      let cancelled = false;
+      void api.getProfiles(token, { pageSize: 1 }).then((res) => {
+        const id = res.data.profiles[0]?.id;
+        if (!cancelled && id) router.replace(`/profiles/${id}`);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (user?.roleCode === "SALES_SUPPORT_EXECUTIVE") {
+      router.replace("/dashboard");
+    }
+  }, [user?.roleCode, token, router]);
+
   const [form, setForm] = useState({
     userId: "",
     teamId: "",
@@ -41,9 +80,11 @@ export default function ProfilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isSuperAdmin = user?.roleCode === "SUPER_ADMIN";
-  /** Super Admin onboards via Users wizard — not the operational create-profile form. */
+  const isTeamLead = user?.roleCode === "TEAM_LEAD";
+  const canOnboardSe = hasPermission("SALES_EXECUTIVE_CREATE");
+  /** Super Admin / Team Lead onboard via wizard — not the operational create-profile form. */
   const canCreateProfile =
-    hasPermission("PROFILE_MANAGE") && !isSuperAdmin;
+    hasPermission("PROFILE_MANAGE") && !isSuperAdmin && !isTeamLead;
 
   const availableUsers = users.filter(
     (u) =>
@@ -51,15 +92,18 @@ export default function ProfilesPage() {
       !profiles.some((p) => p.user.id === u.id),
   );
 
-  async function load(q?: string) {
+  async function load(q?: string, pageToLoad = page) {
     if (!token) return;
     setLoading(true);
     try {
       const res = await api.getProfiles(token, {
         search: q || undefined,
         includeHistory: user?.roleCode === "COMMANDO_EXECUTIVE" ? includeHistory : undefined,
+        page: pageToLoad,
+        pageSize,
       });
       setProfiles(res.data.profiles);
+      setTotal(res.data.total);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -75,7 +119,25 @@ export default function ProfilesPage() {
     }, 200);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, search, includeHistory]);
+  }, [token, search, includeHistory, page, pageSize]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (includeHistory) params.set("includeHistory", "1");
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    try {
+      if (qs) sessionStorage.setItem("profilesListQuery", qs);
+      else sessionStorage.removeItem("profilesListQuery");
+    } catch {
+      /* ignore */
+    }
+    const current = searchParams.toString();
+    if (qs !== current) {
+      router.replace(qs ? `/profiles?${qs}` : "/profiles", { scroll: false });
+    }
+  }, [search, includeHistory, page, router, searchParams]);
 
   useEffect(() => {
     if (!token || !canCreateProfile) return;
@@ -133,15 +195,17 @@ export default function ProfilesPage() {
         description={
           isSuperAdmin
             ? "Supervise profiles, current Team Lead / Commando, and intervention history. Onboard new Sales Executives from Users."
-            : "Open a Sales Executive to coach, review, and act from one workspace."
+            : isTeamLead
+              ? "Your team's Sales Executives. Add someone new, then open their profile to manage or respond to Commando requests."
+              : "Select a Sales Executive to coach, review, and act."
         }
         actions={
-          isSuperAdmin && hasPermission("SALES_EXECUTIVE_CREATE") ? (
+          canOnboardSe ? (
             <Link
               href="/users/sales-executives/new"
-              className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+              className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
             >
-              Onboard Sales Executive
+              Add Sales Executive
             </Link>
           ) : undefined
         }
@@ -152,7 +216,10 @@ export default function ProfilesPage() {
           <TextInput
             label="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Name or email…"
           />
         </div>
@@ -161,7 +228,10 @@ export default function ProfilesPage() {
             <input
               type="checkbox"
               checked={includeHistory}
-              onChange={(e) => setIncludeHistory(e.target.checked)}
+              onChange={(e) => {
+                setPage(1);
+                setIncludeHistory(e.target.checked);
+              }}
             />
             Include completed
           </label>
@@ -279,7 +349,7 @@ export default function ProfilesPage() {
       )}
 
       {!loading && profiles.length > 0 && (
-        <Panel title={`Profiles · ${profiles.length}`}>
+        <Panel title={`Profiles · ${total}`}>
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -325,16 +395,30 @@ export default function ProfilesPage() {
                     </td>
                     <td className="text-right">
                       <Link
-        href={`/profiles/${p.id}`}
-                        className="text-sm text-[var(--color-brand)] hover:underline"
+                        href={`/profiles/${p.id}`}
+                        className="text-sm font-medium text-[var(--color-brand)] hover:underline"
                       >
-                        Open workspace
+                        Open
                       </Link>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-1 pb-1">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="profiles"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

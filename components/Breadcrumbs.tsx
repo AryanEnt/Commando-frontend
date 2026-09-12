@@ -2,15 +2,36 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { ROUTE_LABELS } from "@/lib/navigation";
 
 export function Breadcrumbs() {
   const pathname = usePathname();
+  const { user } = useAuth();
   if (!pathname || pathname === "/" || pathname === "/login") return null;
+
+  // SE workspace and Super Admin config pages use their own contextual breadcrumbs.
+  if (/^\/profiles\/[^/]+/.test(pathname)) return null;
+  if (
+    pathname === "/configuration" ||
+    pathname === "/activity-types" ||
+    pathname === "/monitoring-checklists" ||
+    pathname.startsWith("/audit-logs")
+  ) {
+    return null;
+  }
 
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length === 0) return null;
   if (parts.length === 1 && parts[0] === "dashboard") return null;
+
+  const homeLabel =
+    user?.roleCode === "SUPER_ADMIN"
+      ? "Control Tower"
+      : user?.roleCode === "SALES_SUPPORT_EXECUTIVE" ||
+          user?.roleCode === "SALES_EXECUTIVE"
+        ? "My workspace"
+        : "Home";
 
   const crumbs = parts.map((part, index) => {
     const href = "/" + parts.slice(0, index + 1).join("/");
@@ -22,11 +43,14 @@ export function Breadcrumbs() {
   });
 
   return (
-    <nav aria-label="Breadcrumb" className="hidden min-w-0 text-sm text-[var(--color-ink-muted)] md:block">
+    <nav
+      aria-label="Breadcrumb"
+      className="hidden min-w-0 text-sm text-[var(--color-ink-muted)] md:block"
+    >
       <ol className="flex flex-wrap items-center gap-1">
         <li>
           <Link href="/dashboard" className="hover:text-[var(--color-ink)]">
-            Dashboard
+            {homeLabel}
           </Link>
         </li>
         {crumbs.map((crumb) => (

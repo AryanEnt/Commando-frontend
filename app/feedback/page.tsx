@@ -6,6 +6,7 @@ import { api, type FeedbackItem, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   DateTimeCell,
   EmptyState,
@@ -25,6 +26,8 @@ export default function FeedbackPage() {
   const [profileId, setProfileId] = useState("");
   const [source, setSource] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +48,8 @@ export default function FeedbackPage() {
           profileId: profileId || undefined,
           source: (source as "TEAM_LEAD" | "COMMANDO") || undefined,
           search: search || undefined,
-          pageSize: 50,
+          page,
+          pageSize,
         });
         if (!cancelled) {
           setItems(res.data.feedback);
@@ -63,7 +67,7 @@ export default function FeedbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, profileId, source, search]);
+  }, [token, profileId, source, search, page, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -87,14 +91,20 @@ export default function FeedbackPage() {
           <TextInput
             label="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Feedback content…"
           />
         </div>
         <SearchableSelect
           label="Profile"
           value={profileId}
-          onChange={setProfileId}
+          onChange={(id) => {
+            setPage(1);
+            setProfileId(id);
+          }}
           placeholder="All profiles"
           options={profiles.map((p) => ({
             value: p.id,
@@ -104,7 +114,10 @@ export default function FeedbackPage() {
         <SelectField
           label="Source"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setSource(e.target.value);
+          }}
         >
           <option value="">All sources</option>
           <option value="TEAM_LEAD">Team Lead</option>
@@ -170,6 +183,20 @@ export default function FeedbackPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-3 pb-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="feedback"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

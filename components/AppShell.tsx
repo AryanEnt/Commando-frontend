@@ -4,12 +4,30 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { navItemsForRole, pathMatches } from "@/lib/navigation";
+import {
+  navItemsForRole,
+  pathMatches,
+  profileIdFromPathname,
+  type NavItem,
+} from "@/lib/navigation";
 import { personName, roleLabel } from "@/lib/labels";
 import { api, type ProfileListItem } from "@/lib/api";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { SeContextualNav } from "@/components/SeContextualNav";
 import { Avatar } from "@/components/ui";
 import { Icons } from "@/components/icons";
+import { SeWorkspaceProvider } from "@/lib/se-workspace-context";
+import { useOwnSalesProfileId } from "@/lib/own-profile";
+import {
+  seNavForRole,
+  seSectionFromPathname,
+} from "@/lib/se-workspace-nav";
+import {
+  clearSeWorkspaceMemory,
+  isSeRelatedPathname,
+  readRememberedSeProfileId,
+  rememberSeWorkspace,
+} from "@/lib/se-workspace-persist";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, hasPermission, token } = useAuth();
@@ -20,6 +38,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProfileListItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [rememberedProfileId, setRememberedProfileId] = useState<string | null>(
+    null,
+  );
+  const { profileId: ownProfileId } = useOwnSalesProfileId();
+
+  const isSalesExecutive = user?.roleCode === "SALES_EXECUTIVE";
+  const isSalesSupport = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
+  const isIndividualHome = isSalesExecutive || isSalesSupport;
+  const pathProfileId = useMemo(
+    () => profileIdFromPathname(pathname),
+    [pathname],
+  );
+
+  // Keep SE workspace sticky across related entity pages (action detail, etc.).
+  useEffect(() => {
+    if (isSalesExecutive) {
+      setRememberedProfileId(null);
+      return;
+    }
+    if (pathProfileId) {
+      rememberSeWorkspace(pathProfileId, seSectionFromPathname(pathname));
+      setRememberedProfileId(pathProfileId);
+      return;
+    }
+    if (isSeRelatedPathname(pathname)) {
+      const remembered = readRememberedSeProfileId();
+      setRememberedProfileId(remembered);
+      return;
+    }
+    clearSeWorkspaceMemory();
+    setRememberedProfileId(null);
+  }, [pathname, pathProfileId, isSalesExecutive]);
+
+  const seProfileId = pathProfileId ?? rememberedProfileId;
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
@@ -27,13 +79,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user, pathname, router]);
 
-  const links = useMemo(() => {
+  // Sales Executives land in their own workspace — not a roster list.
+  useEffect(() => {
+    if (!isSalesExecutive || !ownProfileId) return;
+    if (
+      pathname === "/dashboard" ||
+      pathname === "/profiles" ||
+      pathname === "/"
+    ) {
+      router.replace(`/profiles/${ownProfileId}`);
+    }
+  }, [isSalesExecutive, ownProfileId, pathname, router]);
+
+  // Sales Support lands on their task home — not the SE roster.
+  useEffect(() => {
+    if (!isSalesSupport) return;
+    if (pathname === "/profiles" || pathname === "/") {
+      router.replace("/dashboard");
+    }
+  }, [isSalesSupport, pathname, router]);
+
+  const links = useMemo((): Array<NavItem & { sectionKey?: string }> => {
     if (!user) return [];
+    if (isSalesExecutive && ownProfileId) {
+      return seNavForRole("SALES_EXECUTIVE").map((item) => ({
+        href: item.href(ownProfileId),
+        label: item.label,
+        permission: "PROFILE_VIEW",
+        section: "My performance",
+        sectionKey: item.section,
+      }));
+    }
     return navItemsForRole(user.roleCode, hasPermission);
-  }, [user, hasPermission]);
+  }, [user, hasPermission, isSalesExecutive, ownProfileId]);
 
   useEffect(() => {
-    if (!token || !hasPermission("PROFILE_VIEW") || query.trim().length < 2) {
+    if (
+      isIndividualHome ||
+      !token ||
+      !hasPermission("PROFILE_VIEW") ||
+      query.trim().length < 2
+    ) {
       setResults([]);
       return;
     }
@@ -44,12 +130,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .catch(() => setResults([]));
     }, 220);
     return () => window.clearTimeout(t);
-  }, [token, query, hasPermission]);
+  }, [token, query, hasPermission, isIndividualHome]);
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-[var(--color-ink-muted)]">
-        Loading workspace…
+        Loading…
       </div>
     );
   }
@@ -60,8 +146,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const displayName = personName(user);
   const width = collapsed ? "lg:w-[4.5rem]" : "lg:w-[var(--sidebar-w)]";
+  const showContextualNav = Boolean(seProfileId) && !isSalesExecutive;
+  const homeHref =
+    isSalesExecutive && ownProfileId
+      ? `/profiles/${ownProfileId}`
+      : "/dashboard";
 
-  return (
+  const frame = (
     <div className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]">
       <div className="flex min-h-screen">
         {sidebarOpen && (
@@ -74,13 +165,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex h-dvh flex-col bg-[var(--color-sidebar)] text-zinc-300 transition-transform duration-200 lg:sticky lg:top-0 lg:translate-x-0 ${width} ${
+          className={`fixed inset-y-0 left-0 z-40 flex h-dvh flex-col bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-transform duration-200 lg:sticky lg:top-0 lg:translate-x-0 ${width} ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           } w-64`}
         >
           <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-3">
             <Link
-              href="/dashboard"
+              href={homeHref}
               className="flex min-w-0 items-center gap-2"
               onClick={() => setSidebarOpen(false)}
             >
@@ -92,15 +183,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="block truncate text-[13px] font-semibold tracking-tight text-white">
                     COMMANDO
                   </span>
-                  <span className="block truncate text-[10px] text-zinc-500">
-                    Sales performance
+                  <span className="block truncate text-[10px] text-[var(--color-sidebar-subtle)]">
+                    Sales Performance
                   </span>
                 </span>
               )}
             </Link>
             <button
               type="button"
-              className="hidden rounded p-1 text-zinc-500 hover:text-white lg:inline-flex"
+              className="hidden rounded p-1 text-[var(--color-sidebar-subtle)] hover:text-white lg:inline-flex"
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               onClick={() => setCollapsed((v) => !v)}
             >
@@ -110,53 +201,67 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               />
             </button>
           </div>
-          <nav
-            className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
-            aria-label="Primary"
-          >
-            {links.map((item, index) => {
-              const prev = links[index - 1];
-              const showSection =
-                !collapsed && item.section && item.section !== prev?.section;
-              const active = pathMatches(pathname, item.href);
-              return (
-                <div key={`${item.href}-${item.label}`}>
-                  {showSection && (
-                    <p className="mt-4 mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                      {item.section}
-                    </p>
-                  )}
-                  <Link
-                    href={item.href}
-                    title={item.label}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`mb-0.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] transition duration-150 ${
-                      active
-                        ? "bg-[var(--color-brand)]/20 text-white"
-                        : "text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
-                    }`}
-                  >
-                    {active && (
-                      <span
-                        className="h-4 w-0.5 shrink-0 rounded-full bg-[var(--color-accent)]"
-                        aria-hidden
-                      />
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            <nav aria-label="Primary">
+              {links.map((item, index) => {
+                const prev = links[index - 1];
+                const showSection =
+                  !collapsed && item.section && item.section !== prev?.section;
+                const active =
+                  isSalesExecutive && "sectionKey" in item && item.sectionKey
+                    ? seSectionFromPathname(pathname) === item.sectionKey
+                    : pathMatches(pathname, item.href);
+                return (
+                  <div key={`${item.href}-${item.label}`}>
+                    {showSection && (
+                      <p
+                        className={`mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-sidebar-subtle)] ${
+                          index === 0 ? "mt-0" : "mt-4"
+                        }`}
+                      >
+                        {item.section}
+                      </p>
                     )}
-                    <span className={`truncate ${active ? "" : "pl-2.5"}`}>
-                      {item.label}
-                    </span>
-                  </Link>
-                </div>
-              );
-            })}
-          </nav>
-          <div className="shrink-0 border-t border-white/10 bg-[var(--color-sidebar)] p-3">
+                    <Link
+                      href={item.href}
+                      title={item.label}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`mb-0.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] transition duration-150 ${
+                        active
+                          ? "bg-[var(--color-sidebar-active)] text-white"
+                          : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+                      }`}
+                    >
+                      {active && (
+                        <span
+                          className="h-4 w-0.5 shrink-0 rounded-full bg-[var(--color-accent)]"
+                          aria-hidden
+                        />
+                      )}
+                      <span className={`truncate ${active ? "" : "pl-2.5"}`}>
+                        {item.label}
+                      </span>
+                    </Link>
+                  </div>
+                );
+              })}
+            </nav>
+            {showContextualNav ? (
+              <SeContextualNav
+                collapsed={collapsed}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            ) : null}
+          </div>
+          <div className="shrink-0 border-t border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] p-3">
             <div className="flex items-center gap-2">
               <Avatar name={displayName} size="sm" />
               {!collapsed && (
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-white">{displayName}</p>
-                  <p className="truncate text-[10px] text-zinc-500">
+                  <p className="truncate text-xs font-medium text-white">
+                    {displayName}
+                  </p>
+                  <p className="truncate text-[10px] text-[var(--color-sidebar-subtle)]">
                     {roleLabel(user.roleCode)}
                   </p>
                 </div>
@@ -165,7 +270,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => logout().then(() => router.push("/login"))}
-              className="mt-2 w-full rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-white/5 hover:text-white"
+              className="mt-2 w-full rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-xs text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
             >
               Log out
             </button>
@@ -186,7 +291,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs />
               </div>
               <div className="flex items-center gap-3">
-                {hasPermission("PROFILE_VIEW") && (
+                {!isIndividualHome && hasPermission("PROFILE_VIEW") && (
                   <div className="relative hidden sm:block">
                     <label className="sr-only" htmlFor="global-search">
                       Search sales executives
@@ -238,11 +343,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-8">
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-8">
             {children}
           </main>
         </div>
       </div>
     </div>
   );
+
+  if (seProfileId) {
+    return (
+      <SeWorkspaceProvider profileId={seProfileId}>{frame}</SeWorkspaceProvider>
+    );
+  }
+
+  return frame;
 }

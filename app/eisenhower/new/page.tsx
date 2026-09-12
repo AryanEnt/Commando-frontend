@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type EisenhowerCategory } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -12,6 +12,7 @@ import {
   Button,
   ErrorState,
   Field,
+  LoadingState,
   SelectField,
   TextArea,
   TextInput,
@@ -30,23 +31,59 @@ const CATEGORIES: EisenhowerCategory[] = [
 ];
 
 export default function NewEisenhowerTaskPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading form…" />}>
+      <NewEisenhowerTaskForm />
+    </Suspense>
+  );
+}
+
+function NewEisenhowerTaskForm() {
   const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lockedProfileId = searchParams.get("profileId") ?? "";
+  const returnTo = searchParams.get("returnTo");
+
   const [form, setForm] = useState({
-    salesExecutiveProfileId: "",
+    salesExecutiveProfileId: lockedProfileId,
     month: currentMonthValue(),
     category: "DO_FIRST" as EisenhowerCategory,
     title: "",
     notes: "",
     dueDate: "",
   });
+  const [lockedProfileName, setLockedProfileName] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (lockedProfileId) {
+      setForm((prev) => ({
+        ...prev,
+        salesExecutiveProfileId: lockedProfileId,
+      }));
+    }
+  }, [lockedProfileId]);
+
+  useEffect(() => {
+    if (!token || !lockedProfileId) return;
+    void api
+      .getProfile(token, lockedProfileId)
+      .then((res) => setLockedProfileName(res.data.profile.displayName))
+      .catch(() => setLockedProfileName(null));
+  }, [token, lockedProfileId]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (!form.salesExecutiveProfileId) {
+      setError("Select a Sales Executive profile");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -61,7 +98,11 @@ export default function NewEisenhowerTaskPage() {
           : null,
       });
       pushToast("Task created", "success");
-      router.push(`/eisenhower/${res.data.task.id}`);
+      if (returnTo) {
+        router.push(returnTo);
+      } else {
+        router.push(`/eisenhower/${res.data.task.id}`);
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to create";
       setError(msg);
@@ -77,11 +118,16 @@ export default function NewEisenhowerTaskPage() {
     );
   }
 
+  const backHref = returnTo || "/eisenhower";
+  const backLabel = lockedProfileName
+    ? `← Back to ${lockedProfileName}`
+    : "← Eisenhower";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/eisenhower" className="text-sm text-slate-600 underline">
-          ← Eisenhower
+        <Link href={backHref} className="text-sm text-slate-600 underline">
+          {backLabel}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New Eisenhower task
@@ -96,12 +142,21 @@ export default function NewEisenhowerTaskPage() {
         onSubmit={onSubmit}
         className="space-y-4 rounded border border-slate-200 bg-white p-4"
       >
-        <ProfileSearchSelect
-          value={form.salesExecutiveProfileId}
-          onChange={(id) =>
-            setForm({ ...form, salesExecutiveProfileId: id })
-          }
-        />
+        {lockedProfileId ? (
+          <p className="text-sm text-slate-600">
+            Sales Executive:{" "}
+            <span className="font-medium text-slate-900">
+              {lockedProfileName ?? "Loading…"}
+            </span>
+          </p>
+        ) : (
+          <ProfileSearchSelect
+            value={form.salesExecutiveProfileId}
+            onChange={(id) =>
+              setForm({ ...form, salesExecutiveProfileId: id })
+            }
+          />
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Month" required>

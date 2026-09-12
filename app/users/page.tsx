@@ -8,8 +8,8 @@ import { useToast } from "@/lib/toast-context";
 import { roleLabel } from "@/lib/labels";
 import { formatDate } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
-  Button,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -42,7 +42,7 @@ export default function UsersPage() {
   const [profileStatus, setProfileStatus] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusTarget, setStatusTarget] = useState<ManagedUser | null>(null);
@@ -51,7 +51,6 @@ export default function UsersPage() {
   const canCreate = hasPermission("USER_CREATE");
   const canCreateSe = hasPermission("SALES_EXECUTIVE_CREATE");
   const canStatus = hasPermission("USER_STATUS_UPDATE");
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const filtersKey = useMemo(
     () =>
@@ -59,7 +58,7 @@ export default function UsersPage() {
     [search, roleCode, teamId, isActive, profileStatus],
   );
 
-  async function load(nextPage = page) {
+  async function load(nextPage = page, nextPageSize = pageSize) {
     if (!token) return;
     setLoading(true);
     try {
@@ -75,7 +74,7 @@ export default function UsersPage() {
             ? profileStatus
             : undefined,
         page: nextPage,
-        pageSize,
+        pageSize: nextPageSize,
         sort: "createdAt",
         order: "desc",
       });
@@ -308,29 +307,18 @@ export default function UsersPage() {
             </div>
           </Panel>
 
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[var(--color-ink-muted)]">
-              Page {page} of {totalPages} · {total} total
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => void load(page - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => void load(page + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            disabled={loading}
+            noun="users"
+            onPageChange={(p) => void load(p)}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              void load(1, n);
+            }}
+          />
         </>
       )}
 

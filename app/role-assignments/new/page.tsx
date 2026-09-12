@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError, type SyncSupportLink } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
@@ -11,6 +11,7 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   Button,
   ErrorState,
+  LoadingState,
   TextArea,
 } from "@/components/ui";
 
@@ -63,9 +64,24 @@ function DynamicListEditor({
 }
 
 export default function NewRoleAssignmentPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading form…" />}>
+      <NewRoleAssignmentForm />
+    </Suspense>
+  );
+}
+
+function NewRoleAssignmentForm() {
   const { token, hasPermission } = useAuth();
   const router = useRouter();
-  const [profileId, setProfileId] = useState("");
+  const searchParams = useSearchParams();
+  const lockedProfileId = searchParams.get("profileId") ?? "";
+  const returnTo = searchParams.get("returnTo");
+
+  const [profileId, setProfileId] = useState(lockedProfileId);
+  const [lockedProfileName, setLockedProfileName] = useState<string | null>(
+    null,
+  );
   const [links, setLinks] = useState<SyncSupportLink[]>([]);
   const [salesSupportUserId, setSalesSupportUserId] = useState("");
   const [primaryResponsibility, setPrimaryResponsibility] = useState("");
@@ -73,6 +89,21 @@ export default function NewRoleAssignmentPage() {
   const [shouldNotDo, setShouldNotDo] = useState<string[]>([""]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (lockedProfileId) setProfileId(lockedProfileId);
+  }, [lockedProfileId]);
+
+  useEffect(() => {
+    if (!token || !lockedProfileId) {
+      setLockedProfileName(null);
+      return;
+    }
+    void api
+      .getProfile(token, lockedProfileId)
+      .then((res) => setLockedProfileName(res.data.profile.displayName))
+      .catch(() => setLockedProfileName(null));
+  }, [token, lockedProfileId]);
 
   useEffect(() => {
     if (!token) return;
@@ -92,11 +123,27 @@ export default function NewRoleAssignmentPage() {
         return;
       }
       try {
-        const res = await api.getSyncEvaluationSupportLinks(token, profileId);
-        if (!cancelled) {
-          setLinks(res.data.links);
-          setSalesSupportUserId(res.data.links[0]?.salesSupportUserId ?? "");
-        }
+        // Prefer Support Team context so Team Leads (and Commandos) can load
+        // linked Support people without needing SYNC_EVAL_CREATE.
+        const res = await api.getSeSupportTeam(token, profileId);
+        if (cancelled) return;
+        const mapped = res.data.activeSupport.map((link) => ({
+          id: link.id,
+          salesExecutiveProfileId: link.salesExecutiveProfileId,
+          salesSupportUserId: link.salesSupportUserId,
+          supportUser: {
+            id: link.supportUser.id,
+            firstName: link.supportUser.firstName,
+            lastName: link.supportUser.lastName,
+            email: link.supportUser.email,
+            role: { code: "SALES_SUPPORT_EXECUTIVE" },
+          },
+          startedAt: link.startedAt,
+          isActive: link.isActive,
+        }));
+        setLinks(mapped);
+        setSalesSupportUserId(mapped[0]?.salesSupportUserId ?? "");
+        setError(null);
       } catch (err) {
         if (!cancelled) {
           setLinks([]);
@@ -124,7 +171,13 @@ export default function NewRoleAssignmentPage() {
         shouldDo: shouldDo.map((s) => s.trim()).filter(Boolean),
         shouldNotDo: shouldNotDo.map((s) => s.trim()).filter(Boolean),
       });
-      router.push(`/role-assignments/${res.data.roleAssignment.id}`);
+      if (returnTo) {
+        router.push(returnTo);
+      } else if (lockedProfileId) {
+        router.push(`/profiles/${lockedProfileId}/support`);
+      } else {
+        router.push(`/role-assignments/${res.data.roleAssignment.id}`);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to create");
     } finally {
@@ -138,14 +191,23 @@ export default function NewRoleAssignmentPage() {
     );
   }
 
+  const backHref =
+    returnTo ||
+    (lockedProfileId
+      ? `/profiles/${lockedProfileId}/support`
+      : "/role-assignments");
+  const backLabel = lockedProfileId
+    ? `← Back to ${lockedProfileName ?? "Sales Executive"}`
+    : "← Role Assignments";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <Link
-          href="/role-assignments"
-          className="text-sm text-slate-600 underline"
+          href={backHref}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
         >
-          ← Role Assignments
+          {backLabel}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New role assignment
@@ -161,7 +223,16 @@ export default function NewRoleAssignmentPage() {
         onSubmit={onSubmit}
         className="space-y-4 rounded border border-slate-200 bg-white p-4"
       >
-        <ProfileSearchSelect value={profileId} onChange={setProfileId} />
+        {lockedProfileId ? (
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            Sales Executive:{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {lockedProfileName ?? "Loading…"}
+            </span>
+          </p>
+        ) : (
+          <ProfileSearchSelect value={profileId} onChange={setProfileId} />
+        )}
 
         <SearchableSelect
           label="Sales Support Executive"

@@ -12,7 +12,9 @@ export function roleLabel(code: string): string {
 export function statusLabel(status: string): string {
   const map: Record<string, string> = {
     PENDING: "Pending",
+    ACCEPTED: "Accepted",
     IN_PROGRESS: "In progress",
+    BLOCKED: "Blocked",
     COMPLETED: "Completed",
     OVERDUE: "Overdue",
     ACTIVE: "Active",
@@ -60,4 +62,18 @@ export function personName(p: {
 } | null | undefined): string {
   if (!p) return "—";
   return `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || "—";
+}
+
+export function responsibilityTypeLabel(code: string): string {
+  const map: Record<string, string> = {
+    GENERAL: "General",
+    PRODUCT: "Product",
+    PRICING: "Pricing",
+    PROPOSAL: "Proposal",
+    CUSTOMER: "Customer",
+    TECHNICAL: "Technical",
+    PIPELINE: "Pipeline",
+    OTHER: "Other",
+  };
+  return map[code] ?? code.replaceAll("_", " ");
 }

@@ -147,4 +147,38 @@ export const Icons = {
       <path d="M18 17l-5-5 5-5" />
     </Svg>
   ),
+  emptyClipboard: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="8" y="3" width="8" height="4" rx="1" />
+      <path d="M9 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2" />
+      <path d="M9 12h6M9 16h4" />
+    </Svg>
+  ),
+  emptyInbox: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </Svg>
+  ),
+  emptyUsers: (p: IconProps) => (
+    <Svg {...p}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </Svg>
+  ),
+  emptySupport: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </Svg>
+  ),
+  emptySearch: (p: IconProps) => (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+    </Svg>
+  ),
 };

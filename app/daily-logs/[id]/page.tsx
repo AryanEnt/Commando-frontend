@@ -54,8 +54,11 @@ export default function DailyLogDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/daily-logs" className="text-sm text-slate-600 underline">
-          ← Daily Logs
+        <Link
+          href={`/profiles/${log.salesExecutiveProfileId}/coaching`}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+        >
+          ← Back to {log.profile.displayName}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           {log.sessionTitle}

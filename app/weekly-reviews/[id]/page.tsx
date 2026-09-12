@@ -167,15 +167,17 @@ export default function WeeklyReviewDetailPage() {
     ["nextWeekAction", "Next-week action"],
   ] as const;
 
+  const backHref = `/profiles/${review.salesExecutiveProfileId}/reviews`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
-            href="/weekly-reviews"
-            className="text-sm text-slate-600 underline"
+            href={backHref}
+            className="text-sm font-medium text-[var(--color-brand)] hover:underline"
           >
-            ← Weekly Reviews
+            ← Back to {review.profile.displayName}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
             {review.weekLabel}

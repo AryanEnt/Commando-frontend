@@ -6,18 +6,33 @@ import { api, ApiError, type ActivityType } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { StatusBadge } from "@/components/StatusBadge";
+import { AdminActionMenu } from "@/components/admin/AdminActionMenu";
+import {
+  AdminPageShell,
+  AdminResultCount,
+  AdminToolbar,
+} from "@/components/admin/AdminPageShell";
+import { AdminTable, AdminTd, AdminTh } from "@/components/admin/AdminTable";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
   ConfirmDialog,
+  Drawer,
   EmptyState,
   ErrorState,
-  PageHeader,
-  Panel,
   SegmentedControl,
   TableSkeleton,
   TextArea,
   TextInput,
 } from "@/components/ui";
+
+type Draft = {
+  code: string;
+  name: string;
+  description: string;
+};
+
+const emptyDraft: Draft = { code: "", name: "", description: "" };
 
 export default function ActivityTypesPage() {
   const { token, hasPermission } = useAuth();
@@ -25,59 +40,113 @@ export default function ActivityTypesPage() {
   const [items, setItems] = useState<ActivityType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [view, setView] = useState<"active" | "all">("active");
-  const [form, setForm] = useState({
-    code: "",
-    name: "",
-    description: "",
-  });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [drawerMode, setDrawerMode] = useState<"create" | "edit" | null>(null);
+  const [editing, setEditing] = useState<ActivityType | null>(null);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pendingToggle, setPendingToggle] = useState<ActivityType | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   async function load() {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await api.getActivityTypes(token, true);
+      const res = await api.getActivityTypes(token, {
+        includeInactive: view === "all",
+        search: search.trim() || undefined,
+        page,
+        pageSize,
+      });
       setItems(res.data.activityTypes);
+      setTotal(res.data.total);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      setError(err instanceof Error ? err.message : "Failed to load activity types");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
     if (!token) return;
-    setBusy(true);
+    const t = window.setTimeout(() => {
+      void load();
+    }, 200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, search, view, page, pageSize]);
+
+  function openCreate() {
+    setEditing(null);
+    setDraft(emptyDraft);
+    setFieldErrors({});
+    setDrawerMode("create");
+  }
+
+  function openEdit(item: ActivityType) {
+    setEditing(item);
+    setDraft({
+      code: item.code,
+      name: item.name,
+      description: item.description ?? "",
+    });
+    setFieldErrors({});
+    setDrawerMode("edit");
+  }
+
+  function validate(): boolean {
+    const next: Record<string, string> = {};
+    if (drawerMode === "create" && !draft.code.trim()) {
+      next.code = "Code is required";
+    }
+    if (!draft.name.trim()) next.name = "Name is required";
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !validate()) return;
+    setSaving(true);
+    setError(null);
     try {
-      await api.createActivityType(token, {
-        code: form.code.trim().toUpperCase(),
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-      });
-      setForm({ code: "", name: "", description: "" });
-      pushToast("Activity type created", "success");
+      if (drawerMode === "create") {
+        await api.createActivityType(token, {
+          code: draft.code.trim().toUpperCase(),
+          name: draft.name.trim(),
+          description: draft.description.trim() || undefined,
+        });
+        pushToast("Activity type created successfully", "success");
+      } else if (editing) {
+        await api.updateActivityType(token, editing.id, {
+          name: draft.name.trim(),
+          description: draft.description.trim() || null,
+        });
+        pushToast("Activity type updated successfully", "success");
+      }
+      setDrawerMode(null);
       await load();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Create failed";
-      setError(msg);
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : "Could not save this activity type";
       pushToast(msg, "error");
+      setError(msg);
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
   async function confirmToggle() {
     if (!token || !pendingToggle) return;
-    setBusy(true);
+    setToggling(true);
     try {
       await api.updateActivityType(token, pendingToggle.id, {
         isActive: !pendingToggle.isActive,
@@ -99,125 +168,249 @@ export default function ActivityTypesPage() {
         "error",
       );
     } finally {
-      setBusy(false);
+      setToggling(false);
     }
   }
 
   if (!hasPermission("ACTIVITY_TYPE_MANAGE")) {
     return (
-      <ErrorState message="Only administrators can manage activity types." />
+      <ErrorState message="You do not have permission to manage activity types." />
     );
   }
 
-  const visible =
-    view === "active" ? items.filter((i) => i.isActive) : items;
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Activity Types"
-        description="Configuration catalog for Daily Log activity options. Changes apply immediately without redeploying the app."
-      />
+    <AdminPageShell
+      breadcrumb={[{ label: "Activity Types" }]}
+      title="Activity Types"
+      description="Define the activity options available in Daily Log forms across the platform. Changes apply immediately."
+      actions={
+        <Button onClick={openCreate}>+ Create activity type</Button>
+      }
+      toolbar={
+        <AdminToolbar>
+          <div className="min-w-[14rem] flex-1">
+            <TextInput
+              label="Search"
+              value={search}
+              onChange={(e) => {
+                setPage(1);
+                setSearch(e.target.value);
+              }}
+              placeholder="Search by name, code, or description…"
+            />
+          </div>
+          <SegmentedControl
+            ariaLabel="Status filter"
+            value={view}
+            onChange={(v) => {
+              setPage(1);
+              setView(v);
+            }}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "all", label: "All" },
+            ]}
+          />
+          {search ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setPage(1);
+                setSearch("");
+              }}
+              className="mb-0.5"
+            >
+              Clear search
+            </Button>
+          ) : null}
+        </AdminToolbar>
+      }
+    >
+      {error && !drawerMode ? (
+        <ErrorState message={error} onRetry={() => void load()} />
+      ) : null}
 
-      <form
-        onSubmit={onCreate}
-        className="grid max-w-xl gap-3 rounded border border-slate-200 bg-white p-4"
-      >
-        <h2 className="text-sm font-semibold text-slate-900">Add activity type</h2>
-        <TextInput
-          label="Code"
-          hint="UPPER_SNAKE, unique"
-          required
-          value={form.code}
-          onChange={(e) => setForm({ ...form, code: e.target.value })}
-          placeholder="FIELD_COACHING"
-        />
-        <TextInput
-          label="Display name"
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
-        <TextArea
-          label="Description"
-          rows={3}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          hint="Shown to Commandos when selecting an activity"
-        />
-        <Button type="submit" disabled={busy} className="justify-self-start">
-          {busy ? "Saving…" : "Create"}
-        </Button>
-      </form>
-
-      {error && <ErrorState message={error} onRetry={() => void load()} />}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <SegmentedControl
-          ariaLabel="Activity type view"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "active", label: "Active" },
-            { value: "all", label: "All (incl. inactive)" },
-          ]}
-        />
-      </div>
-
-      {loading && <TableSkeleton />}
-      {!loading && visible.length === 0 && (
-        <EmptyState
-          title={view === "active" ? "No active activity types" : "No activity types"}
-          description="Create a type above. Daily Log forms load options from this list."
+      {!loading && (
+        <AdminResultCount
+          filtered={total}
+          total={total}
+          noun="activity types"
         />
       )}
 
-      {!loading && visible.length > 0 && (
-        <Panel
-          title={`${view === "active" ? "Active" : "All"} activity types · ${visible.length}`}
-          tone={view === "active" ? "active" : "history"}
-        >
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-white text-xs uppercase text-slate-500">
+      {loading && <TableSkeleton rows={6} />}
+
+      {!loading && items.length === 0 && (
+        <EmptyState
+          title={
+            search
+              ? "No matching activity types"
+              : view === "active"
+                ? "No active activity types"
+                : "No activity types yet"
+          }
+          description={
+            search
+              ? "Try a different search term or clear filters."
+              : "Create an activity type so Commandos and Team Leads can log coaching sessions."
+          }
+          action={
+            !search ? (
+              <div className="mt-4">
+                <Button onClick={openCreate}>+ Create activity type</Button>
+              </div>
+            ) : undefined
+          }
+        />
+      )}
+
+      {!loading && items.length > 0 && (
+        <>
+          <AdminTable>
+            <thead>
               <tr>
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2" />
+                <AdminTh>Activity type</AdminTh>
+                <AdminTh>Code</AdminTh>
+                <AdminTh>Status</AdminTh>
+                <AdminTh className="text-right">Actions</AdminTh>
               </tr>
             </thead>
             <tbody>
-              {visible.map((item) => (
-                <tr key={item.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 font-mono text-xs">{item.code}</td>
-                  <td className="px-3 py-2">
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <AdminTd>
                     <div className="font-medium">{item.name}</div>
-                    {item.description && (
-                      <div className="mt-0.5 whitespace-pre-wrap text-xs text-slate-500">
+                    {item.description ? (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-[var(--color-ink-muted)]">
                         {item.description}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
+                      </p>
+                    ) : null}
+                  </AdminTd>
+                  <AdminTd className="font-mono text-xs text-[var(--color-ink-muted)]">
+                    {item.code}
+                  </AdminTd>
+                  <AdminTd>
                     <StatusBadge
                       status={item.isActive ? "ACTIVE" : "INACTIVE"}
+                      label={item.isActive ? "Active" : "Inactive"}
                     />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPendingToggle(item)}
-                    >
-                      {item.isActive ? "Deactivate" : "Activate"}
-                    </Button>
-                  </td>
+                  </AdminTd>
+                  <AdminTd className="text-right">
+                    <AdminActionMenu
+                      items={[
+                        {
+                          label: "Edit",
+                          onSelect: () => openEdit(item),
+                        },
+                        {
+                          label: item.isActive ? "Deactivate" : "Activate",
+                          tone: item.isActive ? "danger" : "default",
+                          onSelect: () => setPendingToggle(item),
+                        },
+                      ]}
+                    />
+                  </AdminTd>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </Panel>
+          </AdminTable>
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            disabled={loading}
+            noun="activity types"
+            onPageChange={setPage}
+            onPageSizeChange={(n) => {
+              setPage(1);
+              setPageSize(n);
+            }}
+          />
+        </>
       )}
+
+      <Drawer
+        open={drawerMode !== null}
+        title={
+          drawerMode === "create"
+            ? "Create activity type"
+            : "Edit activity type"
+        }
+        description="Activity types appear in Daily Log selectors when active."
+        onClose={() => !saving && setDrawerMode(null)}
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={saving}
+              onClick={() => setDrawerMode(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="activity-type-form"
+              disabled={saving}
+            >
+              {saving
+                ? "Saving…"
+                : drawerMode === "create"
+                  ? "Create"
+                  : "Save changes"}
+            </Button>
+          </div>
+        }
+      >
+        <form id="activity-type-form" onSubmit={onSave} className="space-y-5">
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+              Basic information
+            </h3>
+            {drawerMode === "create" ? (
+              <TextInput
+                label="Code"
+                hint="Unique identifier · UPPER_SNAKE"
+                required
+                value={draft.code}
+                onChange={(e) =>
+                  setDraft({ ...draft, code: e.target.value })
+                }
+                error={fieldErrors.code}
+                placeholder="FIELD_COACHING"
+              />
+            ) : (
+              <div>
+                <p className="text-sm font-medium">Code</p>
+                <p className="mt-1 font-mono text-sm text-[var(--color-ink-muted)]">
+                  {draft.code}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-ink-subtle)]">
+                  Codes cannot be changed after creation.
+                </p>
+              </div>
+            )}
+            <TextInput
+              label="Display name"
+              required
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              error={fieldErrors.name}
+            />
+            <TextArea
+              label="Description"
+              hint="Shown when selecting an activity in Daily Logs"
+              rows={3}
+              value={draft.description}
+              onChange={(e) =>
+                setDraft({ ...draft, description: e.target.value })
+              }
+            />
+          </section>
+          {error && drawerMode ? <ErrorState message={error} /> : null}
+        </form>
+      </Drawer>
 
       <ConfirmDialog
         open={Boolean(pendingToggle)}
@@ -233,10 +426,10 @@ export default function ActivityTypesPage() {
         }
         confirmLabel={pendingToggle?.isActive ? "Deactivate" : "Activate"}
         danger={pendingToggle?.isActive}
-        busy={busy}
+        busy={toggling}
         onCancel={() => setPendingToggle(null)}
         onConfirm={() => void confirmToggle()}
       />
-    </div>
+    </AdminPageShell>
   );
 }

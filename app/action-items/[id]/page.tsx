@@ -169,15 +169,17 @@ export default function ActionItemDetailPage() {
     return `${p.firstName} ${p.lastName}`;
   }
 
+  const backHref = `/profiles/${item.salesExecutiveProfileId}/actions`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
-            href="/action-items"
-            className="text-sm text-slate-600 underline"
+            href={backHref}
+            className="text-sm font-medium text-[var(--color-brand)] hover:underline"
           >
-            ← Action Items
+            ← Back to {item.profile.displayName}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
             {item.title}

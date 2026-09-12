@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { PaginationControls } from "@/components/PaginationControls";
 import {
   EmptyState,
   ErrorState,
@@ -39,6 +40,8 @@ function PerformanceContent() {
   const [profileId, setProfileId] = useState("");
   const [source, setSource] = useState(searchParams.get("source") ?? "");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,7 @@ function PerformanceContent() {
 
   useEffect(() => {
     setSource(searchParams.get("source") ?? "");
+    setPage(1);
   }, [searchParams]);
 
   useEffect(() => {
@@ -63,7 +67,8 @@ function PerformanceContent() {
           profileId: profileId || undefined,
           source: (source as "TEAM_LEAD" | "COMMANDO") || undefined,
           search: search || undefined,
-          pageSize: 50,
+          page,
+          pageSize,
         });
         if (!cancelled) {
           setItems(res.data.evaluations);
@@ -81,7 +86,7 @@ function PerformanceContent() {
     return () => {
       cancelled = true;
     };
-  }, [token, profileId, source, search]);
+  }, [token, profileId, source, search, page, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -105,14 +110,20 @@ function PerformanceContent() {
           <TextInput
             label="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Search evaluations…"
           />
         </div>
         <SearchableSelect
           label="Profile"
           value={profileId}
-          onChange={setProfileId}
+          onChange={(id) => {
+            setPage(1);
+            setProfileId(id);
+          }}
           placeholder="All profiles"
           options={profiles.map((p) => ({
             value: p.id,
@@ -123,7 +134,10 @@ function PerformanceContent() {
         <SelectField
           label="Source"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setSource(e.target.value);
+          }}
         >
           <option value="">All sources</option>
           <option value="TEAM_LEAD">Team Lead</option>
@@ -190,6 +204,20 @@ function PerformanceContent() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 px-3 pb-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="evaluations"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
           </div>
         </Panel>
       )}

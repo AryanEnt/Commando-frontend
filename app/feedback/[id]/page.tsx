@@ -49,6 +49,12 @@ export default function FeedbackDetailPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <Link
+        href={`/profiles/${item.salesExecutiveProfileId}/feedback`}
+        className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+      >
+        ← Back to {item.profile.displayName}
+      </Link>
       <PageHeader
         title={item.profile.displayName}
         description="Coaching feedback. This record is never overwritten."
