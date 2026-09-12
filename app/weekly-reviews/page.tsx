@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api, type WeeklyReview } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
+import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Button,
@@ -19,6 +20,14 @@ import {
 } from "@/components/ui";
 
 export default function WeeklyReviewsPage() {
+  return (
+    <TeamLeadListRedirectGate listPath="/weekly-reviews">
+      <WeeklyReviewsContent />
+    </TeamLeadListRedirectGate>
+  );
+}
+
+function WeeklyReviewsContent() {
   const { token, user, hasPermission } = useAuth();
   const [reviews, setReviews] = useState<WeeklyReview[]>([]);
   const [total, setTotal] = useState(0);
@@ -31,8 +40,9 @@ export default function WeeklyReviewsPage() {
 
   const role = user?.roleCode;
   const isSalesExec = role === "SALES_EXECUTIVE";
-  const isTeamLead = role === "TEAM_LEAD";
-  const canCreate = hasPermission("WEEKLY_REVIEW_CREATE");
+  const isSuperAdmin = role === "SUPER_ADMIN";
+  const canCreate =
+    hasPermission("WEEKLY_REVIEW_CREATE") && !isSuperAdmin;
 
   useEffect(() => {
     let cancelled = false;
@@ -74,10 +84,10 @@ export default function WeeklyReviewsPage() {
   }
 
   const description = isSalesExec
-    ? "Your submitted weekly reviews and acknowledgement status."
-    : isTeamLead
-      ? "Submitted weekly reviews for your team (read-only)."
-      : "Create and submit weekly coaching review meetings.";
+    ? "Weekly reviews sent to you — open one to sign."
+    : isSuperAdmin
+      ? "View weekly coaching reviews across the organization (read-only)."
+      : "Create a weekly review to send it to the Sales Executive for signature.";
 
   return (
     <div className="space-y-6">

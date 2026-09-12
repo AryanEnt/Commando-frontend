@@ -81,7 +81,12 @@ function ProfilesPageInner() {
   const [submitting, setSubmitting] = useState(false);
   const isSuperAdmin = user?.roleCode === "SUPER_ADMIN";
   const isTeamLead = user?.roleCode === "TEAM_LEAD";
-  const canOnboardSe = hasPermission("SALES_EXECUTIVE_CREATE");
+  const canOnboardSe =
+    hasPermission("SALES_EXECUTIVE_CREATE") ||
+    isTeamLead ||
+    isSuperAdmin;
+  const canCreateSupport =
+    hasPermission("SALES_SUPPORT_CREATE") || isTeamLead;
   /** Super Admin / Team Lead onboard via wizard — not the operational create-profile form. */
   const canCreateProfile =
     hasPermission("PROFILE_MANAGE") && !isSuperAdmin && !isTeamLead;
@@ -191,6 +196,7 @@ function ProfilesPageInner() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="People"
         title="Sales Executives"
         description={
           isSuperAdmin
@@ -200,13 +206,25 @@ function ProfilesPageInner() {
               : "Select a Sales Executive to coach, review, and act."
         }
         actions={
-          canOnboardSe ? (
-            <Link
-              href="/users/sales-executives/new"
-              className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
-            >
-              Add Sales Executive
-            </Link>
+          canOnboardSe || canCreateSupport ? (
+            <div className="flex flex-wrap gap-2">
+              {canOnboardSe ? (
+                <Link
+                  href="/users/sales-executives/new"
+                  className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+                >
+                  Add Sales Executive
+                </Link>
+              ) : null}
+              {canCreateSupport ? (
+                <Link
+                  href="/users/new"
+                  className="inline-flex h-9 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
+                >
+                  Add Sales Support
+                </Link>
+              ) : null}
+            </div>
           ) : undefined
         }
       />
@@ -286,7 +304,7 @@ function ProfilesPageInner() {
                 Create a Sales Executive account first, or use an existing account
                 that does not already have a profile.
               </p>
-              {hasPermission("SALES_EXECUTIVE_CREATE") ? (
+              {canOnboardSe ? (
                 <Link
                   href="/users/sales-executives/new"
                   className="inline-flex text-sm font-medium text-[var(--color-brand)] hover:underline"

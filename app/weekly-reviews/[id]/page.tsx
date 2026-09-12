@@ -97,23 +97,6 @@ export default function WeeklyReviewDetailPage() {
     }
   }
 
-  async function onSubmit() {
-    if (!token || !review) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.submitWeeklyReview(token, review.id);
-      setReview(res.data.review);
-      pushToast("Weekly review submitted", "success");
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to submit";
-      setError(msg);
-      pushToast(msg, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onAcknowledge() {
     if (!token || !review) return;
     setBusy(true);
@@ -135,8 +118,8 @@ export default function WeeklyReviewDetailPage() {
   if (error && !review) {
     return (
       <div className="space-y-2">
-        <Link href="/weekly-reviews" className="text-sm text-slate-600 underline">
-          ← Weekly Reviews
+        <Link href="/profiles" className="text-sm text-slate-600 underline">
+          ← Sales Executives
         </Link>
         <ErrorState message={error} />
       </div>
@@ -145,13 +128,14 @@ export default function WeeklyReviewDetailPage() {
   if (!review) return <LoadingState />;
 
   const canEdit =
-    review.isEditable && hasPermission("WEEKLY_REVIEW_EDIT");
-  const canSubmit =
-    review.status === "DRAFT" && hasPermission("WEEKLY_REVIEW_SUBMIT");
+    review.isEditable &&
+    hasPermission("WEEKLY_REVIEW_EDIT") &&
+    user?.roleCode !== "SUPER_ADMIN";
   const canAcknowledge =
     review.status === "SUBMITTED" &&
     !review.signed &&
-    review.attendees.some((a) => a.userId === user?.id);
+    (review.attendees.some((a) => a.userId === user?.id) ||
+      review.profile.userId === user?.id);
 
   function personName(
     p: { firstName: string; lastName: string } | null | undefined,
@@ -192,20 +176,40 @@ export default function WeeklyReviewDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canSubmit && (
-            <Button disabled={busy} onClick={() => void onSubmit()}>
-              Submit
-            </Button>
-          )}
           {canAcknowledge && (
-            <Button variant="secondary" disabled={busy} onClick={() => void onAcknowledge()}>
-              Acknowledge / Sign
+            <Button disabled={busy} onClick={() => void onAcknowledge()}>
+              Sign this review
             </Button>
           )}
         </div>
       </div>
 
       {error && <ErrorState message={error} />}
+
+      {canAcknowledge ? (
+        <div
+          role="status"
+          className="rounded-[var(--radius-md)] border border-[var(--color-brand)]/30 bg-[var(--color-brand-soft)] px-4 py-3 text-sm"
+        >
+          <p className="font-medium text-[var(--color-ink)]">
+            Ready for your signature
+          </p>
+          <p className="mt-1 text-[var(--color-ink-muted)]">
+            Review the notes below, then click <strong>Sign this review</strong>.
+          </p>
+        </div>
+      ) : null}
+
+      {review.status === "SUBMITTED" &&
+      !canAcknowledge &&
+      !review.salesExecutiveSigned ? (
+        <div
+          role="status"
+          className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-ink-muted)]"
+        >
+          Waiting for {review.profile.displayName} to sign.
+        </div>
+      ) : null}
 
       {canEdit ? (
         <Panel title="Draft review" tone="active" description="Editable until submitted.">

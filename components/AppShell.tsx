@@ -2,20 +2,49 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type CSSProperties,
+} from "react";
+import {
+  Activity,
+  BarChart3,
+  BriefcaseBusiness,
+  ClipboardCheck,
+  History,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  Menu,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RefreshCw,
+  Search,
+  Settings2,
+  Shield,
+  Users,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
+  isWideContentPath,
   navItemsForRole,
   pathMatches,
   profileIdFromPathname,
+  type NavIcon,
   type NavItem,
 } from "@/lib/navigation";
 import { personName, roleLabel } from "@/lib/labels";
 import { api, type ProfileListItem } from "@/lib/api";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { SeContextualNav } from "@/components/SeContextualNav";
 import { Avatar } from "@/components/ui";
-import { Icons } from "@/components/icons";
 import { SeWorkspaceProvider } from "@/lib/se-workspace-context";
 import { useOwnSalesProfileId } from "@/lib/own-profile";
 import {
@@ -29,6 +58,37 @@ import {
   rememberSeWorkspace,
 } from "@/lib/se-workspace-persist";
 
+const SIDEBAR_COLLAPSED_KEY = "commando.sidebar.collapsed";
+
+const NAV_ICONS: Record<
+  NavIcon,
+  ComponentType<{ size?: number; className?: string }>
+> = {
+  dashboard: LayoutDashboard,
+  users: Users,
+  teams: UsersRound,
+  organization: Network,
+  profiles: BriefcaseBusiness,
+  interventions: Activity,
+  history: History,
+  reports: BarChart3,
+  audit: Shield,
+  configuration: Settings2,
+  tasks: ListChecks,
+  reviews: ClipboardCheck,
+  sync: RefreshCw,
+  roles: Users,
+};
+
+function readCollapsedPreference() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, hasPermission, token } = useAuth();
   const pathname = usePathname();
@@ -41,6 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [rememberedProfileId, setRememberedProfileId] = useState<string | null>(
     null,
   );
+  const searchRef = useRef<HTMLInputElement>(null);
   const { profileId: ownProfileId } = useOwnSalesProfileId();
 
   const isSalesExecutive = user?.roleCode === "SALES_EXECUTIVE";
@@ -50,8 +111,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     () => profileIdFromPathname(pathname),
     [pathname],
   );
+  const wideContent = isWideContentPath(pathname);
 
-  // Keep SE workspace sticky across related entity pages (action detail, etc.).
+  useEffect(() => {
+    setCollapsed(readCollapsedPreference());
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (isSalesExecutive) {
       setRememberedProfileId(null);
@@ -63,8 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     if (isSeRelatedPathname(pathname)) {
-      const remembered = readRememberedSeProfileId();
-      setRememberedProfileId(remembered);
+      setRememberedProfileId(readRememberedSeProfileId());
       return;
     }
     clearSeWorkspaceMemory();
@@ -79,7 +155,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, user, pathname, router]);
 
-  // Sales Executives land in their own workspace — not a roster list.
   useEffect(() => {
     if (!isSalesExecutive || !ownProfileId) return;
     if (
@@ -91,7 +166,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [isSalesExecutive, ownProfileId, pathname, router]);
 
-  // Sales Support lands on their task home — not the SE roster.
   useEffect(() => {
     if (!isSalesSupport) return;
     if (pathname === "/profiles" || pathname === "/") {
@@ -99,15 +173,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [isSalesSupport, pathname, router]);
 
-  const links = useMemo((): Array<NavItem & { sectionKey?: string }> => {
+  const links = useMemo((): Array<
+    NavItem & { sectionKey?: string; sectionGroup?: string }
+  > => {
     if (!user) return [];
     if (isSalesExecutive && ownProfileId) {
       return seNavForRole("SALES_EXECUTIVE").map((item) => ({
         href: item.href(ownProfileId),
         label: item.label,
         permission: "PROFILE_VIEW",
-        section: "My performance",
+        section: item.sectionGroup ?? "My performance",
         sectionKey: item.section,
+        icon:
+          item.section === "overview"
+            ? "dashboard"
+            : item.section === "reviews"
+              ? "reviews"
+              : item.section === "actions"
+                ? "tasks"
+                : item.section === "support"
+                  ? "users"
+                  : item.section === "history"
+                    ? "history"
+                    : "profiles",
       }));
     }
     return navItemsForRole(user.roleCode, hasPermission);
@@ -132,6 +220,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(t);
   }, [token, query, hasPermission, isIndividualHome]);
 
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+    window.setTimeout(() => searchRef.current?.focus(), 0);
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        if (isIndividualHome || !hasPermission("PROFILE_VIEW")) return;
+        e.preventDefault();
+        openSearch();
+      }
+      if (e.key === "Escape") setSearchOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasPermission, isIndividualHome, openSearch]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-[var(--color-ink-muted)]">
@@ -145,158 +251,207 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const displayName = personName(user);
-  const width = collapsed ? "lg:w-[4.5rem]" : "lg:w-[var(--sidebar-w)]";
-  const showContextualNav = Boolean(seProfileId) && !isSalesExecutive;
   const homeHref =
     isSalesExecutive && ownProfileId
       ? `/profiles/${ownProfileId}`
       : "/dashboard";
 
   const frame = (
-    <div className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]">
-      <div className="flex min-h-screen">
-        {sidebarOpen && (
+    <div
+      className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]"
+      style={
+        {
+          ["--sidebar-current-w" as string]: collapsed
+            ? "var(--sidebar-w-collapsed)"
+            : "var(--sidebar-w)",
+        } as CSSProperties
+      }
+    >
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-[var(--color-ink)]/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 flex-col bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-[transform,width] duration-200 ease-[var(--ease)] lg:w-[var(--sidebar-current-w)] lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div
+          className={`flex h-14 shrink-0 items-center gap-2 px-3 justify-between ${
+            collapsed
+              ? "lg:h-auto lg:min-h-14 lg:flex-col lg:justify-center lg:gap-1 lg:py-2"
+              : ""
+          }`}
+        >
+          <Link
+            href={homeHref}
+            className={`flex min-w-0 items-center gap-2.5 ${
+              collapsed ? "lg:justify-center" : ""
+            }`}
+            onClick={() => setSidebarOpen(false)}
+            title="COMMANDO"
+          >
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-xs font-semibold text-white">
+              C
+            </span>
+            <span className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+              <span className="block truncate text-[13px] font-semibold tracking-tight text-white">
+                COMMANDO
+              </span>
+              <span className="block truncate text-[10px] text-[var(--color-sidebar-subtle)]">
+                Sales Performance
+              </span>
+            </span>
+          </Link>
           <button
             type="button"
-            aria-label="Close navigation"
-            className="fixed inset-0 z-30 bg-[var(--color-ink)]/40 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+            className="hidden rounded p-1.5 text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white lg:inline-flex"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={toggleCollapsed}
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={16} />
+            ) : (
+              <PanelLeftClose size={16} />
+            )}
+          </button>
+        </div>
 
-        <aside
-          className={`fixed inset-y-0 left-0 z-40 flex h-dvh flex-col bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-transform duration-200 lg:sticky lg:top-0 lg:translate-x-0 ${width} ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } w-64`}
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 px-2 ${
+            collapsed ? "lg:px-1.5" : ""
+          }`}
         >
-          <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-3">
-            <Link
-              href={homeHref}
-              className="flex min-w-0 items-center gap-2"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-xs font-semibold text-white">
-                C
-              </span>
-              {!collapsed && (
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold tracking-tight text-white">
-                    COMMANDO
-                  </span>
-                  <span className="block truncate text-[10px] text-[var(--color-sidebar-subtle)]">
-                    Sales Performance
-                  </span>
-                </span>
-              )}
-            </Link>
-            <button
-              type="button"
-              className="hidden rounded p-1 text-[var(--color-sidebar-subtle)] hover:text-white lg:inline-flex"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              onClick={() => setCollapsed((v) => !v)}
-            >
-              <Icons.collapse
-                className={collapsed ? "rotate-180" : ""}
-                size={16}
-              />
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-            <nav aria-label="Primary">
-              {links.map((item, index) => {
-                const prev = links[index - 1];
-                const showSection =
-                  !collapsed && item.section && item.section !== prev?.section;
-                const active =
-                  isSalesExecutive && "sectionKey" in item && item.sectionKey
-                    ? seSectionFromPathname(pathname) === item.sectionKey
-                    : pathMatches(pathname, item.href);
-                return (
-                  <div key={`${item.href}-${item.label}`}>
-                    {showSection && (
-                      <p
-                        className={`mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-sidebar-subtle)] ${
-                          index === 0 ? "mt-0" : "mt-4"
-                        }`}
-                      >
-                        {item.section}
-                      </p>
-                    )}
-                    <Link
-                      href={item.href}
-                      title={item.label}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`mb-0.5 flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] transition duration-150 ${
-                        active
-                          ? "bg-[var(--color-sidebar-active)] text-white"
-                          : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
-                      }`}
+          <nav aria-label="Primary">
+            {links.map((item, index) => {
+              const prev = links[index - 1];
+              const Icon = item.icon ? NAV_ICONS[item.icon] : null;
+              const active =
+                isSalesExecutive && "sectionKey" in item && item.sectionKey
+                  ? seSectionFromPathname(pathname) === item.sectionKey
+                  : pathMatches(pathname, item.href);
+              return (
+                <div key={`${item.href}-${item.label}`}>
+                  {item.section && item.section !== prev?.section && (
+                    <p
+                      className={`mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-sidebar-subtle)] ${
+                        index === 0 ? "mt-1" : "mt-4"
+                      } ${collapsed ? "lg:hidden" : ""}`}
                     >
-                      {active && (
-                        <span
-                          className="h-4 w-0.5 shrink-0 rounded-full bg-[var(--color-accent)]"
-                          aria-hidden
-                        />
-                      )}
-                      <span className={`truncate ${active ? "" : "pl-2.5"}`}>
-                        {item.label}
-                      </span>
-                    </Link>
-                  </div>
-                );
-              })}
-            </nav>
-            {showContextualNav ? (
-              <SeContextualNav
-                collapsed={collapsed}
-                onNavigate={() => setSidebarOpen(false)}
-              />
-            ) : null}
-          </div>
-          <div className="shrink-0 border-t border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] p-3">
-            <div className="flex items-center gap-2">
-              <Avatar name={displayName} size="sm" />
-              {!collapsed && (
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-white">
-                    {displayName}
-                  </p>
-                  <p className="truncate text-[10px] text-[var(--color-sidebar-subtle)]">
-                    {roleLabel(user.roleCode)}
-                  </p>
+                      {item.section}
+                    </p>
+                  )}
+                  <Link
+                    href={item.href}
+                    title={item.label}
+                    onClick={() => setSidebarOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition duration-150 ${
+                      collapsed
+                        ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
+                        : ""
+                    } ${
+                      active
+                        ? "bg-[var(--color-sidebar-active)] font-medium text-white"
+                        : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+                    }`}
+                  >
+                    {active && (
+                      <span
+                        className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--color-accent)] ${
+                          collapsed ? "lg:hidden" : ""
+                        }`}
+                        aria-hidden
+                      />
+                    )}
+                    {Icon ? (
+                      <Icon
+                        size={16}
+                        className={
+                          active
+                            ? "shrink-0 text-white"
+                            : "shrink-0 text-[var(--color-sidebar-subtle)] group-hover:text-white"
+                        }
+                      />
+                    ) : null}
+                    <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
+                      {item.label}
+                    </span>
+                  </Link>
                 </div>
-              )}
+              );
+            })}
+          </nav>
+        </div>
+
+        <div
+          className={`shrink-0 border-t border-[var(--color-sidebar-border)] p-3 ${
+            collapsed ? "lg:p-2" : ""
+          }`}
+        >
+          <div
+            className={`flex items-center gap-2.5 ${
+              collapsed ? "lg:flex-col lg:gap-2" : ""
+            }`}
+          >
+            <Avatar name={displayName} size="sm" />
+            <div
+              className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}
+            >
+              <p className="truncate text-xs font-medium text-white">
+                {displayName}
+              </p>
+              <p className="truncate text-[10px] text-[var(--color-sidebar-subtle)]">
+                {roleLabel(user.roleCode)}
+              </p>
             </div>
             <button
               type="button"
+              title="Log out"
+              aria-label="Log out"
               onClick={() => logout().then(() => router.push("/login"))}
-              className="mt-2 w-full rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-xs text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+              className="rounded p-1.5 text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white"
             >
-              Log out
+              <LogOut size={14} />
             </button>
           </div>
-        </aside>
+        </div>
+      </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 h-14 border-b border-[var(--color-line)] bg-[var(--color-surface)]">
-            <div className="flex h-14 items-center justify-between gap-3 px-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-line)] px-2.5 py-1 text-xs lg:hidden"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  Menu
-                </button>
-                <Breadcrumbs />
-              </div>
-              <div className="flex items-center gap-3">
-                {!isIndividualHome && hasPermission("PROFILE_VIEW") && (
-                  <div className="relative hidden sm:block">
-                    <label className="sr-only" htmlFor="global-search">
-                      Search sales executives
-                    </label>
+      <div className="flex min-h-screen min-w-0 flex-col transition-[padding] duration-200 ease-[var(--ease)] lg:pl-[var(--sidebar-current-w)]">
+        <header className="sticky top-0 z-20 h-14 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-line)] text-[var(--color-ink-muted)] lg:hidden"
+                aria-label="Open navigation"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <Menu size={16} />
+              </button>
+              <Breadcrumbs />
+            </div>
+            <div className="flex items-center gap-2.5">
+              {!isIndividualHome && hasPermission("PROFILE_VIEW") && (
+                <div className="relative hidden sm:block">
+                  <label className="sr-only" htmlFor="global-search">
+                    Search sales executives
+                  </label>
+                  <div className="relative">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-ink-subtle)]"
+                      aria-hidden
+                    />
                     <input
+                      ref={searchRef}
                       id="global-search"
                       value={query}
                       onChange={(e) => {
@@ -305,48 +460,81 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       }}
                       onFocus={() => setSearchOpen(true)}
                       placeholder="Search people…"
-                      className="h-8 w-56 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 text-sm md:w-72"
+                      className="h-8 w-52 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-canvas)] pl-8 pr-12 text-sm md:w-64"
                     />
-                    {searchOpen && results.length > 0 && (
-                      <ul className="absolute right-0 z-30 mt-1 w-80 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]">
-                        {results.map((p) => (
-                          <li key={p.id}>
-                            <Link
-                              href={`/profiles/${p.id}`}
-                              className="block px-3 py-2 hover:bg-[var(--color-surface-2)]"
-                              onClick={() => {
-                                setSearchOpen(false);
-                                setQuery("");
-                              }}
-                            >
-                              <span className="block text-sm font-medium">
-                                {p.displayName}
-                              </span>
-                              <span className="text-xs text-[var(--color-ink-muted)]">
-                                Sales Executive · {p.team.name}
-                                {p.currentAssignment
-                                  ? ` · Commando ${personName(p.currentAssignment.commando)}`
-                                  : ""}
-                              </span>
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-subtle)] md:inline">
+                      ⌘K
+                    </kbd>
                   </div>
-                )}
-                <span className="hidden text-[11px] font-medium text-[var(--color-ink-muted)] sm:inline">
-                  {roleLabel(user.roleCode)}
-                </span>
-                <Avatar name={displayName} size="sm" />
-              </div>
+                  {searchOpen &&
+                    (query.trim().length >= 2 || results.length > 0) && (
+                      <div className="absolute right-0 z-30 mt-1.5 w-80 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]">
+                        <div className="flex items-center justify-between border-b border-[var(--color-line)] px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
+                            People
+                          </p>
+                          <button
+                            type="button"
+                            aria-label="Close search"
+                            className="text-[var(--color-ink-subtle)] hover:text-[var(--color-ink)]"
+                            onClick={() => setSearchOpen(false)}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        {results.length === 0 ? (
+                          <p className="px-3 py-4 text-sm text-[var(--color-ink-muted)]">
+                            {query.trim().length < 2
+                              ? "Type at least 2 characters"
+                              : "No matching sales executives"}
+                          </p>
+                        ) : (
+                          <ul>
+                            {results.map((p) => (
+                              <li key={p.id}>
+                                <Link
+                                  href={`/profiles/${p.id}`}
+                                  className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-[var(--color-surface-2)]"
+                                  onClick={() => {
+                                    setSearchOpen(false);
+                                    setQuery("");
+                                  }}
+                                >
+                                  <Avatar name={p.displayName} size="sm" />
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-sm font-medium">
+                                      {p.displayName}
+                                    </span>
+                                    <span className="block truncate text-xs text-[var(--color-ink-muted)]">
+                                      {p.team.name}
+                                      {p.currentAssignment
+                                        ? ` · ${personName(p.currentAssignment.commando)}`
+                                        : ""}
+                                    </span>
+                                  </span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                </div>
+              )}
+              <span className="hidden rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-ink-muted)] sm:inline">
+                {roleLabel(user.roleCode)}
+              </span>
+              <Avatar name={displayName} size="sm" />
             </div>
-          </header>
+          </div>
+        </header>
 
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-8">
-            {children}
-          </main>
-        </div>
+        <main
+          className="app-main"
+          data-wide={wideContent ? "true" : undefined}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

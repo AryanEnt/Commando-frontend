@@ -155,8 +155,8 @@ export default function ActionItemDetailPage() {
   if (error && !item) {
     return (
       <div className="space-y-2">
-        <Link href="/action-items" className="text-sm text-slate-600 underline">
-          ← Action Items
+        <Link href="/profiles" className="text-sm text-slate-600 underline">
+          ← Sales Executives
         </Link>
         <ErrorState message={error} />
       </div>

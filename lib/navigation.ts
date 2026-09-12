@@ -5,36 +5,82 @@ export type RoleCode =
   | "SALES_EXECUTIVE"
   | "SALES_SUPPORT_EXECUTIVE";
 
+export type NavIcon =
+  | "dashboard"
+  | "users"
+  | "teams"
+  | "organization"
+  | "profiles"
+  | "interventions"
+  | "history"
+  | "reports"
+  | "audit"
+  | "configuration"
+  | "tasks"
+  | "reviews"
+  | "sync"
+  | "roles";
+
 export type NavItem = {
   href: string;
   label: string;
   permission: string;
   section?: string;
+  icon?: NavIcon;
 };
 
+const OVERVIEW = "Overview";
+const PEOPLE = "People";
+const OPERATIONS = "Operations";
+const REPORTING = "Reporting";
+const CONFIGURATION = "Configuration";
 const WORK = "Work";
-const ADMINISTRATION = "Administration";
-const GOVERNANCE = "Governance";
+const MY_WORK = "My work";
+const MY_TEAM = "My team";
 
 export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
   TEAM_LEAD: [
     {
       href: "/dashboard",
-      label: "Home",
+      label: "Overview",
       permission: "DASHBOARD_VIEW",
-      section: WORK,
+      section: MY_TEAM,
+      icon: "dashboard",
     },
     {
       href: "/profiles",
       label: "Sales Executives",
       permission: "PROFILE_VIEW",
-      section: WORK,
+      section: MY_TEAM,
+      icon: "profiles",
+    },
+    {
+      href: "/teams",
+      label: "Teams",
+      permission: "TEAM_VIEW",
+      section: MY_TEAM,
+      icon: "teams",
     },
     {
       href: "/referrals",
-      label: "Interventions",
+      label: "Commando Requests",
       permission: "REFERRAL_VIEW",
-      section: WORK,
+      section: OPERATIONS,
+      icon: "interventions",
+    },
+    {
+      href: "/eisenhower",
+      label: "Monthly Planning",
+      permission: "EISENHOWER_VIEW",
+      section: OPERATIONS,
+      icon: "tasks",
+    },
+    {
+      href: "/assignments",
+      label: "History",
+      permission: "ASSIGNMENT_VIEW",
+      section: OPERATIONS,
+      icon: "history",
     },
   ],
 
@@ -44,34 +90,38 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       label: "Home",
       permission: "DASHBOARD_VIEW",
       section: WORK,
+      icon: "dashboard",
     },
     {
       href: "/profiles",
       label: "Sales Executives",
       permission: "PROFILE_VIEW",
       section: WORK,
+      icon: "profiles",
     },
     {
       href: "/referrals",
       label: "Interventions",
       permission: "REFERRAL_VIEW",
       section: WORK,
+      icon: "interventions",
     },
     {
       href: "/assignments",
       label: "History",
       permission: "ASSIGNMENT_VIEW",
       section: WORK,
+      icon: "history",
     },
   ],
 
   SALES_EXECUTIVE: [
-    // Primary nav is built dynamically in AppShell from the SE's own workspace.
     {
       href: "/dashboard",
       label: "My workspace",
       permission: "DASHBOARD_VIEW",
       section: WORK,
+      icon: "dashboard",
     },
   ],
 
@@ -80,25 +130,29 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       href: "/dashboard",
       label: "My workspace",
       permission: "DASHBOARD_VIEW",
-      section: "My work",
+      section: MY_WORK,
+      icon: "dashboard",
     },
     {
       href: "/my-tasks",
       label: "My tasks",
       permission: "SALES_SUPPORT_TASK_VIEW",
-      section: "My work",
+      section: MY_WORK,
+      icon: "tasks",
     },
     {
       href: "/sync-evaluations",
       label: "Sync evaluations",
       permission: "SYNC_EVAL_VIEW",
-      section: "My work",
+      section: MY_WORK,
+      icon: "sync",
     },
     {
       href: "/role-assignments",
       label: "Role assignments",
       permission: "ROLE_ASSIGNMENT_VIEW",
-      section: "My work",
+      section: MY_WORK,
+      icon: "roles",
     },
   ],
 
@@ -107,49 +161,64 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       href: "/dashboard",
       label: "Control Tower",
       permission: "DASHBOARD_VIEW",
-      section: GOVERNANCE,
-    },
-    {
-      href: "/profiles",
-      label: "Sales Executives",
-      permission: "PROFILE_VIEW",
-      section: GOVERNANCE,
-    },
-    {
-      href: "/referrals",
-      label: "Interventions",
-      permission: "REFERRAL_VIEW",
-      section: GOVERNANCE,
-    },
-    {
-      href: "/reports",
-      label: "Reports",
-      permission: "REPORT_VIEW",
-      section: GOVERNANCE,
+      section: OVERVIEW,
+      icon: "dashboard",
     },
     {
       href: "/users",
       label: "Users",
       permission: "USER_VIEW",
-      section: ADMINISTRATION,
+      section: PEOPLE,
+      icon: "users",
     },
     {
       href: "/teams",
       label: "Teams",
       permission: "TEAM_VIEW",
-      section: ADMINISTRATION,
+      section: PEOPLE,
+      icon: "teams",
+    },
+    {
+      href: "/organization",
+      label: "Organization",
+      permission: "TEAM_VIEW",
+      section: PEOPLE,
+      icon: "organization",
+    },
+    {
+      href: "/profiles",
+      label: "Sales Executives",
+      permission: "PROFILE_VIEW",
+      section: PEOPLE,
+      icon: "profiles",
+    },
+    {
+      href: "/referrals",
+      label: "Interventions",
+      permission: "REFERRAL_VIEW",
+      section: OPERATIONS,
+      icon: "interventions",
+    },
+    {
+      href: "/reports",
+      label: "Reports",
+      permission: "REPORT_VIEW",
+      section: REPORTING,
+      icon: "reports",
+    },
+    {
+      href: "/audit-logs",
+      label: "Audit Trail",
+      permission: "AUDIT_VIEW",
+      section: REPORTING,
+      icon: "audit",
     },
     {
       href: "/configuration",
       label: "Configuration",
       permission: "ACTIVITY_TYPE_MANAGE",
-      section: ADMINISTRATION,
-    },
-    {
-      href: "/audit-logs",
-      label: "Audit & History",
-      permission: "AUDIT_VIEW",
-      section: ADMINISTRATION,
+      section: CONFIGURATION,
+      icon: "configuration",
     },
   ],
 };
@@ -187,6 +256,17 @@ export function profileIdFromPathname(pathname: string): string | null {
   return match[1];
 }
 
+/** Routes that benefit from a wider main content column. */
+export function isWideContentPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/users") ||
+    pathname.startsWith("/audit-logs") ||
+    pathname.startsWith("/reports") ||
+    pathname.startsWith("/organization") ||
+    pathname === "/dashboard"
+  );
+}
+
 export const ROUTE_LABELS: Record<string, string> = {
   dashboard: "Home",
   users: "Users",
@@ -213,7 +293,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   kpi: "KPI",
   reports: "Reports",
   "commando-performance": "Commando Performance",
-  "audit-logs": "Audit & History",
+  "audit-logs": "Audit Trail",
   new: "Create",
   coaching: "Coaching",
   reviews: "Weekly Reviews",

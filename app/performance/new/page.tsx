@@ -26,7 +26,7 @@ const DEFAULT_SCORES: ScoreRow[] = [
 ];
 
 export default function NewPerformancePage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({
     salesExecutiveProfileId: "",
@@ -36,6 +36,13 @@ export default function NewPerformancePage() {
   const [scores, setScores] = useState<ScoreRow[]>(DEFAULT_SCORES);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const cancelHref =
+    user?.roleCode === "TEAM_LEAD"
+      ? form.salesExecutiveProfileId
+        ? `/profiles/${form.salesExecutiveProfileId}/performance`
+        : "/profiles"
+      : "/performance";
 
   function updateScore(index: number, patch: Partial<ScoreRow>) {
     setScores((prev) =>
@@ -84,8 +91,10 @@ export default function NewPerformancePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/performance" className="text-sm text-slate-600 underline">
-          ← Performance
+        <Link href={cancelHref} className="text-sm text-slate-600 underline">
+          {user?.roleCode === "TEAM_LEAD"
+            ? "← Sales Executive goals"
+            : "← Performance"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New evaluation

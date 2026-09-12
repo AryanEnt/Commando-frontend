@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 
 export default function PerformanceDetailPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const params = useParams();
   const id = String(params.id);
   const [item, setItem] = useState<PerformanceEvaluation | null>(null);
@@ -32,11 +32,24 @@ export default function PerformanceDetailPage() {
     })();
   }, [token, id]);
 
+  const listFallback =
+    user?.roleCode === "TEAM_LEAD" ? "/profiles" : "/performance";
+  const backHref = item
+    ? `/profiles/${item.salesExecutiveProfileId}/performance`
+    : listFallback;
+  const backLabel = item
+    ? `← Back to ${item.profile.displayName}`
+    : user?.roleCode === "TEAM_LEAD"
+      ? "← Sales Executives"
+      : "← Performance";
+
   if (error) {
     return (
       <div className="space-y-2">
-        <Link href="/performance" className="text-sm text-slate-600 underline">
-          ← Performance
+        <Link href={listFallback} className="text-sm text-slate-600 underline">
+          {user?.roleCode === "TEAM_LEAD"
+            ? "← Sales Executives"
+            : "← Performance"}
         </Link>
         <ErrorState message={error} />
       </div>
@@ -50,8 +63,8 @@ export default function PerformanceDetailPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/performance" className="text-sm text-slate-600 underline">
-          ← Performance
+        <Link href={backHref} className="text-sm text-slate-600 underline">
+          {backLabel}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           Evaluation detail

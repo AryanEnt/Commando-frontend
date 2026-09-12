@@ -17,7 +17,7 @@ import {
   TextInput,
 } from "@/components/ui";
 
-const ROLE_OPTIONS = [
+const ALL_ROLE_OPTIONS = [
   {
     code: "TEAM_LEAD",
     description: "Owns a team, refers Sales Executives, and tracks interventions.",
@@ -36,7 +36,7 @@ const ROLE_OPTIONS = [
   },
 ] as const;
 
-type RoleCode = (typeof ROLE_OPTIONS)[number]["code"];
+type RoleCode = (typeof ALL_ROLE_OPTIONS)[number]["code"];
 
 function passwordChecks(password: string) {
   return {
@@ -47,7 +47,7 @@ function passwordChecks(password: string) {
 }
 
 export default function CreateUserPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, hasPermission, user } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -55,29 +55,66 @@ export default function CreateUserPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
+
+  const canCreateAny = hasPermission("USER_CREATE");
+  const canCreateSupport =
+    hasPermission("SALES_SUPPORT_CREATE") || user?.roleCode === "TEAM_LEAD";
+  const canCreate = canCreateAny || canCreateSupport;
+  const canCreateSe =
+    hasPermission("SALES_EXECUTIVE_CREATE") ||
+    user?.roleCode === "TEAM_LEAD" ||
+    user?.roleCode === "SUPER_ADMIN";
+  const supportOnly = !canCreateAny && canCreateSupport;
+
+  const roleOptions = useMemo(
+    () =>
+      supportOnly
+        ? ALL_ROLE_OPTIONS.filter((r) => r.code === "SALES_SUPPORT_EXECUTIVE")
+        : ALL_ROLE_OPTIONS,
+    [supportOnly],
+  );
+
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
     email: "",
     password: "",
-    roleCode: "TEAM_LEAD" as RoleCode,
+    roleCode: (supportOnly
+      ? "SALES_SUPPORT_EXECUTIVE"
+      : "TEAM_LEAD") as RoleCode,
     isActive: "true" as "true" | "false",
     teamId: "",
   });
 
-  const canCreate = hasPermission("USER_CREATE");
-  const canCreateSe = hasPermission("SALES_EXECUTIVE_CREATE");
   const checks = useMemo(() => passwordChecks(form.password), [form.password]);
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === form.teamId) ?? null,
     [teams, form.teamId],
   );
-  const selectedRole = ROLE_OPTIONS.find((r) => r.code === form.roleCode);
+  const selectedRole = roleOptions.find((r) => r.code === form.roleCode);
+  const exitHref = canCreateAny ? "/users" : "/teams";
+  const exitLabel = canCreateAny ? "Users" : "Teams";
 
   useEffect(() => {
     if (!token) return;
-    void api.getTeams(token).then((res) => setTeams(res.data.teams));
-  }, [token]);
+    void api.getTeams(token).then((res) => {
+      setTeams(res.data.teams);
+      if (supportOnly && res.data.teams[0]) {
+        setForm((prev) =>
+          prev.teamId ? prev : { ...prev, teamId: res.data.teams[0]!.id },
+        );
+      }
+    });
+  }, [token, supportOnly]);
+
+  useEffect(() => {
+    if (!supportOnly) return;
+    setForm((prev) =>
+      prev.roleCode === "SALES_SUPPORT_EXECUTIVE"
+        ? prev
+        : { ...prev, roleCode: "SALES_SUPPORT_EXECUTIVE" },
+    );
+  }, [supportOnly]);
 
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -99,9 +136,13 @@ export default function CreateUserPage() {
       next.email = "Enter a valid email address";
     }
     if (!checks.length || !checks.letter || !checks.number) {
-      next.password = "Password must be at least 8 characters with a letter and a number";
+      next.password =
+        "Password must be at least 8 characters with a letter and a number";
     }
     if (!form.roleCode) next.roleCode = "Role is required";
+    if (supportOnly && !form.teamId && teams.length === 0) {
+      next.teamId = "You must lead a team to create Sales Support";
+    }
     setFieldErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -109,6 +150,8 @@ export default function CreateUserPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token || !validate()) return;
+    const resolvedTeamId =
+      form.teamId || (supportOnly ? teams[0]?.id : undefined) || null;
     setSubmitting(true);
     setError(null);
     try {
@@ -119,10 +162,19 @@ export default function CreateUserPage() {
         password: form.password,
         roleCode: form.roleCode,
         isActive: form.isActive === "true",
-        teamId: form.teamId || null,
+        teamId: resolvedTeamId,
       });
-      pushToast("User created", "success");
-      router.push(`/users/${res.data.user.id}`);
+      pushToast(
+        supportOnly ? "Sales Support Executive created" : "User created",
+        "success",
+      );
+      if (canCreateAny) {
+        router.push(`/users/${res.data.user.id}`);
+      } else if (resolvedTeamId) {
+        router.push(`/teams/${resolvedTeamId}`);
+      } else {
+        router.push("/teams");
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to create user";
       setError(msg);
@@ -141,15 +193,19 @@ export default function CreateUserPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader
-        title="Create user"
-        description="Add a login account, assign a system role, and optionally place them on a team."
+        title={supportOnly ? "Add Sales Support" : "Create user"}
+        description={
+          supportOnly
+            ? "Create a Sales Support Executive account for your team."
+            : "Add a login account, assign a system role, and optionally place them on a team."
+        }
         actions={
           <Button
             type="button"
             variant="secondary"
-            onClick={() => router.push("/users")}
+            onClick={() => router.push(exitHref)}
           >
-            Back to users
+            Back to {exitLabel}
           </Button>
         }
       />
@@ -175,6 +231,9 @@ export default function CreateUserPage() {
       ) : null}
 
       {error && <ErrorState message={error} />}
+      {supportOnly && fieldErrors.teamId ? (
+        <ErrorState message={fieldErrors.teamId} />
+      ) : null}
 
       <form
         onSubmit={onSubmit}
@@ -272,7 +331,9 @@ export default function CreateUserPage() {
                       : "text-[var(--status-danger)]"
                 }`}
               >
-                <span aria-hidden="true">{ok && form.password.length > 0 ? "✓" : "○"}</span>
+                <span aria-hidden="true">
+                  {ok && form.password.length > 0 ? "✓" : "○"}
+                </span>
                 {label}
               </li>
             ))}
@@ -285,7 +346,9 @@ export default function CreateUserPage() {
               Role & access
             </h2>
             <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-              Role controls what the person can see and do after they sign in.
+              {supportOnly
+                ? "They will join your team as Sales Support."
+                : "Role controls what the person can see and do after they sign in."}
             </p>
           </div>
 
@@ -294,7 +357,7 @@ export default function CreateUserPage() {
               System role <span className="text-red-600">*</span>
             </legend>
             <div className="grid gap-2">
-              {ROLE_OPTIONS.map((role) => {
+              {roleOptions.map((role) => {
                 const active = form.roleCode === role.code;
                 return (
                   <label
@@ -311,6 +374,7 @@ export default function CreateUserPage() {
                       className="mt-1"
                       checked={active}
                       onChange={() => setField("roleCode", role.code)}
+                      disabled={supportOnly}
                     />
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-[var(--color-ink)]">
@@ -352,53 +416,68 @@ export default function CreateUserPage() {
           </div>
         </section>
 
-        <section className="space-y-4 border-b border-[var(--color-line)] p-5">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--color-ink)]">
-              Organization
-            </h2>
-            <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-              Optional. Membership uses a team role matching the system role
-              selected above.
-            </p>
-          </div>
-          <SelectField
-            label="Team"
-            value={form.teamId}
-            onChange={(e) => setField("teamId", e.target.value)}
-            hint={
-              selectedTeam
-                ? `Will join ${selectedTeam.name}${
-                    selectedRole ? ` as ${roleLabel(selectedRole.code)}` : ""
-                  }.`
-                : "You can assign a team later from the user or team page."
-            }
-          >
-            <option value="">No team yet</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </SelectField>
-        </section>
+        {!supportOnly ? (
+          <section className="space-y-4 border-b border-[var(--color-line)] p-5">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--color-ink)]">
+                Organization
+              </h2>
+              <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                Optional. Membership uses a team role matching the system role
+                selected above.
+              </p>
+            </div>
+            <SelectField
+              label="Team"
+              value={form.teamId}
+              onChange={(e) => setField("teamId", e.target.value)}
+              error={fieldErrors.teamId}
+              hint={
+                selectedTeam
+                  ? `Will join ${selectedTeam.name}${
+                      selectedRole
+                        ? ` as ${roleLabel(selectedRole.code)}`
+                        : ""
+                    }.`
+                  : "You can assign a team later from the user or team page."
+              }
+            >
+              <option value="">No team yet</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </SelectField>
+          </section>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface-2)] px-5 py-4">
           <p className="text-xs text-[var(--color-ink-muted)]">
-            Required fields are marked with{" "}
-            <span className="text-red-600">*</span>
+            {user?.roleCode === "TEAM_LEAD" ? (
+              "Added to your team automatically."
+            ) : (
+              <>
+                Required fields are marked with{" "}
+                <span className="text-red-600">*</span>
+              </>
+            )}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push("/users")}
+              onClick={() => router.push(exitHref)}
               disabled={submitting}
             >
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Creating…" : "Create user"}
+              {submitting
+                ? "Creating…"
+                : supportOnly
+                  ? "Create Sales Support"
+                  : "Create user"}
             </Button>
           </div>
         </div>

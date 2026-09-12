@@ -31,27 +31,62 @@ export function PageHeader({
   title,
   description,
   actions,
+  eyebrow,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
+  eyebrow?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="text-[1.75rem] font-semibold tracking-tight text-[var(--color-ink)]">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 max-w-2xl">
+        {eyebrow ? (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink-subtle)]">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1
+          className={`font-semibold tracking-[-0.025em] text-[var(--color-ink)] ${
+            eyebrow ? "mt-1 text-[1.5rem] sm:text-[1.625rem]" : "text-[1.5rem] sm:text-[1.625rem]"
+          }`}
+        >
           {title}
         </h1>
         {description && (
-          <p className="mt-1 max-w-2xl text-sm text-[var(--color-ink-muted)]">
+          <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-muted)]">
             {description}
           </p>
         )}
       </div>
       {actions ? (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">{actions}</div>
       ) : null}
     </div>
+  );
+}
+
+export function StatusPill({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "success" | "warn" | "danger" | "info" | "neutral";
+  children: ReactNode;
+}) {
+  const tones = {
+    success: "text-[var(--status-success)] bg-[var(--status-success-bg)]",
+    warn: "text-[var(--status-warn)] bg-[var(--status-warn-bg)]",
+    danger: "text-[var(--status-danger)] bg-[var(--status-danger-bg)]",
+    info: "text-[var(--status-info)] bg-[var(--status-info-bg)]",
+    neutral: "text-[var(--status-neutral)] bg-[var(--status-neutral-bg)]",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}
+    >
+      <span className="status-dot" aria-hidden />
+      {children}
+    </span>
   );
 }
 
@@ -207,7 +242,7 @@ export function SelectField({
 
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5">
       {children}
     </div>
   );
@@ -335,22 +370,24 @@ export function EmptyState({
                       : Icons.feedback;
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] px-4 py-10 text-center">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-5 py-10 text-center">
       {Icon ? (
-        <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]">
-          <Icon size={20} />
+        <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]">
+          <Icon size={18} />
         </span>
       ) : null}
-      <p className="text-sm font-medium text-[var(--color-ink)]">{title}</p>
+      <p className="text-sm font-semibold text-[var(--color-ink)]">{title}</p>
       {description && (
-        <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-ink-muted)]">
+        <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-[var(--color-ink-muted)]">
           {description}
         </p>
       )}
-      {action}
+      {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
       {!action && actionHref && actionLabel && (
         <div className="mt-4 flex justify-center">
-          <ButtonLink href={actionHref}>{actionLabel}</ButtonLink>
+          <ButtonLink href={actionHref} size="sm">
+            {actionLabel}
+          </ButtonLink>
         </div>
       )}
     </div>
@@ -366,11 +403,13 @@ export function ErrorState({
 }) {
   return (
     <div
-      className="rounded-[var(--radius-md)] border border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)] px-4 py-4 text-sm text-[var(--status-danger)]"
+      className="rounded-[var(--radius-md)] border border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)] px-4 py-4 text-sm"
       role="alert"
     >
-      <p className="font-medium">Something went wrong</p>
-      <p className="mt-1 text-[var(--color-ink)]">{message}</p>
+      <p className="font-semibold text-[var(--status-danger)]">
+        Unable to load
+      </p>
+      <p className="mt-1 text-[var(--color-ink-muted)]">{message}</p>
       {onRetry && (
         <Button
           variant="secondary"
@@ -635,9 +674,13 @@ export function SectionHeader({
   return (
     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
       <div>
-        <h2 className="text-sm font-semibold text-[var(--color-ink)]">{title}</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]">
+          {title}
+        </h2>
         {description && (
-          <p className="text-xs text-[var(--color-ink-muted)]">{description}</p>
+          <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+            {description}
+          </p>
         )}
       </div>
       {actions}

@@ -43,7 +43,7 @@ export function SeContextualCreatePage({
 }: Props) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const profileId = params.id;
   const [profile, setProfile] = useState<ProfileDetail | null>(null);
@@ -65,6 +65,12 @@ export function SeContextualCreatePage({
       )
       .finally(() => setLoading(false));
   }, [token, profileId]);
+
+  if (user?.roleCode === "SUPER_ADMIN") {
+    return (
+      <ErrorState message="Super Admin is read-only for Sales Executive operational records. Commando or Team Lead add this data." />
+    );
+  }
 
   if (!hasPermission(permission)) {
     return (

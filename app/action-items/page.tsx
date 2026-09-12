@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api, type ActionItem, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
+import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
@@ -20,6 +21,14 @@ import {
 } from "@/components/ui";
 
 export default function ActionItemsPage() {
+  return (
+    <TeamLeadListRedirectGate listPath="/action-items">
+      <ActionItemsContent />
+    </TeamLeadListRedirectGate>
+  );
+}
+
+function ActionItemsContent() {
   const { token, hasPermission } = useAuth();
   const [view, setView] = useState<"active" | "history">("active");
   const [items, setItems] = useState<ActionItem[]>([]);

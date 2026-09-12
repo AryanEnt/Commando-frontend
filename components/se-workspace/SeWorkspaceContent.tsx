@@ -17,6 +17,7 @@ import {
   type WeeklyReview,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast-context";
 import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { INTERVENTION_STAGES, interventionStageFromAssignment } from "@/lib/lifecycle";
@@ -45,6 +46,7 @@ export function SeWorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { token, hasPermission, user } = useAuth();
+  const { pushToast } = useToast();
   const {
     profile,
     workspace,
@@ -93,6 +95,7 @@ export function SeWorkspaceContent() {
   const [completeBusy, setCompleteBusy] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [signingReviewId, setSigningReviewId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || !params.id) return;
@@ -269,6 +272,26 @@ export function SeWorkspaceContent() {
     }
   }
 
+  async function signWeeklyReview(reviewId: string) {
+    if (!token) return;
+    setSigningReviewId(reviewId);
+    setActionError(null);
+    try {
+      const res = await api.acknowledgeWeeklyReview(token, reviewId);
+      setReviews((prev) =>
+        prev.map((r) => (r.id === reviewId ? res.data.review : r)),
+      );
+      pushToast("Weekly review signed", "success");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not sign weekly review";
+      setActionError(msg);
+      pushToast(msg, "error");
+    } finally {
+      setSigningReviewId(null);
+    }
+  }
+
   if (profileError && !profile) return <ErrorState message={profileError} />;
   if (loading && !profile) return <LoadingState label="Loading…" />;
   if (!profile) return <ErrorState message="Sales Executive not found." />;
@@ -288,13 +311,22 @@ export function SeWorkspaceContent() {
   );
   const referral = workspace?.latestReferral;
 
+  // Super Admin is read-only on SE operational data; Commando / Team Lead write.
   const canOperate =
     !isSe &&
-    (isCommando ? Boolean(assignment) : isTl ? !teamLeadLocked : true);
+    role !== "SUPER_ADMIN" &&
+    (isCommando ? Boolean(assignment) : isTl ? !teamLeadLocked : false);
 
   function canCreate(permission: string) {
     return hasPermission(permission) && canOperate;
   }
+
+  // Monthly planning stays available to Team Leads during Commando intervention.
+  const canCreateEisenhower =
+    hasPermission("EISENHOWER_CREATE") &&
+    !isSe &&
+    role !== "SUPER_ADMIN" &&
+    (isTl || (isCommando && Boolean(assignment)));
 
   return (
     <div className="space-y-5">
@@ -419,20 +451,22 @@ export function SeWorkspaceContent() {
               <div className="flex flex-wrap items-center gap-2">
                 {hasPermission("SWOT_CREATE") && (
                   <Link
-                    className="action-chip"
+                    className="btn btn-secondary btn-sm"
                     href={seCreateHref(profile.id, "swot")}
                   >
-                    Update my SWOT
+                    Update SWOT
                   </Link>
                 )}
-                <button
-                  type="button"
-                  className="text-sm text-[var(--color-ink-muted)] hover:underline"
-                  disabled={ackBusy}
-                  onClick={() => void acknowledgeIntervention()}
-                >
-                  {ackBusy ? "Saving…" : "Mark intervention as seen"}
-                </button>
+                {assignment ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={ackBusy}
+                    onClick={() => void acknowledgeIntervention()}
+                  >
+                    {ackBusy ? "Saving…" : "Mark intervention as seen"}
+                  </button>
+                ) : null}
               </div>
             )
           }
@@ -532,7 +566,11 @@ export function SeWorkspaceContent() {
       {section === "reviews" && (
         <SectionFrame
           title="Weekly Reviews"
-          description="Submitted meetings for this Sales Executive."
+          description={
+            isSe
+              ? "Weekly reviews sent to you — click Sign next to a review to acknowledge it."
+              : "New reviews are sent to the Sales Executive immediately for signature."
+          }
           primary={
             canCreate("WEEKLY_REVIEW_CREATE") ? (
               <Link
@@ -548,8 +586,12 @@ export function SeWorkspaceContent() {
             {reviews.length === 0 ? (
               <div className="p-4">
                 <EmptyState
-                  title="No weekly reviews yet"
-                  description="Weekly reviews will appear here when created."
+                  title={isSe ? "No weekly reviews yet" : "No weekly reviews yet"}
+                  description={
+                    isSe
+                      ? "When a weekly review is created for you, it will show up here."
+                      : "Create a weekly review to send it to the Sales Executive for signature."
+                  }
                 />
               </div>
             ) : (
@@ -562,11 +604,17 @@ export function SeWorkspaceContent() {
                       <th>Team Lead</th>
                       <th>Status</th>
                       <th>Key action</th>
-                      <th>Signed</th>
+                      <th>SE signed</th>
+                      {isSe ? <th className="w-[1%] whitespace-nowrap" /> : null}
                     </tr>
                   </thead>
                   <tbody>
-                    {reviews.map((r) => (
+                    {reviews.map((r) => {
+                      const canSign =
+                        isSe &&
+                        r.status === "SUBMITTED" &&
+                        !(r.salesExecutiveSigned || r.signed);
+                      return (
                       <tr key={r.id}>
                         <td>
                           <Link
@@ -591,16 +639,33 @@ export function SeWorkspaceContent() {
                           {r.nextWeekAction || "—"}
                         </td>
                         <td>
-                          {r.signed ? (
+                          {r.salesExecutiveSigned || (isSe && r.signed) ? (
                             <span aria-label="Signed">✓ Signed</span>
                           ) : (
                             <span className="text-[var(--color-ink-muted)]">
-                              Pending
+                              Awaiting SE
                             </span>
                           )}
                         </td>
+                        {isSe ? (
+                          <td>
+                            {canSign ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={signingReviewId === r.id}
+                                onClick={() => void signWeeklyReview(r.id)}
+                              >
+                                {signingReviewId === r.id
+                                  ? "Signing…"
+                                  : "Sign"}
+                              </Button>
+                            ) : null}
+                          </td>
+                        ) : null}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -614,12 +679,12 @@ export function SeWorkspaceContent() {
           title="Eisenhower"
           description="Monthly priority matrix for this Sales Executive."
           primary={
-            canCreate("EISENHOWER_CREATE") ? (
+            canCreateEisenhower ? (
               <Link
                 href={seCreateHref(profile.id, "eisenhower")}
-                className="action-chip"
+                className="btn btn-primary btn-sm"
               >
-                New matrix
+                Add Eisenhower task
               </Link>
             ) : null
           }
@@ -628,10 +693,24 @@ export function SeWorkspaceContent() {
             {eisenhower.length === 0 ? (
               <EmptyState
                 title="No Eisenhower tasks"
-                description="Monthly matrices are preserved. Previous months are never overwritten."
+                description="Add a monthly priority for this Sales Executive. Previous months are never overwritten."
+                action={
+                  canCreateEisenhower ? (
+                    <Link
+                      href={seCreateHref(profile.id, "eisenhower")}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Add Eisenhower task
+                    </Link>
+                  ) : undefined
+                }
               />
             ) : (
-              <EisenhowerPreview tasks={eisenhower} profileId={profile.id} />
+              <EisenhowerPreview
+                tasks={eisenhower}
+                profileId={profile.id}
+                canCreate={canCreateEisenhower}
+              />
             )}
           </section>
         </SectionFrame>
@@ -1332,9 +1411,11 @@ function Field({ label, value }: { label: string; value: string }) {
 function EisenhowerPreview({
   tasks,
   profileId,
+  canCreate,
 }: {
   tasks: EisenhowerTask[];
   profileId: string;
+  canCreate?: boolean;
 }) {
   const returnTo = `/profiles/${profileId}/eisenhower`;
   const months = Array.from(new Set(tasks.map((t) => t.monthLabel)));
@@ -1355,26 +1436,38 @@ function EisenhowerPreview({
         <Quad
           title="Do first"
           hint="Important + Urgent"
+          category="DO_FIRST"
           items={groups.DO_FIRST}
           returnTo={returnTo}
+          profileId={profileId}
+          canCreate={canCreate}
         />
         <Quad
           title="Schedule"
           hint="Important + Not urgent"
+          category="SCHEDULE"
           items={groups.SCHEDULE}
           returnTo={returnTo}
+          profileId={profileId}
+          canCreate={canCreate}
         />
         <Quad
           title="Delegate"
           hint="Not important + Urgent"
+          category="DELEGATE"
           items={groups.DELEGATE}
           returnTo={returnTo}
+          profileId={profileId}
+          canCreate={canCreate}
         />
         <Quad
           title="Eliminate"
           hint="Not important + Not urgent"
+          category="ELIMINATE"
           items={groups.ELIMINATE}
           returnTo={returnTo}
+          profileId={profileId}
+          canCreate={canCreate}
         />
       </div>
     </div>
@@ -1384,18 +1477,36 @@ function EisenhowerPreview({
 function Quad({
   title,
   hint,
+  category,
   items,
   returnTo,
+  profileId,
+  canCreate,
 }: {
   title: string;
   hint: string;
+  category: "DO_FIRST" | "SCHEDULE" | "DELEGATE" | "ELIMINATE";
   items: EisenhowerTask[];
   returnTo: string;
+  profileId: string;
+  canCreate?: boolean;
 }) {
   return (
     <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
-      <p className="font-semibold">{title}</p>
-      <p className="text-[var(--color-ink-subtle)]">{hint}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-semibold">{title}</p>
+          <p className="text-[var(--color-ink-subtle)]">{hint}</p>
+        </div>
+        {canCreate ? (
+          <Link
+            href={seCreateHref(profileId, "eisenhower", { category })}
+            className="shrink-0 text-[11px] font-medium text-[var(--color-brand)] hover:underline"
+          >
+            Add
+          </Link>
+        ) : null}
+      </div>
       <ul className="mt-1 space-y-1">
         {items.slice(0, 3).map((t) => (
           <li key={t.id}>

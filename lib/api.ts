@@ -1999,6 +1999,8 @@ export type WeeklyReview = {
   }>;
   myStatus: "SIGNED" | "PENDING_SIGNATURE" | "DRAFT" | null;
   signed: boolean;
+  /** Whether the Sales Executive attendee has signed. */
+  salesExecutiveSigned: boolean;
   createdAt: string;
   updatedAt: string;
   isEditable: boolean;

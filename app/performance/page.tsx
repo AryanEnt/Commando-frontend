@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
+import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
 import {
@@ -26,9 +27,11 @@ import {
 
 export default function PerformancePage() {
   return (
-    <Suspense fallback={<LoadingState label="Loading performance…" />}>
-      <PerformanceContent />
-    </Suspense>
+    <TeamLeadListRedirectGate listPath="/performance">
+      <Suspense fallback={<LoadingState label="Loading performance…" />}>
+        <PerformanceContent />
+      </Suspense>
+    </TeamLeadListRedirectGate>
   );
 }
 

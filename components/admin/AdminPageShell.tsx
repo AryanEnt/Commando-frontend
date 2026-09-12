@@ -57,7 +57,12 @@ export function AdminPageShell({
   return (
     <div className="space-y-5">
       <AdminBreadcrumb items={breadcrumb} />
-      <PageHeader title={title} description={description} actions={actions} />
+      <PageHeader
+        eyebrow="Administration"
+        title={title}
+        description={description}
+        actions={actions}
+      />
       {toolbar}
       {children}
     </div>

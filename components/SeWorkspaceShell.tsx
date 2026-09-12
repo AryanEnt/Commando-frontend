@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Avatar, ErrorState, LoadingState } from "@/components/ui";
+import { ErrorState, LoadingState } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { useSeWorkspace } from "@/lib/se-workspace-context";
 import {
@@ -21,15 +21,14 @@ function profilesListHref() {
   return q ? `/profiles?${q}` : "/profiles";
 }
 
-function healthLabel(status: string | undefined) {
-  if (!status) return null;
-  return status.replaceAll("_", " ");
-}
-
+/**
+ * Contextual SE workspace chrome for managers (Admin / TL / Commando / Support).
+ * Global role sidebar stays unchanged — workspace tabs live here in main content.
+ */
 export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, hasPermission } = useAuth();
-  const { profile, workspace, supportTeam, loading, error, teamLeadLocked } =
+  const { user } = useAuth();
+  const { profile, workspace, loading, error, teamLeadLocked } =
     useSeWorkspace();
   const section = seSectionFromPathname(pathname);
 
@@ -43,40 +42,26 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
     return <ErrorState message="Sales Executive not found." />;
   }
 
-  // Keep SE header + breadcrumbs on create flows so the workspace stays fixed.
-  const assignment = profile.currentAssignment;
   const isSalesExecutive = user?.roleCode === "SALES_EXECUTIVE";
   const isSalesSupport = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
   const listHref = profilesListHref();
   const homeHref = isSalesSupport ? "/dashboard" : listHref;
   const homeLabel = isSalesSupport ? "My workspace" : "Sales Executives";
-  const showTeamLead =
-    user?.roleCode === "COMMANDO_EXECUTIVE" ||
-    user?.roleCode === "SUPER_ADMIN" ||
-    user?.roleCode === "TEAM_LEAD" ||
-    user?.roleCode === "SALES_EXECUTIVE";
-  const canViewSupport = hasPermission("SALES_SUPPORT_LINK_VIEW");
-  const teamLeadName = assignment
-    ? personName(assignment.teamLead)
+  const sectionTitle =
+    section === "overview" ? null : seSectionLabel(section as SeSection);
+  const sectionNav = seNavForRole(user?.roleCode ?? "COMMANDO_EXECUTIVE");
+  const isCreateFlow = /\/profiles\/[^/]+\/[^/]+\/new(?:\/|$)/.test(pathname);
+  // Managers: contextual tabs in content. SE: tabs live in global sidebar only.
+  const showWorkspaceTabs = !isSalesExecutive && !isCreateFlow;
+  const healthStatus = workspace?.health?.status;
+  const teamLeadName = profile.currentAssignment
+    ? personName(profile.currentAssignment.teamLead)
     : profile.assignmentHistory[0]
       ? personName(profile.assignmentHistory[0].teamLead)
       : null;
-  const health = healthLabel(workspace?.health?.status);
-  const sectionTitle =
-    section === "overview" ? null : seSectionLabel(section as SeSection);
-  const supportNames =
-    supportTeam?.activeSupport
-      ?.map((link) => personName(link.supportUser))
-      .filter(Boolean) ?? [];
-  const showSupportRow = canViewSupport && supportTeam !== null;
-  const daysUnderCommando = assignment
-    ? (workspace?.daysInIntervention ?? assignment.totalDaysUnderCommando)
-    : null;
-  const sectionNav = seNavForRole(user?.roleCode ?? "COMMANDO_EXECUTIVE");
-  const isCreateFlow = /\/profiles\/[^/]+\/[^/]+\/new(?:\/|$)/.test(pathname);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <nav
         aria-label="Breadcrumb"
         className="text-sm text-[var(--color-ink-muted)]"
@@ -131,9 +116,11 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
       {teamLeadLocked ? (
         <div
           role="status"
-          className="border border-[var(--color-attention)]/40 bg-[var(--color-attention)]/10 px-4 py-3 text-sm"
+          className="rounded-[var(--radius-md)] border border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)] px-4 py-3 text-sm"
         >
-          <p className="font-medium">Operational work paused</p>
+          <p className="font-medium text-[var(--color-ink)]">
+            Operational work paused
+          </p>
           <p className="mt-1 text-[var(--color-ink-muted)]">
             Active Commando intervention — Team Lead ownership remains;
             conflicting writes are locked until the intervention ends.
@@ -141,122 +128,48 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <header className="border border-[var(--color-line)] bg-[var(--color-surface)]">
-        <div className="px-4 py-4 sm:px-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3.5">
-              <Avatar name={profile.displayName} size="lg" />
-              <div className="min-w-0 space-y-3">
-                <div>
-                  <h1 className="truncate text-xl font-semibold tracking-tight text-[var(--color-ink)] sm:text-2xl">
-                    {profile.displayName}
-                  </h1>
-                  <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
-                    Sales Executive, {profile.team.name}
-                  </p>
-                </div>
-
-                <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                  {health ? (
-                    <div>
-                      <dt className="text-xs font-medium text-[var(--color-ink-subtle)]">
-                        Status
-                      </dt>
-                      <dd className="mt-0.5 font-semibold text-[var(--color-ink)]">
-                        {health}
-                      </dd>
-                    </div>
-                  ) : null}
-                  {showTeamLead ? (
-                    <div>
-                      <dt className="text-xs font-medium text-[var(--color-ink-subtle)]">
-                        Team Lead
-                      </dt>
-                      <dd className="mt-0.5 font-semibold text-[var(--color-ink)]">
-                        {teamLeadName ?? "—"}
-                      </dd>
-                    </div>
-                  ) : null}
-                  <div>
-                    <dt className="text-xs font-medium text-[var(--color-ink-subtle)]">
-                      Commando
-                    </dt>
-                    <dd className="mt-0.5 font-semibold text-[var(--color-ink)]">
-                      {assignment
-                        ? personName(assignment.commando)
-                        : "No active Commando assigned"}
-                    </dd>
-                  </div>
-                  {daysUnderCommando != null ? (
-                    <div>
-                      <dt className="text-xs font-medium text-[var(--color-ink-subtle)]">
-                        Days under Commando
-                      </dt>
-                      <dd className="mt-0.5 font-semibold tabular-nums text-[var(--color-ink)]">
-                        {daysUnderCommando}{" "}
-                        {daysUnderCommando === 1 ? "day" : "days"}
-                      </dd>
-                    </div>
-                  ) : null}
-                  {showSupportRow ? (
-                    <div>
-                      <dt className="text-xs font-medium text-[var(--color-ink-subtle)]">
-                        Support
-                      </dt>
-                      <dd className="mt-0.5 font-semibold text-[var(--color-ink)]">
-                        {supportNames.length > 0
-                          ? supportNames.join(" · ")
-                          : "None"}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-start gap-2 sm:items-end">
-              {assignment ? (
-                <>
+      {showWorkspaceTabs ? (
+        <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <Link
+                href={homeHref}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink-muted)] transition hover:text-[var(--color-ink)]"
+              >
+                <ArrowLeft size={13} aria-hidden />
+                Back to {homeLabel}
+              </Link>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-[var(--color-ink)]">
+                  {profile.displayName}
+                </h1>
+                {healthStatus ? (
+                  <StatusBadge
+                    status={healthStatus}
+                    label={healthStatus.replaceAll("_", " ")}
+                  />
+                ) : profile.currentAssignment ? (
                   <StatusBadge
                     status="UNDER_INTERVENTION"
                     label="Under intervention"
                   />
-                  <p className="text-xs text-[var(--color-ink-muted)]">
-                    {personName(assignment.commando)}
-                    {assignment.startedAt
-                      ? ` — Since ${formatDate(assignment.startedAt)}`
-                      : ""}
-                  </p>
-                </>
-              ) : isSalesExecutive ? (
-                <>
+                ) : (
                   <StatusBadge
                     status="NORMAL_MANAGEMENT"
                     label="Normal management"
                   />
-                  <p className="text-xs text-[var(--color-ink-muted)]">
-                    Managed by your Team Lead
-                  </p>
-                </>
-              ) : (
-                <>
-                  <StatusBadge
-                    status="NORMAL_MANAGEMENT"
-                    label="Normal management"
-                  />
-                  <p className="text-xs text-[var(--color-ink-muted)]">
-                    No active Commando intervention
-                  </p>
-                </>
-              )}
+                )}
+              </div>
+              <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                Sales Executive · {profile.team.name}
+                {teamLeadName ? ` · TL ${teamLeadName}` : ""}
+              </p>
             </div>
           </div>
-        </div>
 
-        {!isCreateFlow ? (
           <nav
-            aria-label={`${profile.displayName} sections`}
-            className="-mx-px overflow-x-auto border-t border-[var(--color-line)]"
+            aria-label={`${profile.displayName} workspace`}
+            className="overflow-x-auto border-t border-[var(--color-line)]"
           >
             <ul className="flex min-w-max gap-0 px-2 sm:px-3">
               {sectionNav.map((item) => {
@@ -267,10 +180,10 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
                     <Link
                       href={href}
                       aria-current={active ? "page" : undefined}
-                      className={`relative block whitespace-nowrap px-3 py-2.5 text-sm transition ${
+                      className={`relative block whitespace-nowrap rounded-t-[var(--radius-sm)] px-3 py-2.5 text-sm transition ${
                         active
-                          ? "font-semibold text-[var(--color-ink)]"
-                          : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+                          ? "bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand)]"
+                          : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)]"
                       }`}
                     >
                       {item.label}
@@ -286,8 +199,8 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
               })}
             </ul>
           </nav>
-        ) : null}
-      </header>
+        </div>
+      ) : null}
 
       {children}
     </div>

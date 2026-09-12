@@ -20,7 +20,7 @@ function todayIsoDate() {
 }
 
 export default function NewWeeklyReviewPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [form, setForm] = useState({
@@ -36,6 +36,13 @@ export default function NewWeeklyReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const cancelHref =
+    user?.roleCode === "TEAM_LEAD"
+      ? form.salesExecutiveProfileId
+        ? `/profiles/${form.salesExecutiveProfileId}/reviews`
+        : "/profiles"
+      : "/weekly-reviews";
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -46,8 +53,17 @@ export default function NewWeeklyReviewPage() {
         ...form,
         meetingDate: new Date(form.meetingDate).toISOString(),
       });
-      pushToast("Draft review created", "success");
-      router.push(`/weekly-reviews/${res.data.review.id}`);
+      pushToast(
+        "Weekly review created — visible to the Sales Executive for signature.",
+        "success",
+      );
+      if (user?.roleCode === "TEAM_LEAD") {
+        router.push(
+          `/weekly-reviews/${res.data.review.id}?returnTo=${encodeURIComponent(`/profiles/${form.salesExecutiveProfileId}/reviews`)}`,
+        );
+      } else {
+        router.push(`/weekly-reviews/${res.data.review.id}`);
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to create";
       setError(msg);
@@ -55,6 +71,12 @@ export default function NewWeeklyReviewPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (user?.roleCode === "SUPER_ADMIN") {
+    return (
+      <ErrorState message="Super Admin is read-only for weekly reviews. Commando or Team Lead create reviews for Sales Executives." />
+    );
   }
 
   if (!hasPermission("WEEKLY_REVIEW_CREATE")) {
@@ -74,16 +96,18 @@ export default function NewWeeklyReviewPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <Link
-          href="/weekly-reviews"
+          href={cancelHref}
           className="text-sm text-slate-600 underline"
         >
-          ← Weekly Reviews
+          {user?.roleCode === "TEAM_LEAD"
+            ? "← Sales Executive reviews"
+            : "← Weekly Reviews"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New weekly review
         </h1>
         <p className="text-sm text-slate-600">
-          Save as draft, then submit when the meeting notes are final.
+          The Sales Executive can open and sign it as soon as you create it.
         </p>
       </div>
 
@@ -141,7 +165,7 @@ export default function NewWeeklyReviewPage() {
         {error && <ErrorState message={error} />}
 
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : "Save draft"}
+          {submitting ? "Creating…" : "Create weekly review"}
         </Button>
       </form>
     </div>

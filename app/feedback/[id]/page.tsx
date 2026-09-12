@@ -37,8 +37,8 @@ export default function FeedbackDetailPage() {
   if (error) {
     return (
       <div className="space-y-2">
-        <Link href="/feedback" className="text-sm text-slate-600 underline">
-          ← Feedback
+        <Link href="/profiles" className="text-sm text-slate-600 underline">
+          ← Sales Executives
         </Link>
         <ErrorState message={error} />
       </div>

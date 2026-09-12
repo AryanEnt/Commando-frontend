@@ -45,11 +45,17 @@ function NewEisenhowerTaskForm() {
   const searchParams = useSearchParams();
   const lockedProfileId = searchParams.get("profileId") ?? "";
   const returnTo = searchParams.get("returnTo");
+  const initialCategory = searchParams.get("category");
+  const categoryFromQuery = CATEGORIES.includes(
+    initialCategory as EisenhowerCategory,
+  )
+    ? (initialCategory as EisenhowerCategory)
+    : "DO_FIRST";
 
   const [form, setForm] = useState({
     salesExecutiveProfileId: lockedProfileId,
     month: currentMonthValue(),
-    category: "DO_FIRST" as EisenhowerCategory,
+    category: categoryFromQuery as EisenhowerCategory,
     title: "",
     notes: "",
     dueDate: "",
@@ -68,6 +74,14 @@ function NewEisenhowerTaskForm() {
       }));
     }
   }, [lockedProfileId]);
+
+  useEffect(() => {
+    setForm((prev) =>
+      prev.category === categoryFromQuery
+        ? prev
+        : { ...prev, category: categoryFromQuery },
+    );
+  }, [categoryFromQuery]);
 
   useEffect(() => {
     if (!token || !lockedProfileId) return;

@@ -89,6 +89,7 @@ function ReferralsContent() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Operations"
         title="Interventions"
         description={
           isTeamLead
@@ -99,7 +100,7 @@ function ReferralsContent() {
           canRequestSe ? (
             <Link
               href="/referrals/request"
-              className="rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+              className="btn btn-primary btn-sm"
             >
               Request Sales Executive
             </Link>

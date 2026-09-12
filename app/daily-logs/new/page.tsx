@@ -26,7 +26,7 @@ export default function NewDailyLogPage() {
 }
 
 function NewDailyLogForm() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -78,6 +78,12 @@ function NewDailyLogForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (user?.roleCode === "SUPER_ADMIN") {
+    return (
+      <ErrorState message="Super Admin is read-only for daily logs. Commando or Team Lead add coaching logs for Sales Executives." />
+    );
   }
 
   if (!hasPermission("DAILY_LOG_CREATE")) {

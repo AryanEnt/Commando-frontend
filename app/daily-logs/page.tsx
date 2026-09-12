@@ -16,7 +16,7 @@ import {
 } from "@/components/ui";
 
 export default function DailyLogsPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [total, setTotal] = useState(0);
@@ -26,7 +26,8 @@ export default function DailyLogsPage() {
   const [activityTypeId, setActivityTypeId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const canCreate = hasPermission("DAILY_LOG_CREATE");
+  const canCreate =
+    hasPermission("DAILY_LOG_CREATE") && user?.roleCode !== "SUPER_ADMIN";
 
   useEffect(() => {
     if (!token) return;

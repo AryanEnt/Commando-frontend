@@ -16,7 +16,7 @@ import {
 } from "@/components/ui";
 
 export default function NewActionItemPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [form, setForm] = useState({
@@ -27,6 +27,13 @@ export default function NewActionItemPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const cancelHref =
+    user?.roleCode === "TEAM_LEAD"
+      ? form.salesExecutiveProfileId
+        ? `/profiles/${form.salesExecutiveProfileId}/actions`
+        : "/profiles"
+      : "/action-items";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -62,8 +69,10 @@ export default function NewActionItemPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/action-items" className="text-sm text-slate-600 underline">
-          ← Action Items
+        <Link href={cancelHref} className="text-sm text-slate-600 underline">
+          {user?.roleCode === "TEAM_LEAD"
+            ? "← Sales Executive actions"
+            : "← Action Items"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New action item

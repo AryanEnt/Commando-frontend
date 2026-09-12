@@ -24,7 +24,7 @@ import {
 } from "@/components/ui";
 
 export default function MonitoringPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const [records, setRecords] = useState<MonitoringRecord[]>([]);
   const [categories, setCategories] = useState<MonitoringCategory[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
@@ -38,7 +38,8 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pageSize = 10;
-  const canCreate = hasPermission("MONITORING_CREATE");
+  const canCreate =
+    hasPermission("MONITORING_CREATE") && user?.roleCode !== "SUPER_ADMIN";
 
   useEffect(() => {
     if (!token) return;

@@ -17,6 +17,8 @@ export type SeNavItem = {
   section: SeSection;
   label: string;
   href: (profileId: string) => string;
+  /** Optional sidebar group label (Sales Executive nav). */
+  sectionGroup?: string;
 };
 
 const ALL_ITEMS: SeNavItem[] = [
@@ -137,22 +139,28 @@ export function seNavForRole(roleCode: string): SeNavItem[] {
     .map((item) => {
       if (roleCode === "SALES_EXECUTIVE") {
         if (item.section === "overview") {
-          return { ...item, label: "My workspace" };
-        }
-        if (item.section === "actions") {
-          return { ...item, label: "My actions" };
-        }
-        if (item.section === "performance") {
-          return { ...item, label: "My development" };
-        }
-        if (item.section === "eisenhower") {
-          return { ...item, label: "Monthly planning" };
-        }
-        if (item.section === "support") {
-          return { ...item, label: "Support team" };
+          return { ...item, label: "Overview", sectionGroup: "My performance" };
         }
         if (item.section === "reviews") {
-          return { ...item, label: "Weekly Reviews" };
+          return { ...item, label: "Weekly Reviews", sectionGroup: "My performance" };
+        }
+        if (item.section === "performance") {
+          return { ...item, label: "Development", sectionGroup: "My performance" };
+        }
+        if (item.section === "actions") {
+          return { ...item, label: "Actions", sectionGroup: "My performance" };
+        }
+        if (item.section === "feedback") {
+          return { ...item, label: "Feedback", sectionGroup: "My performance" };
+        }
+        if (item.section === "eisenhower") {
+          return { ...item, label: "Monthly Planning", sectionGroup: "Planning" };
+        }
+        if (item.section === "support") {
+          return { ...item, label: "Support Team", sectionGroup: "Support" };
+        }
+        if (item.section === "history") {
+          return { ...item, label: "History", sectionGroup: "Activity" };
         }
         return item;
       }
@@ -216,6 +224,7 @@ export function seCreateHref(
     | "feedback"
     | "swot"
     | "eisenhower",
+  options?: { category?: string },
 ) {
   switch (kind) {
     case "monitoring":
@@ -230,7 +239,13 @@ export function seCreateHref(
       return `/profiles/${profileId}/feedback/new`;
     case "swot":
       return `/swot/new?profileId=${profileId}&returnTo=${encodeURIComponent(`/profiles/${profileId}`)}`;
-    case "eisenhower":
-      return `/eisenhower/new?profileId=${profileId}&returnTo=${encodeURIComponent(`/profiles/${profileId}/eisenhower`)}`;
+    case "eisenhower": {
+      const params = new URLSearchParams({
+        profileId,
+        returnTo: `/profiles/${profileId}/eisenhower`,
+      });
+      if (options?.category) params.set("category", options.category);
+      return `/eisenhower/new?${params.toString()}`;
+    }
   }
 }

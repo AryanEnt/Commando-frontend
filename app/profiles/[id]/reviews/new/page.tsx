@@ -19,7 +19,7 @@ export default function ContextualReviewNewPage() {
   return (
     <SeContextualCreatePage
       title="New weekly review"
-      description="Create a draft weekly review for this Sales Executive."
+      description="Create a weekly review for this Sales Executive. They can sign it as soon as it is created."
       permission="WEEKLY_REVIEW_CREATE"
       returnHref={(id) => `/profiles/${id}/reviews`}
     >
@@ -67,11 +67,15 @@ function ReviewForm({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createWeeklyReview(token, {
+      await api.createWeeklyReview(token, {
         salesExecutiveProfileId: profileId,
         ...form,
         meetingDate: new Date(form.meetingDate).toISOString(),
       });
+      pushToast(
+        "Weekly review created — visible to the Sales Executive for signature.",
+        "success",
+      );
       onSuccess(`/profiles/${profileId}/reviews`);
     } catch (err) {
       handleApiSubmit(err, setError, pushToast);
@@ -124,7 +128,7 @@ function ReviewForm({
         />
       ))}
       <Button type="submit" disabled={submitting}>
-        {submitting ? "Saving…" : "Create draft"}
+        {submitting ? "Creating…" : "Create weekly review"}
       </Button>
     </form>
   );

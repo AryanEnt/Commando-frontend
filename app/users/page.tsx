@@ -49,7 +49,12 @@ export default function UsersPage() {
   const [busy, setBusy] = useState(false);
 
   const canCreate = hasPermission("USER_CREATE");
-  const canCreateSe = hasPermission("SALES_EXECUTIVE_CREATE");
+  const canCreateSe =
+    hasPermission("SALES_EXECUTIVE_CREATE") ||
+    me?.roleCode === "TEAM_LEAD" ||
+    me?.roleCode === "SUPER_ADMIN";
+  const canCreateSupport =
+    hasPermission("SALES_SUPPORT_CREATE") || me?.roleCode === "TEAM_LEAD";
   const canStatus = hasPermission("USER_STATUS_UPDATE");
 
   const filtersKey = useMemo(
@@ -122,8 +127,9 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="page-shell">
       <PageHeader
+        eyebrow="People"
         title="Users"
         description="Manage accounts, roles, teams, and Sales Executive profiles."
         actions={
@@ -131,17 +137,17 @@ export default function UsersPage() {
             {canCreateSe ? (
               <Link
                 href="/users/sales-executives/new"
-                className="inline-flex h-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+                className="btn btn-primary btn-sm"
               >
                 Create Sales Executive
               </Link>
             ) : null}
-            {canCreate ? (
+            {canCreate || canCreateSupport ? (
               <Link
                 href="/users/new"
-                className="inline-flex h-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
+                className="btn btn-secondary btn-sm"
               >
-                Create User
+                {canCreate ? "Create User" : "Add Sales Support"}
               </Link>
             ) : null}
           </div>
@@ -249,7 +255,7 @@ export default function UsersPage() {
                             Profile ✓
                           </span>
                         ) : u.profileStatus === "missing" ? (
-                          <span className="text-sm text-[var(--status-warning)]">
+                          <span className="text-sm text-[var(--status-warn)]">
                             Not created
                           </span>
                         ) : (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type FeedbackItem, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
@@ -20,6 +21,14 @@ import {
 } from "@/components/ui";
 
 export default function FeedbackPage() {
+  return (
+    <TeamLeadListRedirectGate listPath="/feedback">
+      <FeedbackContent />
+    </TeamLeadListRedirectGate>
+  );
+}
+
+function FeedbackContent() {
   const { token, hasPermission } = useAuth();
   const [items, setItems] = useState<FeedbackItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
@@ -73,7 +82,7 @@ export default function FeedbackPage() {
     <div className="space-y-6">
       <PageHeader
         title="Feedback"
-        description="Historical coaching feedback. New notes append; nothing is overwritten. Commando-sourced notes stay hidden from Sales Executives until after their assignment ends."
+        description="Coaching feedback for this Sales Executive. Notes append over time and are never overwritten."
         actions={
           canCreate ? (
             <Link

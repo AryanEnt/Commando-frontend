@@ -360,8 +360,10 @@ export default function OrganizationPage() {
   const [search, setSearch] = useState("");
   const [focus, setFocus] = useState<FocusFilter>("all");
 
+  const isTeamLead = user?.roleCode === "TEAM_LEAD";
   const allowed =
-    user?.roleCode === "SUPER_ADMIN" && hasPermission("TEAM_VIEW");
+    (user?.roleCode === "SUPER_ADMIN" || isTeamLead) &&
+    hasPermission("TEAM_VIEW");
 
   const load = useCallback(async () => {
     if (!token || !allowed) return;
@@ -414,30 +416,32 @@ export default function OrganizationPage() {
 
   if (!allowed) {
     return (
-      <ErrorState message="Only Super Admin may view the organization structure." />
+      <ErrorState message="Only Super Admin or Team Lead may view the organization structure." />
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="page-shell">
       <PageHeader
+        eyebrow="People"
         title="Organization"
-        description="See how Team Leads, Commandos, and Sales Executives are structured across every team."
+        description={
+          isTeamLead
+            ? "See Team Leads, Commandos, and Sales Executives for the teams you lead."
+            : "See how Team Leads, Commandos, and Sales Executives are structured across every team."
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {hasPermission("SALES_EXECUTIVE_CREATE") ? (
               <Link
                 href="/users/sales-executives/new"
-                className="inline-flex h-9 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3.5 text-sm font-medium hover:bg-[var(--color-surface-2)]"
+                className="btn btn-secondary btn-sm"
               >
                 Onboard Sales Executive
               </Link>
             ) : null}
-            <Link
-              href="/teams"
-              className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
-            >
-              Manage teams
+            <Link href="/teams" className="btn btn-primary btn-sm">
+              {isTeamLead ? "My teams" : "Manage teams"}
             </Link>
           </div>
         }

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui";
 
 export default function NewFeedbackPage() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
   const [form, setForm] = useState({
@@ -24,6 +24,13 @@ export default function NewFeedbackPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const cancelHref =
+    user?.roleCode === "TEAM_LEAD"
+      ? form.salesExecutiveProfileId
+        ? `/profiles/${form.salesExecutiveProfileId}/feedback`
+        : "/profiles"
+      : "/feedback";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -55,8 +62,10 @@ export default function NewFeedbackPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <Link href="/feedback" className="text-sm text-slate-600 underline">
-          ← Feedback
+        <Link href={cancelHref} className="text-sm text-slate-600 underline">
+          {user?.roleCode === "TEAM_LEAD"
+            ? "← Sales Executive feedback"
+            : "← Feedback"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           New feedback

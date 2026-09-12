@@ -24,7 +24,7 @@ export default function NewMonitoringPage() {
 }
 
 function NewMonitoringContent() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const lockedProfileId = searchParams.get("profileId") ?? "";
@@ -62,6 +62,12 @@ function NewMonitoringContent() {
       cancelled = true;
     };
   }, [token, profileId]);
+
+  if (user?.roleCode === "SUPER_ADMIN") {
+    return (
+      <ErrorState message="Super Admin is read-only for monitoring. Commando or Team Lead record sessions for Sales Executives." />
+    );
+  }
 
   if (!hasPermission("MONITORING_CREATE")) {
     return (

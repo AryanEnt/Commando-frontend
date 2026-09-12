@@ -75,6 +75,18 @@ describe("navigation helpers", () => {
     ]);
     expect(items.every((i) => i.href !== "/profiles")).toBe(true);
   });
+
+  it("keeps Team Lead primary nav free of global performance lists", () => {
+    const items = navItemsForRole("TEAM_LEAD", () => true);
+    const hrefs = items.map((i) => i.href);
+    expect(hrefs).not.toContain("/weekly-reviews");
+    expect(hrefs).not.toContain("/action-items");
+    expect(hrefs).not.toContain("/feedback");
+    expect(hrefs).not.toContain("/performance");
+    expect(items.some((i) => i.section === "Performance")).toBe(false);
+    expect(hrefs).toContain("/profiles");
+    expect(hrefs).toContain("/organization");
+  });
 });
 
 describe("SE workspace navigation", () => {

@@ -167,9 +167,12 @@ export default function CreateSalesExecutivePage() {
     employeeCode: "",
   });
 
-  const canCreate = hasPermission("SALES_EXECUTIVE_CREATE");
-  const canViewUsers = hasPermission("USER_VIEW");
   const isTeamLead = user?.roleCode === "TEAM_LEAD";
+  const canCreate =
+    hasPermission("SALES_EXECUTIVE_CREATE") ||
+    isTeamLead ||
+    user?.roleCode === "SUPER_ADMIN";
+  const canViewUsers = hasPermission("USER_VIEW");
   const exitHref = canViewUsers ? "/users" : "/profiles";
   const exitLabel = canViewUsers ? "Users" : "Sales Executives";
   const selectedTeam = useMemo(
