@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDue, formatTime } from "@/lib/dates";
+import { formatSwotField } from "@/lib/swot-points";
 import { personName } from "@/lib/labels";
 import {
   currentWeekMondayYmd,
@@ -1816,10 +1817,26 @@ function SwotGrid({
   swot: NonNullable<WeeklyReviewHub["swot"]>[number];
 }) {
   const cells = [
-    { label: "Strengths", value: swot.strength, tone: "strength" },
-    { label: "Weaknesses", value: swot.weakness, tone: "weakness" },
-    { label: "Opportunities", value: swot.opportunity, tone: "opportunity" },
-    { label: "Threats", value: swot.threat, tone: "threat" },
+    {
+      label: "Strengths",
+      value: formatSwotField(swot.strengthPoints, swot.strength),
+      tone: "strength",
+    },
+    {
+      label: "Weaknesses",
+      value: formatSwotField(swot.weaknessPoints, swot.weakness),
+      tone: "weakness",
+    },
+    {
+      label: "Opportunities",
+      value: formatSwotField(swot.opportunityPoints, swot.opportunity),
+      tone: "opportunity",
+    },
+    {
+      label: "Threats",
+      value: formatSwotField(swot.threatPoints, swot.threat),
+      tone: "threat",
+    },
   ];
   return (
     <div className="wr-swot-grid">

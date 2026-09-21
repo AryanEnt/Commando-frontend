@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
   CalendarDays,
@@ -18,20 +18,24 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import type {
-  ActionItem,
-  EisenhowerCategory,
-  EisenhowerTask,
-  FeedbackItem,
-  PerformanceMetrics,
-  ProfileDetail,
-  SeSupportTeamContext,
-  SupportTask,
-  SwotItem,
-  WeeklyReview,
-  InterventionWorkspace,
+import {
+  api,
+  type ActionItem,
+  type EisenhowerCategory,
+  type EisenhowerTask,
+  type FeedbackItem,
+  type PerformanceMetrics,
+  type ProfileDetail,
+  type SeSupportTeamContext,
+  type SupportTask,
+  type SwotItem,
+  type WeeklyReview,
+  type InterventionWorkspace,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast-context";
 import { formatDate, formatWhen } from "@/lib/dates";
+import { formatSwotField } from "@/lib/swot-points";
 import { personName } from "@/lib/labels";
 import { seWorkspaceHref } from "@/lib/se-workspace-nav";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -53,6 +57,8 @@ type Props = {
   supportTasks: SupportTask[];
   canEditSelfSwot: boolean;
   canViewSupport: boolean;
+  canCompleteActions?: boolean;
+  onActionsChanged?: () => void | Promise<void>;
 };
 
 type PriorityItem = {
@@ -206,15 +212,26 @@ function SwotTile({ item, title }: { item: SwotItem | null; title: string }) {
             ).map(([k, v, tone]) => (
               <div
                 key={k}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-2"
+                className={`rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-2${
+                  v == null ? " opacity-70" : ""
+                }`}
               >
                 <span
                   className={`inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold ${tone}`}
                 >
                   {k}
                 </span>
-                <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-[var(--color-ink)]">
-                  {v || "—"}
+                <p className="mt-1.5 line-clamp-3 whitespace-pre-line text-[11px] leading-snug text-[var(--color-ink)]">
+                  {formatSwotField(
+                    k === "S"
+                      ? item.strengthPoints
+                      : k === "W"
+                        ? item.weaknessPoints
+                        : k === "O"
+                          ? item.opportunityPoints
+                          : item.threatPoints,
+                    v,
+                  ) ?? "Held back"}
                 </p>
               </div>
             ))}
@@ -248,7 +265,12 @@ export function SalesExecutiveDashboard({
   supportTasks,
   canEditSelfSwot,
   canViewSupport,
+  canCompleteActions = false,
+  onActionsChanged,
 }: Props) {
+  const { token } = useAuth();
+  const { pushToast } = useToast();
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const assignment = profile.currentAssignment;
   const referral = workspace?.latestReferral ?? null;
   const underIntervention = Boolean(assignment);
@@ -297,6 +319,23 @@ export function SalesExecutiveDashboard({
     : null;
 
   const swotHref = `/swot/new?profileId=${profile.id}&returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "overview"))}`;
+
+  async function completeAction(id: string) {
+    if (!token || !canCompleteActions) return;
+    setCompletingId(id);
+    try {
+      await api.completeActionItem(token, id);
+      pushToast("Assignment completed", "success");
+      await onActionsChanged?.();
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : "Could not complete assignment",
+        "error",
+      );
+    } finally {
+      setCompletingId(null);
+    }
+  }
 
   const priorities: PriorityItem[] = [];
   for (const a of overdueActions.slice(0, 4)) {
@@ -770,10 +809,24 @@ export function SalesExecutiveDashboard({
                             {overdue ? " · Overdue" : ""}
                           </p>
                         </div>
-                        <StatusBadge
-                          status={overdue ? "OVERDUE" : a.status}
-                          label={overdue ? "Overdue" : undefined}
-                        />
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <StatusBadge
+                            status={overdue ? "OVERDUE" : a.status}
+                            label={overdue ? "Overdue" : undefined}
+                          />
+                          {canCompleteActions ? (
+                            <Button
+                              variant="success"
+                              size="sm"
+                              disabled={completingId === a.id}
+                              onClick={() => void completeAction(a.id)}
+                            >
+                              {completingId === a.id
+                                ? "Completing…"
+                                : "Complete"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </li>
                     );
                   })}

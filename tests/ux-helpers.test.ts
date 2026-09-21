@@ -15,6 +15,13 @@ import {
 } from "../lib/se-workspace-persist";
 import { interventionStageFromAssignment, referralNextAction } from "../lib/lifecycle";
 import { greeting, statusLabel } from "../lib/labels";
+import {
+  filterUnseenInboxItems,
+  formatSeAlertCount,
+  inboxSeenIdFromPathname,
+  seNavAlertCounts,
+  seSectionForWorkspaceEvent,
+} from "../lib/se-nav-alerts";
 
 describe("dates helpers", () => {
   it("returns em dash for empty values", () => {
@@ -173,5 +180,77 @@ describe("lifecycle copy", () => {
   it("labels statuses for people, not systems", () => {
     expect(statusLabel("IN_PROGRESS")).toBe("In progress");
     expect(greeting(new Date("2026-09-08T03:00:00"))).toMatch(/Good/);
+  });
+});
+
+describe("SE sidebar alerts", () => {
+  it("maps workspace activity onto the SE nav item", () => {
+    expect(seSectionForWorkspaceEvent("ACTION")).toBe("actions");
+    expect(seSectionForWorkspaceEvent("REVIEW")).toBe("reviews");
+    expect(seSectionForWorkspaceEvent("FEEDBACK")).toBe("feedback");
+    expect(seSectionForWorkspaceEvent("SUPPORT")).toBe("support");
+    expect(seSectionForWorkspaceEvent("INTERVENTION")).toBe("overview");
+    expect(seSectionForWorkspaceEvent("DAILY_LOG")).toBe("timeline");
+  });
+
+  it("counts only unseen items created by someone else", () => {
+    const counts = seNavAlertCounts({
+      viewerId: "se-1",
+      seen: { actions: Date.parse("2026-09-01T00:00:00.000Z") },
+      events: [
+        {
+          type: "ACTION",
+          occurredAt: "2026-09-20T00:00:00.000Z",
+          createdAt: "2026-09-20T00:00:00.000Z",
+          createdById: "tl-1",
+        },
+        {
+          type: "ACTION",
+          occurredAt: "2026-08-01T00:00:00.000Z",
+          createdAt: "2026-08-01T00:00:00.000Z",
+          createdById: "tl-1",
+        },
+        {
+          type: "ACTION",
+          occurredAt: "2026-09-21T00:00:00.000Z",
+          createdAt: "2026-09-21T00:00:00.000Z",
+          createdById: "se-1",
+        },
+      ] as never,
+    });
+    expect(counts.actions).toBe(1);
+    expect(formatSeAlertCount(1)).toBe("1");
+    expect(formatSeAlertCount(12)).toBe("9+");
+  });
+
+  it("maps record pages to inbox item ids", () => {
+    expect(inboxSeenIdFromPathname("/action-items/abc")).toBe("action-abc");
+    expect(inboxSeenIdFromPathname("/referrals/abc")).toBe("referral-abc");
+    expect(inboxSeenIdFromPathname("/weekly-reviews/abc")).toBe("review-abc");
+    expect(inboxSeenIdFromPathname("/my-tasks/abc")).toBe("task-abc");
+    expect(inboxSeenIdFromPathname("/action-items/new")).toBeNull();
+  });
+
+  it("hides inbox items after they are marked seen", () => {
+    const items = filterUnseenInboxItems(
+      [
+        {
+          id: "action-1",
+          section: "actions",
+          title: "Follow up",
+          at: 200,
+          href: "/action-items/1",
+        },
+        {
+          id: "referral-1",
+          section: "overview",
+          title: "Referral",
+          at: 100,
+          href: "/referrals/1",
+        },
+      ],
+      { "action-1": 200 },
+    );
+    expect(items.map((item) => item.id)).toEqual(["referral-1"]);
   });
 });

@@ -45,8 +45,11 @@ import { personName, roleLabel } from "@/lib/labels";
 import { api, type ProfileListItem } from "@/lib/api";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Avatar, IconButton } from "@/components/ui";
+import { NotificationBell } from "@/components/NotificationBell";
 import { SeWorkspaceProvider, useSeWorkspace } from "@/lib/se-workspace-context";
 import { useOwnSalesProfileId } from "@/lib/own-profile";
+import { useSeNavAlerts } from "@/hooks/useSeNavAlerts";
+import { formatSeAlertCount } from "@/lib/se-nav-alerts";
 import {
   seNavForRole,
   seSectionFromPathname,
@@ -138,6 +141,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profileId: ownProfileId } = useOwnSalesProfileId();
 
   const isSalesExecutive = user?.roleCode === "SALES_EXECUTIVE";
+  const {
+    counts: seNavAlerts,
+    items: seNotifyItems,
+    markAllRead,
+    dismissItem,
+  } = useSeNavAlerts({
+    enabled: Boolean(user && token),
+    token,
+    userId: user?.id ?? null,
+    roleCode: user?.roleCode,
+    profileId: ownProfileId,
+    pathname,
+  });
   const isSalesSupport = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
   const isIndividualHome = isSalesExecutive || isSalesSupport;
   const pathProfileId = useMemo(
@@ -403,6 +419,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 isSalesExecutive && "sectionKey" in item && item.sectionKey
                   ? seSectionFromPathname(pathname) === item.sectionKey
                   : pathMatches(pathname, item.href);
+              const alertCount =
+                isSalesExecutive && item.sectionKey
+                  ? seNavAlerts[item.sectionKey as SeSection] ?? 0
+                  : 0;
+              const alertLabel = formatSeAlertCount(alertCount);
               return (
                 <div key={`${item.href}-${item.label}`}>
                   {item.section && item.section !== prev?.section && (
@@ -419,6 +440,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     title={item.label}
                     onClick={() => setSidebarOpen(false)}
                     aria-current={active ? "page" : undefined}
+                    aria-label={
+                      alertCount > 0
+                        ? `${item.label}, ${alertCount} new`
+                        : item.label
+                    }
                     className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13px] transition duration-150 ${
                       collapsed
                         ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
@@ -430,18 +456,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     }`}
                   >
                     {Icon ? (
-                      <Icon
-                        size={16}
-                        className={
-                          active
-                            ? "shrink-0 text-white"
-                            : "shrink-0 text-[var(--color-sidebar-subtle)] group-hover:text-[#6ee7b7]"
-                        }
-                      />
+                      <span className="relative shrink-0">
+                        <Icon
+                          size={16}
+                          className={
+                            active
+                              ? "text-white"
+                              : "text-[var(--color-sidebar-subtle)] group-hover:text-[#6ee7b7]"
+                          }
+                        />
+                        {alertCount > 0 && collapsed ? (
+                          <span
+                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[#34d399] ring-2 ring-[var(--color-sidebar)] lg:block"
+                            aria-hidden
+                          />
+                        ) : null}
+                      </span>
                     ) : null}
                     <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
                       {item.label}
                     </span>
+                    {alertCount > 0 ? (
+                      <span
+                        className={`ml-auto inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-[#34d399] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#062016] ${
+                          collapsed ? "lg:hidden" : ""
+                        }`}
+                      >
+                        {alertLabel}
+                      </span>
+                    ) : null}
                   </Link>
                 </div>
               );
@@ -600,6 +643,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="hidden rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-ink-muted)] ring-1 ring-inset ring-[var(--color-line)] sm:inline">
                 {roleLabel(user.roleCode)}
               </span>
+              <NotificationBell
+                items={seNotifyItems}
+                onMarkAllRead={markAllRead}
+                onOpenItem={dismissItem}
+              />
             </div>
           </div>
         </header>

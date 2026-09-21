@@ -1,4 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import {
+  clearSession,
+  getStoredAccessToken,
+  persistSession,
+} from "@/lib/session";
+
+/** Same-origin in the browser (Next proxies /api). Direct URL only for SSR. */
+function apiBase() {
+  if (typeof window !== "undefined") return "";
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+}
 
 export type AuthUser = {
   id: string;
@@ -19,11 +29,77 @@ export class ApiError extends Error {
   }
 }
 
+type RequestOptions = RequestInit & {
+  token?: string | null;
+  skipAuthRefresh?: boolean;
+};
+
+const AUTH_SKIP_REFRESH = new Set([
+  "/api/auth/login",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+]);
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  return (await res.json().catch(() => ({}))) as Record<string, unknown>;
+}
+
+function errorFromBody(res: Response, body: Record<string, unknown>) {
+  const err = body.error as { code?: string; message?: string } | undefined;
+  return new ApiError(
+    res.status,
+    err?.code ?? "ERROR",
+    err?.message ?? "Request failed",
+  );
+}
+
+async function refreshSessionOnce(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const timeoutMs = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 30_000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${apiBase()}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
+      const body = await readJson(res);
+      if (!res.ok) {
+        clearSession();
+        return null;
+      }
+      const data = body.data as
+        | { accessToken?: string; user?: AuthUser }
+        | undefined;
+      const accessToken = data?.accessToken;
+      if (!accessToken) {
+        clearSession();
+        return null;
+      }
+      persistSession(accessToken, data.user ?? null);
+      return accessToken;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit & { token?: string | null } = {},
+  options: RequestOptions = {},
 ): Promise<T> {
-  const { token, headers, signal, ...rest } = options;
+  const { token, headers, signal, skipAuthRefresh, ...rest } = options;
   const timeoutMs = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 30_000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -32,25 +108,37 @@ async function request<T>(
     else signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
+  const access = token ?? getStoredAccessToken();
+
   try {
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(`${apiBase()}${path}`, {
       ...rest,
       signal: controller.signal,
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(access ? { Authorization: `Bearer ${access}` } : {}),
         ...headers,
       },
     });
 
-    const body = await res.json().catch(() => ({}));
+    const body = await readJson(res);
+    if (
+      res.status === 401 &&
+      !skipAuthRefresh &&
+      !AUTH_SKIP_REFRESH.has(path)
+    ) {
+      const next = await refreshSessionOnce();
+      if (next) {
+        return request<T>(path, {
+          ...options,
+          token: next,
+          skipAuthRefresh: true,
+        });
+      }
+    }
     if (!res.ok) {
-      throw new ApiError(
-        res.status,
-        body?.error?.code ?? "ERROR",
-        body?.error?.message ?? "Request failed",
-      );
+      throw errorFromBody(res, body);
     }
     return body as T;
   } catch (err) {
@@ -68,22 +156,39 @@ export const api = {
   login(email: string, password: string) {
     return request<{ data: { user: AuthUser; accessToken: string } }>(
       "/api/auth/login",
-      { method: "POST", body: JSON.stringify({ email, password }) },
-    );
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+        skipAuthRefresh: true,
+      },
+    ).then((res) => {
+      persistSession(res.data.accessToken, res.data.user);
+      return res;
+    });
   },
   refresh() {
     return request<{ data: { user: AuthUser; accessToken: string } }>(
       "/api/auth/refresh",
-      { method: "POST", body: JSON.stringify({}) },
-    );
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        skipAuthRefresh: true,
+      },
+    ).then((res) => {
+      persistSession(res.data.accessToken, res.data.user);
+      return res;
+    });
   },
-  me(token: string) {
+  me(token?: string) {
     return request<{ data: { user: AuthUser } }>("/api/auth/me", { token });
   },
-  logout(token: string) {
+  logout(token?: string | null) {
     return request<{ data: { ok: boolean } }>("/api/auth/logout", {
       method: "POST",
       token,
+      skipAuthRefresh: true,
+    }).finally(() => {
+      clearSession();
     });
   },
   getTeams(token: string, search?: string) {
@@ -608,11 +713,19 @@ export const api = {
     token: string,
     body: {
       salesExecutiveProfileId: string;
-      strength: string;
-      weakness: string;
-      opportunity: string;
-      threat: string;
+      strength?: string;
+      weakness?: string;
+      opportunity?: string;
+      threat?: string;
+      strengthPoints?: Array<{ text: string; visible?: boolean }>;
+      weaknessPoints?: Array<{ text: string; visible?: boolean }>;
+      opportunityPoints?: Array<{ text: string; visible?: boolean }>;
+      threatPoints?: Array<{ text: string; visible?: boolean }>;
       visibleToSalesExecutive?: boolean;
+      visibleStrength?: boolean;
+      visibleWeakness?: boolean;
+      visibleOpportunity?: boolean;
+      visibleThreat?: boolean;
     },
   ) {
     return request<{ data: { swot: SwotItem } }>("/api/swot", {
@@ -624,12 +737,23 @@ export const api = {
   setSwotVisibility(
     token: string,
     id: string,
-    visibleToSalesExecutive: boolean,
+    body: {
+      visibleToSalesExecutive?: boolean;
+      visibleStrength?: boolean;
+      visibleWeakness?: boolean;
+      visibleOpportunity?: boolean;
+      visibleThreat?: boolean;
+      point?: {
+        quadrant: "strength" | "weakness" | "opportunity" | "threat";
+        id: string;
+        visible: boolean;
+      };
+    },
   ) {
     return request<{ data: { swot: SwotItem } }>(`/api/swot/${id}/visibility`, {
       method: "PATCH",
       token,
-      body: JSON.stringify({ visibleToSalesExecutive }),
+      body: JSON.stringify(body),
     });
   },
   getActivityTypes(
@@ -2083,6 +2207,12 @@ export type Referral = {
   allowedActions: string[];
 };
 
+export type SwotPoint = {
+  id: string;
+  text: string;
+  visible: boolean;
+};
+
 export type SwotItem = {
   id: string;
   salesExecutiveProfileId: string;
@@ -2091,13 +2221,21 @@ export type SwotItem = {
   team: { id: string; name: string };
   assignmentId: string | null;
   source: "TEAM_LEAD" | "COMMANDO" | "SALES_EXECUTIVE";
-  strength: string;
-  weakness: string;
-  opportunity: string;
-  threat: string;
+  strength: string | null;
+  weakness: string | null;
+  opportunity: string | null;
+  threat: string | null;
+  strengthPoints?: SwotPoint[];
+  weaknessPoints?: SwotPoint[];
+  opportunityPoints?: SwotPoint[];
+  threatPoints?: SwotPoint[];
   versionNumber?: number;
   supersedesId?: string | null;
   visibleToSalesExecutive?: boolean;
+  visibleStrength?: boolean;
+  visibleWeakness?: boolean;
+  visibleOpportunity?: boolean;
+  visibleThreat?: boolean;
   createdById: string;
   createdBy: {
     id: string;
@@ -2358,10 +2496,14 @@ export type WeeklyReviewHub = {
   swot?: Array<{
     id: string;
     source: string;
-    strength: string;
-    weakness: string;
-    opportunity: string;
-    threat: string;
+    strength: string | null;
+    weakness: string | null;
+    opportunity: string | null;
+    threat: string | null;
+    strengthPoints?: Array<{ id: string; text: string; visible: boolean }>;
+    weaknessPoints?: Array<{ id: string; text: string; visible: boolean }>;
+    opportunityPoints?: Array<{ id: string; text: string; visible: boolean }>;
+    threatPoints?: Array<{ id: string; text: string; visible: boolean }>;
     versionNumber: number;
     createdAt: string;
     createdBy: WeeklyReviewHubPerson;

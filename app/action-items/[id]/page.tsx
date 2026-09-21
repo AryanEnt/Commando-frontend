@@ -24,7 +24,7 @@ import {
 export default function ActionItemDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const [item, setItem] = useState<ActionItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +45,10 @@ export default function ActionItemDetailPage() {
   });
 
   const canUpdate = hasPermission("ACTION_ITEM_UPDATE");
+  const canCompleteOwn =
+    canUpdate ||
+    (user?.roleCode === "SALES_EXECUTIVE" &&
+      item?.profile.userId === user.id);
 
   async function load() {
     if (!token || !params.id) return;
@@ -193,26 +197,38 @@ export default function ActionItemDetailPage() {
             <StatusBadge status={item.status} />
           </div>
         </div>
-        {canUpdate && item.isActive && (
+        {item.isActive && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
-              Edit
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void runLifecycle("complete")}
-            >
-              Complete
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void runLifecycle("expire")}
-            >
-              Expire
-            </Button>
-            <Button onClick={() => setReplacing((v) => !v)}>Replace</Button>
+            {canUpdate ? (
+              <>
+                <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
+                  Edit
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void runLifecycle("complete")}
+                >
+                  Complete
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void runLifecycle("expire")}
+                >
+                  Expire
+                </Button>
+                <Button onClick={() => setReplacing((v) => !v)}>Replace</Button>
+              </>
+            ) : canCompleteOwn ? (
+              <Button
+                variant="success"
+                disabled={busy}
+                onClick={() => void runLifecycle("complete")}
+              >
+                {busy ? "Completing…" : "Complete"}
+              </Button>
+            ) : null}
           </div>
         )}
       </div>

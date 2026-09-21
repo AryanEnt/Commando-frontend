@@ -7,19 +7,24 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
+import { SwotPointsEditor } from "@/components/swot/SwotPointsEditor";
+import {
+  emptySwotPoints,
+  pointsFromSwotField,
+  type SwotPointDraft,
+} from "@/lib/swot-points";
 import {
   Button,
   ErrorState,
   LoadingState,
-  TextArea,
 } from "@/components/ui";
 
 type FormState = {
   salesExecutiveProfileId: string;
-  strength: string;
-  weakness: string;
-  opportunity: string;
-  threat: string;
+  strength: SwotPointDraft[];
+  weakness: SwotPointDraft[];
+  opportunity: SwotPointDraft[];
+  threat: SwotPointDraft[];
 };
 
 const SWOT_CREATOR_ROLES = new Set([
@@ -36,6 +41,15 @@ export default function NewSwotPage() {
   );
 }
 
+function toPayload(points: SwotPointDraft[], forceVisible: boolean) {
+  return points
+    .map((p) => ({
+      text: p.text.trim(),
+      visible: forceVisible ? true : p.visible,
+    }))
+    .filter((p) => p.text.length > 0);
+}
+
 function NewSwotForm() {
   const { token, hasPermission, user, loading } = useAuth();
   const router = useRouter();
@@ -45,10 +59,10 @@ function NewSwotForm() {
 
   const [form, setForm] = useState<FormState>({
     salesExecutiveProfileId: lockedProfileId,
-    strength: "",
-    weakness: "",
-    opportunity: "",
-    threat: "",
+    strength: emptySwotPoints(),
+    weakness: emptySwotPoints(),
+    opportunity: emptySwotPoints(),
+    threat: emptySwotPoints(),
   });
   const [lockedProfileName, setLockedProfileName] = useState<string | null>(
     null,
@@ -61,6 +75,8 @@ function NewSwotForm() {
     Boolean(user) &&
     hasPermission("SWOT_CREATE") &&
     SWOT_CREATOR_ROLES.has(user!.roleCode);
+  const showVisibility =
+    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "COMMANDO_EXECUTIVE";
 
   useEffect(() => {
     if (lockedProfileId) {
@@ -101,10 +117,25 @@ function NewSwotForm() {
         if (!latest) return;
         setForm((prev) => ({
           ...prev,
-          strength: prev.strength || latest.strength,
-          weakness: prev.weakness || latest.weakness,
-          opportunity: prev.opportunity || latest.opportunity,
-          threat: prev.threat || latest.threat,
+          strength:
+            prev.strength.some((p) => p.text.trim())
+              ? prev.strength
+              : pointsFromSwotField(latest.strengthPoints, latest.strength),
+          weakness:
+            prev.weakness.some((p) => p.text.trim())
+              ? prev.weakness
+              : pointsFromSwotField(latest.weaknessPoints, latest.weakness),
+          opportunity:
+            prev.opportunity.some((p) => p.text.trim())
+              ? prev.opportunity
+              : pointsFromSwotField(
+                  latest.opportunityPoints,
+                  latest.opportunity,
+                ),
+          threat:
+            prev.threat.some((p) => p.text.trim())
+              ? prev.threat
+              : pointsFromSwotField(latest.threatPoints, latest.threat),
         }));
       })
       .catch(() => undefined);
@@ -128,10 +159,33 @@ function NewSwotForm() {
       setError("Select a Sales Executive profile");
       return;
     }
+    const forceVisible = user?.roleCode === "SALES_EXECUTIVE";
+    const strengthPoints = toPayload(form.strength, Boolean(forceVisible));
+    const weaknessPoints = toPayload(form.weakness, Boolean(forceVisible));
+    const opportunityPoints = toPayload(
+      form.opportunity,
+      Boolean(forceVisible),
+    );
+    const threatPoints = toPayload(form.threat, Boolean(forceVisible));
+    if (
+      !strengthPoints.length ||
+      !weaknessPoints.length ||
+      !opportunityPoints.length ||
+      !threatPoints.length
+    ) {
+      setError("Add at least one point in every SWOT box");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createSwot(token, form);
+      const res = await api.createSwot(token, {
+        salesExecutiveProfileId: form.salesExecutiveProfileId,
+        strengthPoints,
+        weaknessPoints,
+        opportunityPoints,
+        threatPoints,
+      });
       router.push(
         returnTo
           ? returnTo
@@ -192,6 +246,13 @@ function NewSwotForm() {
           creates a <strong>new version</strong> — previous SWOT content stays
           available in history.
         </p>
+        {showVisibility ? (
+          <p className="mt-2 text-sm text-slate-600">
+            Add numbered points. Check <strong>Show to SE</strong> only on the
+            points the Sales Executive should see. Team Lead and Commando always
+            see the full list.
+          </p>
+        ) : null}
       </div>
 
       <form
@@ -218,23 +279,30 @@ function NewSwotForm() {
           />
         )}
 
-        {(
-          [
-            ["strength", "Strength"],
-            ["weakness", "Weakness"],
-            ["opportunity", "Opportunity"],
-            ["threat", "Threat"],
-          ] as const
-        ).map(([key, label]) => (
-          <TextArea
-            key={key}
-            label={label}
-            required
-            rows={3}
-            value={form[key]}
-            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-          />
-        ))}
+        <SwotPointsEditor
+          label="Strengths"
+          showVisibility={showVisibility}
+          points={form.strength}
+          onChange={(strength) => setForm({ ...form, strength })}
+        />
+        <SwotPointsEditor
+          label="Weaknesses"
+          showVisibility={showVisibility}
+          points={form.weakness}
+          onChange={(weakness) => setForm({ ...form, weakness })}
+        />
+        <SwotPointsEditor
+          label="Opportunities"
+          showVisibility={showVisibility}
+          points={form.opportunity}
+          onChange={(opportunity) => setForm({ ...form, opportunity })}
+        />
+        <SwotPointsEditor
+          label="Threats"
+          showVisibility={showVisibility}
+          points={form.threat}
+          onChange={(threat) => setForm({ ...form, threat })}
+        />
 
         {error && <ErrorState message={error} />}
 

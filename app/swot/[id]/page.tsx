@@ -9,35 +9,16 @@ import { useToast } from "@/lib/toast-context";
 import { personName, roleLabel } from "@/lib/labels";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  Button,
+  SwotQuadrantBoard,
+  type SwotQuadrantKey,
+  SWOT_QUADRANTS,
+} from "@/components/swot/SwotQuadrantBoard";
+import {
   DateTimeCell,
   ErrorState,
   LoadingState,
   PageHeader,
 } from "@/components/ui";
-
-const QUADRANTS = [
-  {
-    key: "strength" as const,
-    title: "Strengths",
-    explanation: "What is already working in this Sales Executive’s selling.",
-  },
-  {
-    key: "weakness" as const,
-    title: "Weaknesses",
-    explanation: "Gaps that currently hold performance back.",
-  },
-  {
-    key: "opportunity" as const,
-    title: "Opportunities",
-    explanation: "External or internal openings to improve results.",
-  },
-  {
-    key: "threat" as const,
-    title: "Threats",
-    explanation: "Risks that could reverse progress if unaddressed.",
-  },
-];
 
 export default function SwotDetailPage() {
   const params = useParams<{ id: string }>();
@@ -45,7 +26,9 @@ export default function SwotDetailPage() {
   const { pushToast } = useToast();
   const [swot, setSwot] = useState<SwotItem | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [busyFlag, setBusyFlag] = useState<SwotQuadrantKey | "all" | string | null>(
+    null,
+  );
 
   const canToggleVisibility =
     Boolean(user) &&
@@ -79,26 +62,24 @@ export default function SwotDetailPage() {
     };
   }, [token, params.id]);
 
-  async function toggleVisibility() {
+  async function patchVisibility(
+    body: Parameters<typeof api.setSwotVisibility>[2],
+    flag: SwotQuadrantKey | "all" | string,
+    okMessage: string,
+  ) {
     if (!token || !swot || !canToggleVisibility) return;
-    setVisibilityBusy(true);
+    setBusyFlag(flag);
     try {
-      const next = !swot.visibleToSalesExecutive;
-      const res = await api.setSwotVisibility(token, swot.id, next);
+      const res = await api.setSwotVisibility(token, swot.id, body);
       setSwot(res.data.swot);
-      pushToast(
-        next
-          ? "SWOT is now visible to the Sales Executive"
-          : "SWOT hidden from the Sales Executive",
-        "success",
-      );
+      pushToast(okMessage, "success");
     } catch (err) {
       pushToast(
-        err instanceof Error ? err.message : "Could not update visibility",
+        err instanceof Error ? err.message : "Could not update sharing",
         "error",
       );
     } finally {
-      setVisibilityBusy(false);
+      setBusyFlag(null);
     }
   }
 
@@ -128,67 +109,44 @@ export default function SwotDetailPage() {
       </p>
       <p className="text-xs text-[var(--color-ink-muted)]">
         This version is read-only. Updating SWOT creates a new version and keeps
-        this one in history. Team Lead and Commando can always see each
-        other’s SWOT.
+        this one in history. Team Lead and Commando can always see every point.
+        The Sales Executive only sees checked points.
       </p>
 
-      {canToggleVisibility ? (
-        <section className="surface flex flex-wrap items-center justify-between gap-3 p-4">
-          <div>
-            <p className="text-sm font-semibold text-[var(--color-ink)]">
-              Sales Executive visibility
-            </p>
-            <p className="mt-0.5 text-[13px] text-[var(--color-ink-muted)]">
-              {swot.visibleToSalesExecutive
-                ? "This version is visible to the Sales Executive."
-                : "This version is hidden from the Sales Executive."}{" "}
-              You can only share your own assessment stream.
-            </p>
-          </div>
-          <Button
-            variant={swot.visibleToSalesExecutive ? "secondary" : "primary"}
-            size="sm"
-            disabled={visibilityBusy}
-            onClick={() => void toggleVisibility()}
-          >
-            {visibilityBusy
-              ? "Saving…"
-              : swot.visibleToSalesExecutive
-                ? "Hide from SE"
-                : "Make visible to SE"}
-          </Button>
-        </section>
-      ) : swot.source !== "SALES_EXECUTIVE" &&
-        user?.roleCode !== "SALES_EXECUTIVE" ? (
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          SE visibility:{" "}
-          {swot.visibleToSalesExecutive ? "Shared with SE" : "Not shared with SE"}
-        </p>
-      ) : null}
+      <SwotQuadrantBoard
+        swot={swot}
+        canShare={canToggleVisibility}
+        isSe={user?.roleCode === "SALES_EXECUTIVE"}
+        busyFlag={busyFlag}
+        onTogglePoint={(quadrant, pointId, next) => {
+          const q = SWOT_QUADRANTS.find((item) => item.key === quadrant);
+          void patchVisibility(
+            { point: { quadrant, id: pointId, visible: next } },
+            pointId,
+            next
+              ? `${q?.title ?? "Point"} shared with the Sales Executive`
+              : `${q?.title ?? "Point"} held back from the Sales Executive`,
+          );
+        }}
+        onShareAll={(share) => {
+          void patchVisibility(
+            { visibleToSalesExecutive: share },
+            "all",
+            share
+              ? "All points shared with the Sales Executive"
+              : "SWOT held back from the Sales Executive",
+          );
+        }}
+      />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {QUADRANTS.map((q) => (
-          <section key={q.key} className="surface p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
-              {q.title}
-            </h2>
-            <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-              {q.explanation}
-            </p>
-            <p className="mt-3 whitespace-pre-wrap text-sm">{swot[q.key]}</p>
-          </section>
-        ))}
-      </div>
-      <p className="text-xs text-[var(--color-ink-muted)]">
-        Team Lead, Commando, and self-assessments stay as separate version
-        streams. Historical versions are never overwritten.
+      <p>
+        <Link
+          href={`/profiles/${swot.salesExecutiveProfileId}/swot`}
+          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+        >
+          ← Back to SWOT
+        </Link>
       </p>
-      <Link
-        href={`/profiles/${swot.salesExecutiveProfileId}/swot`}
-        className="text-sm text-[var(--color-brand)]"
-      >
-        Back to SWOT
-      </Link>
     </div>
   );
 }

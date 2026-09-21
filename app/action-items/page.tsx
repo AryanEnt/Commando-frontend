@@ -31,7 +31,7 @@ export default function ActionItemsPage() {
 }
 
 function ActionItemsContent() {
-  const { token, hasPermission } = useAuth();
+  const { token, user, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const [view, setView] = useState<"active" | "history">("active");
   const [items, setItems] = useState<ActionItem[]>([]);
@@ -45,7 +45,9 @@ function ActionItemsContent() {
   const [error, setError] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const canCreate = hasPermission("ACTION_ITEM_CREATE");
-  const canComplete = hasPermission("ACTION_ITEM_UPDATE");
+  const canComplete =
+    hasPermission("ACTION_ITEM_UPDATE") ||
+    user?.roleCode === "SALES_EXECUTIVE";
 
   useEffect(() => {
     if (!token) return;

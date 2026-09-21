@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { formatDate, formatWhen } from "@/lib/dates";
+import { formatSwotField } from "@/lib/swot-points";
 import { personName } from "@/lib/labels";
 import { INTERVENTION_STAGES, interventionStageFromAssignment } from "@/lib/lifecycle";
 import { useSeWorkspace } from "@/lib/se-workspace-context";
@@ -419,6 +420,16 @@ export function SeWorkspaceContent() {
               )
             }
             canViewSupport={hasPermission("SALES_SUPPORT_LINK_VIEW")}
+            canCompleteActions
+            onActionsChanged={async () => {
+              if (!token) return;
+              const res = await api.getActionItems(token, {
+                profileId: profile.id,
+                view: "active",
+                pageSize: 20,
+              });
+              setActions(res.data.actionItems);
+            }}
           />
         ) : (
           <SeAccountabilityOverview
@@ -586,7 +597,7 @@ export function SeWorkspaceContent() {
           profileName={profile.displayName}
           actions={actions}
           canCreate={canCreate("ACTION_ITEM_CREATE")}
-          canComplete={canCreate("ACTION_ITEM_UPDATE")}
+          canComplete={canCreate("ACTION_ITEM_UPDATE") || isSe}
           teamName={profile.team.name}
           teamLeadName={
             profile.currentAssignment?.teamLead
@@ -988,10 +999,34 @@ export function SeWorkspaceContent() {
                         <p className="text-xs text-[var(--color-ink-muted)]">
                           {formatDate(item.createdAt)}
                         </p>
-                        <Field label="Strengths" value={item.strength} />
-                        <Field label="Weaknesses" value={item.weakness} />
-                        <Field label="Opportunities" value={item.opportunity} />
-                        <Field label="Threats" value={item.threat} />
+                        <Field
+                          label="Strengths"
+                          value={formatSwotField(
+                            item.strengthPoints,
+                            item.strength,
+                          )}
+                        />
+                        <Field
+                          label="Weaknesses"
+                          value={formatSwotField(
+                            item.weaknessPoints,
+                            item.weakness,
+                          )}
+                        />
+                        <Field
+                          label="Opportunities"
+                          value={formatSwotField(
+                            item.opportunityPoints,
+                            item.opportunity,
+                          )}
+                        />
+                        <Field
+                          label="Threats"
+                          value={formatSwotField(
+                            item.threatPoints,
+                            item.threat,
+                          )}
+                        />
                         <Link
                           href={`/swot/${item.id}`}
                           className="inline-block text-sm text-[var(--color-brand)] hover:underline"
@@ -1225,16 +1260,38 @@ export function SeWorkspaceContent() {
                             <>
                               {" "}
                               ·{" "}
-                              {item.visibleToSalesExecutive
-                                ? "Visible to SE"
-                                : "Hidden from SE"}
+                              {swotShareLabel(item)}
                             </>
                           ) : null}
                         </p>
-                        <Field label="Strengths" value={item.strength} />
-                        <Field label="Weaknesses" value={item.weakness} />
-                        <Field label="Opportunities" value={item.opportunity} />
-                        <Field label="Threats" value={item.threat} />
+                        <Field
+                          label="Strengths"
+                          value={formatSwotField(
+                            item.strengthPoints,
+                            item.strength,
+                          )}
+                        />
+                        <Field
+                          label="Weaknesses"
+                          value={formatSwotField(
+                            item.weaknessPoints,
+                            item.weakness,
+                          )}
+                        />
+                        <Field
+                          label="Opportunities"
+                          value={formatSwotField(
+                            item.opportunityPoints,
+                            item.opportunity,
+                          )}
+                        />
+                        <Field
+                          label="Threats"
+                          value={formatSwotField(
+                            item.threatPoints,
+                            item.threat,
+                          )}
+                        />
                         <Link
                           href={`/swot/${item.id}`}
                           className="inline-block text-sm text-[var(--color-brand)] hover:underline"
@@ -1314,7 +1371,7 @@ export function SeWorkspaceContent() {
                                 {formatDate(s.createdAt)} ·{" "}
                                 {personName(s.createdBy)}
                                 {!isSe && s.source !== "SALES_EXECUTIVE"
-                                  ? ` · ${s.visibleToSalesExecutive ? "Visible to SE" : "Hidden from SE"}`
+                                  ? ` · ${swotShareLabel(s)}`
                                   : ""}
                               </p>
                             </div>
@@ -1495,11 +1552,52 @@ function SectionFrame({
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function swotShareLabel(item: SwotItem) {
+  const groups = [
+    item.strengthPoints,
+    item.weaknessPoints,
+    item.opportunityPoints,
+    item.threatPoints,
+  ];
+  const hasPoints = groups.some((g) => g && g.length > 0);
+  if (hasPoints) {
+    const total = groups.reduce((n, g) => n + (g?.length ?? 0), 0);
+    const shared = groups.reduce(
+      (n, g) => n + (g?.filter((p) => p.visible).length ?? 0),
+      0,
+    );
+    if (shared === 0) return "Hidden from SE";
+    if (shared === total) return "All points shared";
+    return `${shared}/${total} points shared`;
+  }
+  const n = [
+    item.visibleStrength,
+    item.visibleWeakness,
+    item.visibleOpportunity,
+    item.visibleThreat,
+  ].filter(Boolean).length;
+  if (n === 0) return "Hidden from SE";
+  if (n === 4) return "All points shared";
+  return `${n}/4 boxes shared`;
+}
+
+function Field({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
   return (
     <div>
       <dt className="text-xs text-[var(--color-ink-subtle)]">{label}</dt>
-      <dd className="mt-0.5">{value}</dd>
+      <dd className="mt-0.5 whitespace-pre-line text-[var(--color-ink)]">
+        {value?.trim()
+          ? value
+          : value === null
+            ? "Held back from you"
+            : "—"}
+      </dd>
     </div>
   );
 }

@@ -9,8 +9,12 @@ import {
   useState,
 } from "react";
 import { api, type AuthUser } from "@/lib/api";
-
-const TOKEN_KEY = "commando_access_token";
+import {
+  clearSession,
+  getStoredAccessToken,
+  persistSession,
+  subscribeSession,
+} from "@/lib/session";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -26,22 +30,34 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Refresh before the 15m access cookie expires so the session stays live. */
+const ACCESS_REFRESH_MS = 10 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    return subscribeSession((nextToken, nextUser) => {
+      setToken(nextToken);
+      if (nextToken === null) {
+        setUser(null);
+      } else if (nextUser) {
+        setUser(nextUser);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    const stored = window.localStorage.getItem(TOKEN_KEY);
+    const stored = getStoredAccessToken();
 
     void (async () => {
       if (!stored) {
-        // Attempt silent refresh via httpOnly cookie when no local token.
         try {
           const refreshed = await api.refresh();
           if (cancelled) return;
-          window.localStorage.setItem(TOKEN_KEY, refreshed.data.accessToken);
           setToken(refreshed.data.accessToken);
           setUser(refreshed.data.user);
         } catch {
@@ -57,15 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(stored);
         setUser(res.data.user);
       } catch {
-        // Access token may have expired — try cookie refresh once.
         try {
           const refreshed = await api.refresh();
           if (cancelled) return;
-          window.localStorage.setItem(TOKEN_KEY, refreshed.data.accessToken);
           setToken(refreshed.data.accessToken);
           setUser(refreshed.data.user);
         } catch {
-          window.localStorage.removeItem(TOKEN_KEY);
+          clearSession();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -77,23 +91,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+
+    let lastKeepAlive = 0;
+    async function keepAlive() {
+      const now = Date.now();
+      if (now - lastKeepAlive < 60_000) return;
+      lastKeepAlive = now;
+      try {
+        const refreshed = await api.refresh();
+        persistSession(refreshed.data.accessToken, refreshed.data.user);
+      } catch {
+        /* next API 401 will retry; do not log out here */
+      }
+    }
+
+    const id = window.setInterval(() => {
+      void keepAlive();
+    }, ACCESS_REFRESH_MS);
+
+    const onFocus = () => {
+      void keepAlive();
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [token]);
+
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
-    window.localStorage.setItem(TOKEN_KEY, res.data.accessToken);
+    persistSession(res.data.accessToken, res.data.user);
     setToken(res.data.accessToken);
     setUser(res.data.user);
     return res.data;
   }, []);
 
   const logout = useCallback(async () => {
-    if (token) {
-      try {
-        await api.logout(token);
-      } catch {
-        /* ignore */
-      }
+    try {
+      await api.logout(token);
+    } catch {
+      clearSession();
     }
-    window.localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }, [token]);
