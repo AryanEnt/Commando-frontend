@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+# Windows reserved device name; staging it breaks git (mmap failed)
+/NUL
+/nul
 
 # debug
 npm-debug.log*
