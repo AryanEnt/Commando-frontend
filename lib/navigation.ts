@@ -34,7 +34,7 @@ const PEOPLE = "People";
 const OPERATIONS = "Operations";
 const REPORTING = "Reporting";
 const CONFIGURATION = "Configuration";
-const WORK = "Work";
+const INTERVENTIONS = "Interventions";
 const MY_WORK = "My work";
 const MY_TEAM = "My team";
 
@@ -42,7 +42,7 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
   TEAM_LEAD: [
     {
       href: "/dashboard",
-      label: "Overview",
+      label: "Dashboard",
       permission: "DASHBOARD_VIEW",
       section: MY_TEAM,
       icon: "dashboard",
@@ -77,7 +77,7 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
     },
     {
       href: "/assignments",
-      label: "History",
+      label: "Intervention History",
       permission: "ASSIGNMENT_VIEW",
       section: OPERATIONS,
       icon: "history",
@@ -87,30 +87,37 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
   COMMANDO_EXECUTIVE: [
     {
       href: "/dashboard",
-      label: "Home",
+      label: "Dashboard",
       permission: "DASHBOARD_VIEW",
-      section: WORK,
+      section: INTERVENTIONS,
       icon: "dashboard",
     },
     {
       href: "/profiles",
       label: "Sales Executives",
       permission: "PROFILE_VIEW",
-      section: WORK,
+      section: INTERVENTIONS,
       icon: "profiles",
     },
     {
       href: "/referrals",
-      label: "Interventions",
+      label: "Requests & Interventions",
       permission: "REFERRAL_VIEW",
-      section: WORK,
+      section: INTERVENTIONS,
       icon: "interventions",
+    },
+    {
+      href: "/eisenhower",
+      label: "Eisenhower",
+      permission: "EISENHOWER_VIEW",
+      section: OPERATIONS,
+      icon: "tasks",
     },
     {
       href: "/assignments",
       label: "History",
       permission: "ASSIGNMENT_VIEW",
-      section: WORK,
+      section: OPERATIONS,
       icon: "history",
     },
   ],
@@ -120,7 +127,7 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       href: "/dashboard",
       label: "My workspace",
       permission: "DASHBOARD_VIEW",
-      section: WORK,
+      section: MY_WORK,
       icon: "dashboard",
     },
   ],
@@ -128,31 +135,24 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
   SALES_SUPPORT_EXECUTIVE: [
     {
       href: "/dashboard",
-      label: "My workspace",
+      label: "Dashboard",
       permission: "DASHBOARD_VIEW",
       section: MY_WORK,
       icon: "dashboard",
     },
     {
       href: "/my-tasks",
-      label: "My tasks",
+      label: "My Support Tasks",
       permission: "SALES_SUPPORT_TASK_VIEW",
       section: MY_WORK,
       icon: "tasks",
     },
     {
       href: "/sync-evaluations",
-      label: "Sync evaluations",
+      label: "Sync Evaluations",
       permission: "SYNC_EVAL_VIEW",
       section: MY_WORK,
       icon: "sync",
-    },
-    {
-      href: "/role-assignments",
-      label: "Role assignments",
-      permission: "ROLE_ASSIGNMENT_VIEW",
-      section: MY_WORK,
-      icon: "roles",
     },
   ],
 
@@ -207,13 +207,6 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       icon: "reports",
     },
     {
-      href: "/audit-logs",
-      label: "Audit Trail",
-      permission: "AUDIT_VIEW",
-      section: REPORTING,
-      icon: "audit",
-    },
-    {
       href: "/configuration",
       label: "Configuration",
       permission: "ACTIVITY_TYPE_MANAGE",
@@ -263,6 +256,7 @@ export function isWideContentPath(pathname: string): boolean {
     pathname.startsWith("/audit-logs") ||
     pathname.startsWith("/reports") ||
     pathname.startsWith("/organization") ||
+    pathname.startsWith("/profiles/") ||
     pathname === "/dashboard"
   );
 }
@@ -282,12 +276,12 @@ export const ROUTE_LABELS: Record<string, string> = {
   monitoring: "Monitoring",
   "monitoring-checklists": "Checklists",
   "sync-evaluations": "Sync Evaluation",
-  "role-assignments": "Role Assignment",
   eisenhower: "Eisenhower",
-  "action-items": "Action Items",
-  "my-tasks": "My Tasks",
+  "action-items": "Assignment",
+  "my-tasks": "My Support Tasks",
   feedback: "Feedback",
-  performance: "Goals",
+  performance: "Performance",
+  verdict: "TL Verdict",
   "activity-types": "Activity Types",
   configuration: "Configuration",
   kpi: "KPI",
@@ -295,9 +289,10 @@ export const ROUTE_LABELS: Record<string, string> = {
   "commando-performance": "Commando Performance",
   "audit-logs": "Audit Trail",
   new: "Create",
-  coaching: "Coaching",
+  timeline: "Timeline",
+  coaching: "Daily Logs",
   reviews: "Weekly Reviews",
-  actions: "Actions",
+  actions: "Assignment",
   support: "Support",
   interventions: "Interventions",
   history: "History",

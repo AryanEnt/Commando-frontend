@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type ActionItemDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
-import { formatDate } from "@/lib/dates";
+import { dueIsoFromInputs, formatDue, toLocalDateInput, toLocalTimeInput } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DueDateTimePicker } from "@/components/DueDateTimePicker";
 import {
   Button,
   DateTimeCell,
@@ -34,11 +35,13 @@ export default function ActionItemDetailPage() {
     title: "",
     description: "",
     dueDate: "",
+    dueTime: "",
   });
   const [replaceForm, setReplaceForm] = useState({
     title: "",
     description: "",
     dueDate: "",
+    dueTime: "",
   });
 
   const canUpdate = hasPermission("ACTION_ITEM_UPDATE");
@@ -50,15 +53,17 @@ export default function ActionItemDetailPage() {
     setForm({
       title: res.data.actionItem.title,
       description: res.data.actionItem.description ?? "",
-      dueDate: res.data.actionItem.dueDate
-        ? new Date(res.data.actionItem.dueDate).toISOString().slice(0, 10)
+      dueDate: toLocalDateInput(res.data.actionItem.dueDate),
+      dueTime: res.data.actionItem.dueDate
+        ? toLocalTimeInput(res.data.actionItem.dueDate)
         : "",
     });
     setReplaceForm({
       title: res.data.actionItem.title,
       description: res.data.actionItem.description ?? "",
-      dueDate: res.data.actionItem.dueDate
-        ? new Date(res.data.actionItem.dueDate).toISOString().slice(0, 10)
+      dueDate: toLocalDateInput(res.data.actionItem.dueDate),
+      dueTime: res.data.actionItem.dueDate
+        ? toLocalTimeInput(res.data.actionItem.dueDate)
         : "",
     });
   }
@@ -90,12 +95,10 @@ export default function ActionItemDetailPage() {
       await api.updateActionItem(token, item.id, {
         title: form.title,
         description: form.description.trim() || null,
-        dueDate: form.dueDate
-          ? new Date(form.dueDate).toISOString()
-          : null,
+        dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
       setEditing(false);
-      pushToast("Action item updated", "success");
+      pushToast("Assignment updated", "success");
       await load();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to save";
@@ -115,7 +118,7 @@ export default function ActionItemDetailPage() {
         action === "complete" ? api.completeActionItem : api.expireActionItem;
       await fn(token, item.id);
       pushToast(
-        action === "complete" ? "Action item completed" : "Action item expired",
+        action === "complete" ? "Assignment completed" : "Assignment expired",
         "success",
       );
       await load();
@@ -137,11 +140,9 @@ export default function ActionItemDetailPage() {
       const res = await api.replaceActionItem(token, item.id, {
         title: replaceForm.title,
         description: replaceForm.description.trim() || null,
-        dueDate: replaceForm.dueDate
-          ? new Date(replaceForm.dueDate).toISOString()
-          : null,
+        dueDate: dueIsoFromInputs(replaceForm.dueDate, replaceForm.dueTime),
       });
-      pushToast("Replacement action item created", "success");
+      pushToast("Replacement assignment created", "success");
       router.replace(`/action-items/${res.data.actionItem.id}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to replace";
@@ -219,7 +220,7 @@ export default function ActionItemDetailPage() {
       {error && <ErrorState message={error} />}
 
       {item.isActive ? (
-        <Panel title="Active action item" tone="active">
+        <Panel title="Active assignment" tone="active">
           <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-xs uppercase text-slate-500">Commando</dt>
@@ -227,7 +228,7 @@ export default function ActionItemDetailPage() {
             </div>
             <div>
               <dt className="text-xs uppercase text-slate-500">Due</dt>
-              <dd className="tabular-nums">{formatDate(item.dueDate)}</dd>
+              <dd className="tabular-nums">{formatDue(item.dueDate)}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-slate-500">Created</dt>
@@ -237,13 +238,15 @@ export default function ActionItemDetailPage() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase text-slate-500">Assignment</dt>
+              <dt className="text-xs uppercase text-slate-500">
+                Commando assignment
+              </dt>
               <dd className="font-mono text-xs">{item.assignmentId ?? "—"}</dd>
             </div>
           </dl>
         </Panel>
       ) : (
-        <ReadOnlyPanel title="Action item history">
+        <ReadOnlyPanel title="Assignment history">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
               <dt className="text-xs uppercase text-slate-500">Commando</dt>
@@ -251,7 +254,7 @@ export default function ActionItemDetailPage() {
             </div>
             <div>
               <dt className="text-xs uppercase text-slate-500">Due</dt>
-              <dd className="tabular-nums">{formatDate(item.dueDate)}</dd>
+              <dd className="tabular-nums">{formatDue(item.dueDate)}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-slate-500">Created</dt>
@@ -287,11 +290,13 @@ export default function ActionItemDetailPage() {
               setForm({ ...form, description: e.target.value })
             }
           />
-          <TextInput
-            label="Due date"
-            type="date"
-            value={form.dueDate}
-            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+          <DueDateTimePicker
+            date={form.dueDate}
+            time={form.dueTime}
+            disabled={busy}
+            onChange={({ date, time }) =>
+              setForm((f) => ({ ...f, dueDate: date, dueTime: time }))
+            }
           />
           <Button type="submit" disabled={busy}>
             {busy ? "Saving…" : "Save"}
@@ -334,12 +339,12 @@ export default function ActionItemDetailPage() {
               })
             }
           />
-          <TextInput
-            label="Due date"
-            type="date"
-            value={replaceForm.dueDate}
-            onChange={(e) =>
-              setReplaceForm({ ...replaceForm, dueDate: e.target.value })
+          <DueDateTimePicker
+            date={replaceForm.dueDate}
+            time={replaceForm.dueTime}
+            disabled={busy}
+            onChange={({ date, time }) =>
+              setReplaceForm((f) => ({ ...f, dueDate: date, dueTime: time }))
             }
           />
           <Button type="submit" disabled={busy}>

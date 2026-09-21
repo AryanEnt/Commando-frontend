@@ -12,19 +12,20 @@ import {
 import { Icons } from "@/components/icons";
 
 const inputClass =
-  "mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
+  "mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-[var(--text-body)] leading-snug text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
 
-const labelClass = "block text-sm font-medium text-[var(--color-ink)]";
+const labelClass = "block text-[var(--text-label)] font-medium text-[var(--color-ink)]";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "soft" | "success" | "danger" | "ghost";
 type ButtonSize = "sm" | "md" | "lg";
 
 function buttonClassName(
   variant: ButtonVariant,
   size: ButtonSize,
   className = "",
+  iconOnly = false,
 ) {
-  return `btn btn-${variant} btn-${size} ${className}`.trim();
+  return `btn btn-${variant} btn-${size}${iconOnly ? " btn-icon" : ""} ${className}`.trim();
 }
 
 export function PageHeader({
@@ -32,37 +33,33 @@ export function PageHeader({
   description,
   actions,
   eyebrow,
+  breadcrumbs,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
   eyebrow?: string;
+  /** Optional breadcrumb row rendered above the title. */
+  breadcrumbs?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 max-w-2xl">
-        {eyebrow ? (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink-subtle)]">
-            {eyebrow}
-          </p>
+    <header className="page-hero mb-1 space-y-3">
+      {breadcrumbs ? <div className="min-w-0">{breadcrumbs}</div> : null}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 max-w-2xl">
+          {eyebrow ? <p className="text-eyebrow">{eyebrow}</p> : null}
+          <h1 className={`text-page-title ${eyebrow ? "mt-1" : ""}`}>{title}</h1>
+          {description && (
+            <p className="mt-1.5 text-secondary max-w-xl">{description}</p>
+          )}
+        </div>
+        {actions ? (
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            {actions}
+          </div>
         ) : null}
-        <h1
-          className={`font-semibold tracking-[-0.025em] text-[var(--color-ink)] ${
-            eyebrow ? "mt-1 text-[1.5rem] sm:text-[1.625rem]" : "text-[1.5rem] sm:text-[1.625rem]"
-          }`}
-        >
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            {description}
-          </p>
-        )}
       </div>
-      {actions ? (
-        <div className="flex flex-wrap items-center gap-2 pt-0.5">{actions}</div>
-      ) : null}
-    </div>
+    </header>
   );
 }
 
@@ -74,15 +71,18 @@ export function StatusPill({
   children: ReactNode;
 }) {
   const tones = {
-    success: "text-[var(--status-success)] bg-[var(--status-success-bg)]",
-    warn: "text-[var(--status-warn)] bg-[var(--status-warn-bg)]",
-    danger: "text-[var(--status-danger)] bg-[var(--status-danger-bg)]",
-    info: "text-[var(--status-info)] bg-[var(--status-info-bg)]",
-    neutral: "text-[var(--status-neutral)] bg-[var(--status-neutral-bg)]",
+    success:
+      "text-[var(--status-success)] bg-[var(--status-success-bg)] ring-[var(--status-success-ring)]",
+    warn: "text-[var(--status-warn)] bg-[var(--status-warn-bg)] ring-[var(--status-warn-ring)]",
+    danger:
+      "text-[var(--status-danger)] bg-[var(--status-danger-bg)] ring-[var(--status-danger-ring)]",
+    info: "text-[var(--status-info)] bg-[var(--status-info-bg)] ring-[var(--status-info-ring)]",
+    neutral:
+      "text-[var(--status-neutral)] bg-[var(--status-neutral-bg)] ring-[var(--status-neutral-ring)]",
   };
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[var(--text-meta)] font-medium ring-1 ring-inset ${tones[tone]}`}
     >
       <span className="status-dot" aria-hidden />
       {children}
@@ -103,6 +103,29 @@ export function Button({
     <button
       type="button"
       className={buttonClassName(variant, size, className)}
+      {...props}
+    />
+  );
+}
+
+export function IconButton({
+  variant = "ghost",
+  size = "md",
+  className = "",
+  label,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Accessible name — required for icon-only buttons. */
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={buttonClassName(variant, size, className, true)}
       {...props}
     />
   );
@@ -242,7 +265,7 @@ export function SelectField({
 
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2.5">
+    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-brand-ring)] bg-[var(--color-surface)] px-3.5 py-3 shadow-[var(--shadow-sm)]">
       {children}
     </div>
   );
@@ -289,12 +312,16 @@ export function SegmentedControl<T extends string>({
 
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">
+    <div
+      className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-12 text-center shadow-[var(--shadow-sm)]"
+      role="status"
+      aria-live="polite"
+    >
       <div
         className="mx-auto mb-3 h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-line-strong)] border-t-[var(--color-brand)]"
         aria-hidden
       />
-      {label}
+      <p className="text-meta">{label}</p>
     </div>
   );
 }
@@ -310,11 +337,11 @@ export function Skeleton({ className = "" }: { className?: string }) {
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+    <div className="table-frame">
       <div className="space-y-3 p-4">
         <Skeleton className="h-4 w-1/3" />
         {Array.from({ length: rows }).map((_, i) => (
-          <Skeleton key={i} className="h-8 w-full" />
+          <Skeleton key={i} className="h-9 w-full" />
         ))}
       </div>
       <span className="sr-only">Loading table</span>
@@ -370,17 +397,15 @@ export function EmptyState({
                       : Icons.feedback;
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-5 py-10 text-center">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-brand-ring)] bg-[var(--color-tint-brand)] px-5 py-11 text-center shadow-[var(--shadow-sm)]">
       {Icon ? (
-        <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]">
+        <span className="icon-well icon-well-brand mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full">
           <Icon size={18} />
         </span>
       ) : null}
-      <p className="text-sm font-semibold text-[var(--color-ink)]">{title}</p>
+      <p className="text-section-title">{title}</p>
       {description && (
-        <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-[var(--color-ink-muted)]">
-          {description}
-        </p>
+        <p className="mx-auto mt-1.5 max-w-md text-secondary">{description}</p>
       )}
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
       {!action && actionHref && actionLabel && (
@@ -430,30 +455,198 @@ export function MetricCard({
   href,
   hint,
   muted,
+  tone = "brand",
 }: {
   label: string;
   value: string | number;
   href: string;
   hint?: string;
   muted?: boolean;
+  /** Colored top accent — keep subtle; default brand. */
+  tone?: "brand" | "accent" | "success" | "warn" | "danger" | "info";
 }) {
+  const tint = {
+    brand: "kpi-mint",
+    accent: "kpi-teal",
+    success: "kpi-lime",
+    warn: "kpi-amber",
+    danger: "kpi-rose",
+    info: "kpi-blue",
+  }[tone];
+
   return (
     <Link
       href={href}
-      className="group block cursor-pointer border border-[var(--color-line)] bg-[var(--color-surface)] p-4 transition duration-150 hover:border-[var(--color-line-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)] rounded-[var(--radius-md)]"
+      className={`kpi-card ${tint} focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]`}
     >
-      <p className="text-[11px] font-medium text-[var(--color-ink-subtle)]">
-        {label}
-      </p>
+      <p className="text-eyebrow">{label}</p>
       <p
-        className={`mt-1.5 text-xl font-semibold tabular-nums ${
-          muted ? "text-[var(--color-ink-subtle)]" : "text-[var(--color-ink)]"
-        }`}
+        className={`mt-2 text-kpi ${muted ? "text-[var(--color-ink-subtle)]" : ""}`}
       >
         {value}
       </p>
-      {hint && <p className="mt-1 text-xs text-[var(--color-ink-muted)]">{hint}</p>}
+      {hint && <p className="mt-1.5 text-meta">{hint}</p>}
     </Link>
+  );
+}
+
+export function PulseGrid({
+  children,
+  columns = 5,
+}: {
+  children: ReactNode;
+  columns?: 5 | 6;
+}) {
+  return (
+    <div
+      className={
+        columns === 6
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
+          : "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+export function PulseStat({
+  label,
+  value,
+  hint,
+  href,
+  warn,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+  href: string;
+  warn?: boolean;
+  tone?: "brand" | "accent" | "success" | "warn" | "danger" | "info";
+}) {
+  const resolved = tone ?? (warn ? "warn" : "brand");
+  const tint = {
+    brand: "kpi-mint",
+    accent: "kpi-teal",
+    success: "kpi-lime",
+    warn: "kpi-amber",
+    danger: "kpi-rose",
+    info: "kpi-blue",
+  }[resolved];
+
+  return (
+    <a
+      href={href}
+      className={`kpi-card ${tint} focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]`}
+    >
+      <p className="text-eyebrow">{label}</p>
+      <p
+        className={`mt-2 text-kpi ${
+        warn
+          ? resolved === "danger"
+            ? "text-[var(--status-danger)]"
+            : "text-[var(--status-warn)]"
+          : ""
+      }`}
+      >
+        {value}
+      </p>
+      <p className="mt-1.5 text-meta">{hint}</p>
+    </a>
+  );
+}
+
+/** Compact performance score with labeled bar. */
+export function PerformanceMeter({
+  value,
+  label,
+  className = "",
+}: {
+  /** 0–100 score. */
+  value: number;
+  label?: string;
+  className?: string;
+}) {
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  const tier =
+    clamped >= 85
+      ? "is-excellent"
+      : clamped >= 70
+        ? "is-good"
+        : clamped >= 50
+          ? "is-fair"
+          : "is-poor";
+  const tierLabel =
+    label ??
+    (clamped >= 85
+      ? "Excellent"
+      : clamped >= 70
+        ? "On track"
+        : clamped >= 50
+          ? "Needs attention"
+          : "At risk");
+  const tierColor =
+    clamped >= 85
+      ? "text-[var(--status-success)]"
+      : clamped >= 70
+        ? "text-[var(--color-accent)]"
+        : clamped >= 50
+          ? "text-[var(--status-warn)]"
+          : "text-[var(--status-danger)]";
+
+  return (
+    <div className={`min-w-[7.5rem] ${className}`}>
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-kpi text-[1.125rem]">{clamped}%</span>
+        <span className={`text-meta font-medium ${tierColor}`}>{tierLabel}</span>
+      </div>
+      <div className={`perf-bar ${tier}`} role="meter" aria-valuenow={clamped} aria-valuemin={0} aria-valuemax={100} aria-label={tierLabel}>
+        <span style={{ width: `${clamped}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Semantic alert for inline page feedback (not toast). */
+export function Alert({
+  tone = "info",
+  title,
+  children,
+}: {
+  tone?: "success" | "warn" | "danger" | "info" | "neutral";
+  title?: string;
+  children: ReactNode;
+}) {
+  const tones = {
+    success:
+      "border-[var(--status-success-ring)] bg-[var(--status-success-bg)] text-[var(--status-success)]",
+    warn: "border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)] text-[var(--status-warn)]",
+    danger:
+      "border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)] text-[var(--status-danger)]",
+    info: "border-[var(--status-info-ring)] bg-[var(--status-info-bg)] text-[var(--status-info)]",
+    neutral:
+      "border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-ink)]",
+  };
+  return (
+    <div
+      role="status"
+      className={`rounded-[var(--radius-md)] border px-4 py-3 text-[var(--text-body)] ${tones[tone]}`}
+    >
+      {title ? <p className="font-semibold">{title}</p> : null}
+      <div className={title ? "mt-1 text-[var(--color-ink-muted)]" : undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Consistent table shell for list pages. */
+export function TableFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="table-frame overflow-x-auto">
+      {children}
+    </div>
   );
 }
 
@@ -466,16 +659,10 @@ export function ReadOnlyPanel({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface-2)] p-4 text-sm text-[var(--color-ink)]">
-      {title ? (
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
-          {title} · read-only
-        </p>
-      ) : (
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
-          Read-only
-        </p>
-      )}
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface-2)] p-[var(--space-panel)] text-body shadow-[var(--shadow-sm)]">
+      <p className="mb-3 text-eyebrow">
+        {title ? `${title} · read-only` : "Read-only"}
+      </p>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -495,27 +682,83 @@ export function DateTimeCell({
   if (Number.isNaN(d.getTime())) {
     return <span className="text-[var(--color-ink-subtle)]">—</span>;
   }
+  const date = d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const time = d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (!showTime) {
+    return <span className="tabular-nums text-[var(--color-ink)]">{date}</span>;
+  }
   return (
-    <span className="inline-flex flex-col leading-tight">
-      <span className="tabular-nums text-[var(--color-ink)]">
-        {d.toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          timeZone: "UTC",
-        })}
+    <span className="inline-flex items-baseline gap-1.5 tabular-nums leading-tight">
+      <span className="text-[var(--color-ink)]">{date}</span>
+      <span className="text-[var(--color-ink-muted)]" aria-hidden>
+        ·
       </span>
-      {showTime && (
-        <span className="text-xs tabular-nums text-[var(--color-ink-muted)]">
-          {d.toLocaleTimeString(undefined, {
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZone: "UTC",
-          })}{" "}
-          UTC
-        </span>
-      )}
+      <span className="text-[var(--color-ink-muted)]">{time}</span>
     </span>
+  );
+}
+
+/** Compact date + time inputs for assignment start/end. */
+export function DateTimeFields({
+  label,
+  date,
+  time,
+  onDateChange,
+  onTimeChange,
+  required,
+  disabled,
+}: {
+  label: string;
+  date: string;
+  time: string;
+  onDateChange: (value: string) => void;
+  onTimeChange: (value: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+}) {
+  const dateId = `${label.replace(/\s+/g, "-").toLowerCase()}-date`;
+  const timeId = `${label.replace(/\s+/g, "-").toLowerCase()}-time`;
+  return (
+    <fieldset className="min-w-0">
+      <legend className={labelClass}>{label}</legend>
+      <div className="mt-1.5 grid grid-cols-[1.4fr_1fr] gap-2">
+        <div className="min-w-0">
+          <label htmlFor={dateId} className="sr-only">
+            {label} date
+          </label>
+          <input
+            id={dateId}
+            type="date"
+            required={required}
+            disabled={disabled}
+            value={date}
+            onChange={(e) => onDateChange(e.target.value)}
+            className={`${inputClass} !mt-0`}
+          />
+        </div>
+        <div className="min-w-0">
+          <label htmlFor={timeId} className="sr-only">
+            {label} time
+          </label>
+          <input
+            id={timeId}
+            type="time"
+            required={required}
+            disabled={disabled}
+            value={time}
+            onChange={(e) => onTimeChange(e.target.value)}
+            className={`${inputClass} !mt-0`}
+          />
+        </div>
+      </div>
+    </fieldset>
   );
 }
 
@@ -534,12 +777,12 @@ export function Panel({
 }) {
   const tones = {
     default: "border-[var(--color-line)]",
-    active: "border-[var(--status-success-ring)]",
+    active: "border-[var(--status-success-ring)] border-l-[3px] border-l-[var(--status-success)]",
     history: "border-[var(--color-line-strong)]",
   };
   const headers = {
     default:
-      "border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]",
+      "border-[var(--color-brand-ring)] bg-[var(--color-mint)] text-[var(--color-ink)]",
     active:
       "border-[var(--status-success-ring)] bg-[var(--status-success-bg)] text-[var(--status-success)]",
     history:
@@ -547,18 +790,16 @@ export function Panel({
   };
   return (
     <div
-      className={`overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-surface)] ${tones[tone]}`}
+      className={`overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-surface)] shadow-[var(--shadow-sm)] ${tones[tone]}`}
     >
       {title && (
         <div
-          className={`flex items-start justify-between gap-3 border-b px-3 py-2 ${headers[tone]}`}
+          className={`flex items-start justify-between gap-3 border-b px-4 py-3 ${headers[tone]}`}
         >
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide">
-              {title}
-            </p>
+            <p className="text-section-title">{title}</p>
             {description ? (
-              <p className="mt-0.5 text-xs font-normal normal-case tracking-normal opacity-80">
+              <p className="mt-0.5 text-meta normal-case tracking-normal opacity-90">
                 {description}
               </p>
             ) : null}
@@ -673,14 +914,10 @@ export function SectionHeader({
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-      <div>
-        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]">
-          {title}
-        </h2>
+      <div className="min-w-0">
+        <h2 className="text-section-title">{title}</h2>
         {description && (
-          <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-            {description}
-          </p>
+          <p className="mt-0.5 text-meta">{description}</p>
         )}
       </div>
       {actions}

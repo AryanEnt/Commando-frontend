@@ -11,14 +11,13 @@ import {
   type FeedbackItem,
   type MonitoringRecord,
   type PerformanceMetrics,
-  type RoleAssignment,
   type SupportTask,
   type SwotItem,
   type WeeklyReview,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatWhen } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { INTERVENTION_STAGES, interventionStageFromAssignment } from "@/lib/lifecycle";
 import { useSeWorkspace } from "@/lib/se-workspace-context";
@@ -29,8 +28,17 @@ import {
   type SeSection,
 } from "@/lib/se-workspace-nav";
 import { StatusBadge } from "@/components/StatusBadge";
-import { SupportTeamPanel } from "@/components/support-team/SupportTeamPanel";
 import { SeAccountabilityOverview } from "@/components/se-workspace/SeAccountabilityOverview";
+import { SeActionsPanel } from "@/components/se-workspace/SeActionsPanel";
+import { SeActivityTimeline } from "@/components/se-workspace/SeActivityTimeline";
+import { SeFeedbackPanel } from "@/components/se-workspace/SeFeedbackPanel";
+import { SeSupportPanel } from "@/components/se-workspace/SeSupportPanel";
+import { SalesExecutiveDashboard } from "@/components/dashboard/SalesExecutiveDashboard";
+import { SeEisenhowerPanel } from "@/components/se-workspace/SeEisenhowerPanel";
+import { CoachingDailyLogsSection } from "@/components/daily-logs/CoachingDailyLogsSection";
+import { WeeklyReviewHub } from "@/components/weekly-reviews/WeeklyReviewHub";
+import { SeWeeklyReviewsPanel } from "@/components/se-workspace/SeWeeklyReviewsPanel";
+import { SeChecklistWorkspace } from "@/components/monitoring/SeChecklistWorkspace";
 import {
   Button,
   ConfirmDialog,
@@ -80,6 +88,7 @@ export function SeWorkspaceContent() {
     Array<{ at: string; type: string; title: string; href?: string }>
   >([]);
   const [swots, setSwots] = useState<SwotItem[]>([]);
+  const [swotError, setSwotError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<WeeklyReview[]>([]);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
@@ -87,11 +96,9 @@ export function SeWorkspaceContent() {
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [eisenhower, setEisenhower] = useState<EisenhowerTask[]>([]);
   const [supportTasks, setSupportTasks] = useState<SupportTask[]>([]);
-  const [roleAssignments, setRoleAssignments] = useState<RoleAssignment[]>([]);
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState<string | null>(null);
-  const [ackBusy, setAckBusy] = useState(false);
   const [completeBusy, setCompleteBusy] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -112,16 +119,27 @@ export function SeWorkspaceContent() {
     if (hasPermission("SWOT_VIEW")) {
       jobs.push(
         api
-          .getSwotList(token, { profileId: id, pageSize: 20 })
-          .then((r) => setSwots(r.data.items))
-          .catch(() => setSwots([])),
+          .getSwotList(token, { profileId: id, pageSize: 100 })
+          .then((r) => {
+            setSwots(r.data.items);
+            setSwotError(null);
+          })
+          .catch((err) => {
+            setSwots([]);
+            setSwotError(
+              err instanceof Error ? err.message : "Unable to load SWOT history",
+            );
+          }),
       );
     }
     if (section === "coaching" || section === "overview" || section === "feedback") {
       if (hasPermission("FEEDBACK_VIEW")) {
         jobs.push(
           api
-            .getFeedback(token, { profileId: id, pageSize: 8 })
+            .getFeedback(token, {
+              profileId: id,
+              pageSize: section === "feedback" ? 50 : 8,
+            })
             .then((r) => setFeedback(r.data.feedback))
             .catch(() => setFeedback([])),
         );
@@ -152,7 +170,10 @@ export function SeWorkspaceContent() {
       if (hasPermission("WEEKLY_REVIEW_VIEW")) {
         jobs.push(
           api
-            .getWeeklyReviews(token, { profileId: id, pageSize: 12 })
+            .getWeeklyReviews(token, {
+              profileId: id,
+              pageSize: section === "reviews" ? 100 : 12,
+            })
             .then((r) => setReviews(r.data.reviews))
             .catch(() => setReviews([])),
         );
@@ -190,7 +211,9 @@ export function SeWorkspaceContent() {
     }
     if (
       section === "overview" ||
-      section === "performance"
+      section === "performance" ||
+      section === "swot" ||
+      section === "verdict"
     ) {
       if (hasPermission("PERFORMANCE_VIEW")) {
         setMetricsLoading(true);
@@ -222,21 +245,29 @@ export function SeWorkspaceContent() {
             .catch(() => setSupportTasks([])),
         );
       }
-      if (hasPermission("ROLE_ASSIGNMENT_VIEW")) {
-        jobs.push(
-          api
-            .getRoleAssignments(token, {
-              profileId: id,
-              includeHistory: true,
-              pageSize: 20,
-            })
-            .then((r) => setRoleAssignments(r.data.roleAssignments))
-            .catch(() => setRoleAssignments([])),
-        );
-      }
     }
     void Promise.all(jobs);
   }, [token, params.id, hasPermission, section, user?.roleCode]);
+
+  async function retryMetrics() {
+    if (!token || !params.id || !hasPermission("PERFORMANCE_VIEW")) return;
+    setMetricsLoading(true);
+    setMetricsError(null);
+    try {
+      const r = await api.getPerformanceMetrics(token, params.id);
+      setMetrics(r.data.metrics);
+      setMetricsError(null);
+    } catch (err) {
+      setMetrics(null);
+      setMetricsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load performance data",
+      );
+    } finally {
+      setMetricsLoading(false);
+    }
+  }
 
   async function completeIntervention() {
     if (!token || !profile?.currentAssignment) return;
@@ -255,20 +286,6 @@ export function SeWorkspaceContent() {
       );
     } finally {
       setCompleteBusy(false);
-    }
-  }
-
-  async function acknowledgeIntervention() {
-    if (!token || !profile) return;
-    setAckBusy(true);
-    try {
-      await api.acknowledgeRecord(token, {
-        entityType: "INTERVENTION",
-        entityId: profile.id,
-        salesExecutiveProfileId: profile.id,
-      });
-    } finally {
-      setAckBusy(false);
     }
   }
 
@@ -322,204 +339,173 @@ export function SeWorkspaceContent() {
   }
 
   // Monthly planning stays available to Team Leads during Commando intervention.
-  const canCreateEisenhower =
-    hasPermission("EISENHOWER_CREATE") &&
+  // Priorities come from Daily Logs; Team Leads keep access during Commando.
+  const canAddEisenhowerViaDailyLog =
+    hasPermission("DAILY_LOG_CREATE") &&
     !isSe &&
     role !== "SUPER_ADMIN" &&
     (isTl || (isCommando && Boolean(assignment)));
 
+  /* Weekly Review: SE gets a read-only review center; writers keep the hub. */
+  if (section === "reviews") {
+    if (isSe) {
+      return (
+        <div>
+          {actionError ? (
+            <div className="mb-4">
+              <ErrorState message={actionError} />
+            </div>
+          ) : null}
+          <SeWeeklyReviewsPanel
+            profileId={profile.id}
+            profileName={profile.displayName}
+            history={reviews}
+            onSign={(id) => void signWeeklyReview(id)}
+            signingReviewId={signingReviewId}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        {actionError ? (
+          <div className="shrink-0 px-4 pt-3">
+            <ErrorState message={actionError} />
+          </div>
+        ) : null}
+        <WeeklyReviewHub
+          profileId={profile.id}
+          profileName={profile.displayName}
+          canCreate={Boolean(canCreate("WEEKLY_REVIEW_CREATE"))}
+          isSe={false}
+          history={reviews}
+          onSign={(id) => void signWeeklyReview(id)}
+          signingReviewId={signingReviewId}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      {!isSe && assignment && (
+      {!isSe &&
+        assignment &&
+        (section === "overview" || section === "interventions") && (
         <LifecycleStepper stages={[...INTERVENTION_STAGES]} current={stage} />
       )}
 
       {actionError && <ErrorState message={actionError} />}
 
-      {section === "overview" && (
-        <SeAccountabilityOverview
-          profile={profile}
-          workspace={workspace}
-          supportTeam={supportTeam}
-          metrics={metrics}
-          metricsLoading={metricsLoading}
-          metricsError={metricsError}
-          feedback={feedback}
-          reviews={reviews}
-          swots={swots}
-          actions={actions}
-          eisenhower={eisenhower}
-          timeline={timeline}
-          supportTasks={supportTasks}
-          isSe={isSe}
-          isTl={isTl}
-          isCommando={isCommando}
-          canEditSelfSwot={
-            Boolean(
-              hasPermission("SWOT_CREATE") &&
-                user?.roleCode !== "SUPER_ADMIN" &&
-                (isSe || (isTl && !teamLeadLocked) || isCommando),
-            )
-          }
-          canViewSupport={hasPermission("SALES_SUPPORT_LINK_VIEW")}
-          managementActions={
-            !isSe ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {isCommando && assignment && canCreate("DAILY_LOG_CREATE") ? (
-                  <Link
-                    href={seCreateHref(profile.id, "daily-log")}
-                    className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
-                  >
-                    Complete today&apos;s coaching
-                  </Link>
-                ) : null}
-    {isTl && !assignment && hasPermission("REFERRAL_CREATE") ? (
-                  <Link
-                    href={`/referrals/new?profileId=${encodeURIComponent(profile.id)}`}
-                    className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
-                  >
-                    Request intervention
-                  </Link>
-                ) : null}
-                {!(isCommando && assignment) && canCreate("DAILY_LOG_CREATE") && (
-                  <Link
-                    className="action-chip"
-                    href={seCreateHref(profile.id, "daily-log")}
-                  >
-                    Add daily log
-                  </Link>
-                )}
-                {canCreate("MONITORING_CREATE") && (
-                  <Link
-                    className="action-chip"
-                    href={seCreateHref(profile.id, "monitoring")}
-                  >
-                    Start monitoring
-                  </Link>
-                )}
-                {canCreate("WEEKLY_REVIEW_CREATE") && (
-                  <Link
-                    className="action-chip"
-                    href={seCreateHref(profile.id, "weekly-review")}
-                  >
-                    Create weekly review
-                  </Link>
-                )}
-                {canCreate("ACTION_ITEM_CREATE") && (
-                  <Link
-                    className="action-chip"
-                    href={seCreateHref(profile.id, "action")}
-                  >
-                    Create action
-                  </Link>
-                )}
-                {canCreate("FEEDBACK_CREATE") && (
-                  <Link
-                    className="action-chip"
-                    href={seCreateHref(profile.id, "feedback")}
-                  >
-                    Add feedback
-                  </Link>
-                )}
-                {hasPermission("SWOT_CREATE") &&
+      {section === "overview" &&
+        (isSe ? (
+          <SalesExecutiveDashboard
+            profile={profile}
+            workspace={workspace}
+            supportTeam={supportTeam}
+            metrics={metrics}
+            metricsLoading={metricsLoading}
+            metricsError={metricsError}
+            onRetryMetrics={retryMetrics}
+            feedback={feedback}
+            reviews={reviews}
+            swots={swots}
+            actions={actions}
+            eisenhower={eisenhower}
+            supportTasks={supportTasks}
+            canEditSelfSwot={
+              Boolean(
+                hasPermission("SWOT_CREATE") &&
+                  user?.roleCode !== "SUPER_ADMIN",
+              )
+            }
+            canViewSupport={hasPermission("SALES_SUPPORT_LINK_VIEW")}
+          />
+        ) : (
+          <SeAccountabilityOverview
+            profile={profile}
+            workspace={workspace}
+            supportTeam={supportTeam}
+            metrics={metrics}
+            metricsLoading={metricsLoading}
+            metricsError={metricsError}
+            feedback={feedback}
+            reviews={reviews}
+            swots={swots}
+            actions={actions}
+            eisenhower={eisenhower}
+            timeline={timeline}
+            supportTasks={supportTasks}
+            isSe={isSe}
+            isTl={isTl}
+            isCommando={isCommando}
+            canEditSelfSwot={
+              Boolean(
+                hasPermission("SWOT_CREATE") &&
                   user?.roleCode !== "SUPER_ADMIN" &&
-                  !(isTl && teamLeadLocked) && (
-                    <Link
-                      className="action-chip"
-                      href={seCreateHref(profile.id, "swot")}
-                    >
-                      Update SWOT
-                    </Link>
-                  )}
-                {isCommando && !assignment && hasPermission("REFERRAL_VIEW") && (
-                  <Link className="action-chip" href="/referrals/request">
-                    Request this SE
-                  </Link>
-                )}
-                {canCompleteIntervention && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={completeBusy}
-                    onClick={() => setConfirmComplete(true)}
-                  >
-                    Complete intervention
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                {hasPermission("SWOT_CREATE") && (
-                  <Link
-                    className="btn btn-secondary btn-sm"
-                    href={seCreateHref(profile.id, "swot")}
-                  >
-                    Update SWOT
-                  </Link>
-                )}
-                {assignment ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={ackBusy}
-                    onClick={() => void acknowledgeIntervention()}
-                  >
-                    {ackBusy ? "Saving…" : "Mark intervention as seen"}
-                  </button>
-                ) : null}
-              </div>
-            )
+                  (isSe || (isTl && !teamLeadLocked) || isCommando),
+              )
+            }
+            canViewSupport={hasPermission("SALES_SUPPORT_LINK_VIEW")}
+          />
+        ))}
+
+      {section === "timeline" && (
+        <SeActivityTimeline
+          profileId={profile.id}
+          profileName={profile.displayName}
+          canCreate={
+            !isSe &&
+            role !== "SUPER_ADMIN" &&
+            !teamLeadLocked &&
+            (isTl || (isCommando && Boolean(assignment)))
           }
+          defaultRange="week"
         />
       )}
 
       {section === "coaching" && (
-        <SectionFrame
-          title="Coaching"
-          description="Daily observations and coaching given for this Sales Executive."
-          primary={
-            canCreate("DAILY_LOG_CREATE") ? (
-              <Link
-                href={seCreateHref(profile.id, "daily-log")}
-                className="action-chip"
-              >
-                Add daily log
-              </Link>
-            ) : null
+        <CoachingDailyLogsSection
+          profileId={profile.id}
+          profileName={profile.displayName}
+          logs={logs}
+          canCreate={canCreate("DAILY_LOG_CREATE")}
+        />
+      )}
+
+      {section === "checklist" && (
+        <SeChecklistWorkspace
+          profileId={profile.id}
+          profileName={profile.displayName}
+          teamName={profile.team.name}
+          teamLeadName={
+            profile.currentAssignment?.teamLead
+              ? personName(profile.currentAssignment.teamLead)
+              : null
           }
-        >
-          <section className="surface p-4">
-            {logs.length === 0 ? (
-              <EmptyState
-                title="No coaching logs"
-                description="Observations, evidence, and coaching given appear here."
-              />
-            ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
-                {logs.map((log) => (
-                  <li key={log.id} className="py-3">
-                    <Link href={`/daily-logs/${log.id}`} className="block">
-                      <p className="text-sm font-medium">{log.sessionTitle}</p>
-                      <p className="text-xs text-[var(--color-ink-muted)]">
-                        {log.activityType.name} · {formatDate(log.loggedAt)} ·{" "}
-                        {personName(log.createdBy)}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-sm text-[var(--color-ink-muted)]">
-                        {log.observation}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </SectionFrame>
+          commandoName={
+            profile.currentAssignment?.commando
+              ? personName(profile.currentAssignment.commando)
+              : null
+          }
+          statusLabel={
+            profile.currentAssignment
+              ? "Active Intervention"
+              : workspace?.health?.status
+                ? workspace.health.status === "NEEDS_ATTENTION"
+                  ? "Under review"
+                  : workspace.health.status === "AT_RISK"
+                    ? "At risk"
+                    : "On track"
+                : null
+          }
+          activeIntervention={Boolean(profile.currentAssignment)}
+        />
       )}
 
       {section === "monitoring" && (
         <SectionFrame
-          title="Live Monitoring"
-          description="Checklist observations for this Sales Executive — context is already set."
+          title="Monitor"
+          description="Use the current checklist to record today's observation."
           primary={
             canCreate("MONITORING_CREATE") ? (
               <Link
@@ -531,364 +517,142 @@ export function SeWorkspaceContent() {
             ) : null
           }
         >
+          <div className="mb-3">
+            <Link
+              href={seWorkspaceHref(profile.id, "checklist")}
+              className="ck-entry-link"
+            >
+              Customize Checklist
+            </Link>
+          </div>
           <section className="surface p-4">
             {monitoring.length === 0 ? (
               <EmptyState
-                title="No monitoring sessions"
-                description="Configurable checklist observations appear here."
+                title="No monitoring sessions yet"
+                description="Monitoring sessions for this SE will appear here."
+                actionHref={
+                  canCreate("MONITORING_CREATE")
+                    ? seCreateHref(profile.id, "monitoring")
+                    : undefined
+                }
+                actionLabel={
+                  canCreate("MONITORING_CREATE") ? "Start monitoring" : undefined
+                }
               />
             ) : (
               <ul className="divide-y divide-[var(--color-line)]">
-                {monitoring.map((m) => (
-                  <li key={m.id} className="py-3">
-                    <Link
-                      href={`/monitoring/${m.id}`}
-                      className="flex justify-between gap-3"
-                    >
-                      <span>
-                        <span className="block text-sm font-medium">
-                          {m.category.name}
+                {monitoring.map((m) => {
+                  const yes = m.responses?.filter((r) => r.value === "YES").length ?? 0;
+                  const total = m.responses?.length ?? 0;
+                  return (
+                    <li key={m.id} className="py-3">
+                      <Link
+                        href={`/monitoring/${m.id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "monitoring"))}`}
+                        className="flex justify-between gap-3"
+                      >
+                        <span>
+                          <span className="block text-sm font-medium">
+                            {m.category.name}
+                          </span>
+                          <span className="text-xs text-[var(--color-ink-muted)]">
+                            {total > 0 ? `${yes} / ${total} completed` : "Session"}
+                            {m.observation?.trim() ? " · Observation" : ""}
+                          </span>
                         </span>
-                        <span className="text-xs text-[var(--color-ink-muted)]">
-                          {personName(m.createdBy)}
+                        <span className="text-xs tabular-nums text-[var(--color-ink-subtle)]">
+                          {formatDate(m.observedAt)}
                         </span>
-                      </span>
-                      <span className="text-xs">{formatDate(m.observedAt)}</span>
-                    </Link>
-                  </li>
-                ))}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
-            )}
-          </section>
-        </SectionFrame>
-      )}
-
-      {section === "reviews" && (
-        <SectionFrame
-          title="Weekly Reviews"
-          description={
-            isSe
-              ? "Weekly reviews sent to you — click Sign next to a review to acknowledge it."
-              : "New reviews are sent to the Sales Executive immediately for signature."
-          }
-          primary={
-            canCreate("WEEKLY_REVIEW_CREATE") ? (
-              <Link
-                href={seCreateHref(profile.id, "weekly-review")}
-                className="action-chip"
-              >
-                Create weekly review
-              </Link>
-            ) : null
-          }
-        >
-          <section className="surface overflow-hidden">
-            {reviews.length === 0 ? (
-              <div className="p-4">
-                <EmptyState
-                  title={isSe ? "No weekly reviews yet" : "No weekly reviews yet"}
-                  description={
-                    isSe
-                      ? "When a weekly review is created for you, it will show up here."
-                      : "Create a weekly review to send it to the Sales Executive for signature."
-                  }
-                />
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Week</th>
-                      <th>Commando</th>
-                      <th>Team Lead</th>
-                      <th>Status</th>
-                      <th>Key action</th>
-                      <th>SE signed</th>
-                      {isSe ? <th className="w-[1%] whitespace-nowrap" /> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reviews.map((r) => {
-                      const canSign =
-                        isSe &&
-                        r.status === "SUBMITTED" &&
-                        !(r.salesExecutiveSigned || r.signed);
-                      return (
-                      <tr key={r.id}>
-                        <td>
-                          <Link
-                            href={`/weekly-reviews/${r.id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`}
-                            className="font-medium hover:underline"
-                          >
-                            {r.weekLabel}
-                          </Link>
-                          <p className="text-xs text-[var(--color-ink-muted)]">
-                            {formatDate(r.meetingDate)}
-                          </p>
-                        </td>
-                        <td>{personName(r.commando)}</td>
-                        <td>{personName(r.teamLead)}</td>
-                        <td>
-                          <StatusBadge status={r.status} />
-                        </td>
-                        <td
-                          className="max-w-[14rem] truncate"
-                          title={r.nextWeekAction}
-                        >
-                          {r.nextWeekAction || "—"}
-                        </td>
-                        <td>
-                          {r.salesExecutiveSigned || (isSe && r.signed) ? (
-                            <span aria-label="Signed">✓ Signed</span>
-                          ) : (
-                            <span className="text-[var(--color-ink-muted)]">
-                              Awaiting SE
-                            </span>
-                          )}
-                        </td>
-                        {isSe ? (
-                          <td>
-                            {canSign ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={signingReviewId === r.id}
-                                onClick={() => void signWeeklyReview(r.id)}
-                              >
-                                {signingReviewId === r.id
-                                  ? "Signing…"
-                                  : "Sign"}
-                              </Button>
-                            ) : null}
-                          </td>
-                        ) : null}
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
             )}
           </section>
         </SectionFrame>
       )}
 
       {section === "eisenhower" && (
-        <SectionFrame
-          title="Eisenhower"
-          description="Monthly priority matrix for this Sales Executive."
-          primary={
-            canCreateEisenhower ? (
-              <Link
-                href={seCreateHref(profile.id, "eisenhower")}
-                className="btn btn-primary btn-sm"
-              >
-                Add Eisenhower task
-              </Link>
-            ) : null
-          }
-        >
-          <section className="surface p-4">
-            {eisenhower.length === 0 ? (
-              <EmptyState
-                title="No Eisenhower tasks"
-                description="Add a monthly priority for this Sales Executive. Previous months are never overwritten."
-                action={
-                  canCreateEisenhower ? (
-                    <Link
-                      href={seCreateHref(profile.id, "eisenhower")}
-                      className="btn btn-primary btn-sm"
-                    >
-                      Add Eisenhower task
-                    </Link>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <EisenhowerPreview
-                tasks={eisenhower}
-                profileId={profile.id}
-                canCreate={canCreateEisenhower}
-              />
-            )}
-          </section>
-        </SectionFrame>
+        <SeEisenhowerPanel
+          profileId={profile.id}
+          profileName={profile.displayName}
+          canCreate={canAddEisenhowerViaDailyLog}
+        />
       )}
 
       {section === "actions" && (
-        <SectionFrame
-          title="Actions"
-          description="Owned follow-ups with due dates for this Sales Executive."
-          primary={
-            canCreate("ACTION_ITEM_CREATE") ? (
-              <Link
-                href={seCreateHref(profile.id, "action")}
-                className="action-chip"
-              >
-                Create action
-              </Link>
-            ) : null
+        <SeActionsPanel
+          profileId={profile.id}
+          profileName={profile.displayName}
+          actions={actions}
+          canCreate={canCreate("ACTION_ITEM_CREATE")}
+          canComplete={canCreate("ACTION_ITEM_UPDATE")}
+          teamName={profile.team.name}
+          teamLeadName={
+            profile.currentAssignment?.teamLead
+              ? personName(profile.currentAssignment.teamLead)
+              : null
           }
-        >
-          <section className="surface p-4">
-            {actions.length === 0 ? (
-              <EmptyState
-                title="No action items"
-                description="Ownership, due dates, and status appear here."
-              />
-            ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
-                {actions.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center justify-between gap-3 py-3"
-                  >
-                    <Link href={`/action-items/${a.id}`}>
-                      <span className="block text-sm font-medium">{a.title}</span>
-                      <span className="text-xs text-[var(--color-ink-muted)]">
-                        Due {formatDate(a.dueDate)}
-                      </span>
-                    </Link>
-                    <StatusBadge status={a.status} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </SectionFrame>
+          commandoName={
+            profile.currentAssignment?.commando
+              ? personName(profile.currentAssignment.commando)
+              : null
+          }
+          statusLabel={
+            profile.currentAssignment
+              ? "Active Intervention"
+              : workspace?.health?.status
+                ? workspace.health.status === "NEEDS_ATTENTION"
+                  ? "Under review"
+                  : workspace.health.status === "AT_RISK"
+                    ? "At risk"
+                    : "On track"
+                : null
+          }
+          activeIntervention={Boolean(profile.currentAssignment)}
+          onChanged={async () => {
+            if (!token) return;
+            const actionView =
+              user?.roleCode === "SALES_EXECUTIVE" ? "active" : "all";
+            const res = await api.getActionItems(token, {
+              profileId: profile.id,
+              view: actionView,
+              pageSize: 20,
+            });
+            setActions(res.data.actionItems);
+          }}
+        />
       )}
 
       {section === "support" && (
-        <SectionFrame
-          title="Support"
-          description="Commando ownership, active Sales Support assignments, and support task responsibilities for this person."
-        >
-          <SupportTeamPanel
-            profileId={profile.id}
-            profileName={profile.displayName}
-            teamLeadLocked={teamLeadLocked}
-            canAssign={hasPermission("SALES_SUPPORT_LINK_ASSIGN") && !teamLeadLocked}
-            canView={hasPermission("SALES_SUPPORT_LINK_VIEW")}
-            canCreateTask={
-              hasPermission("SALES_SUPPORT_TASK_CREATE") && !teamLeadLocked
+        <SeSupportPanel
+          profileId={profile.id}
+          profileName={profile.displayName}
+          teamLeadLocked={teamLeadLocked}
+          canAssign={
+            hasPermission("SALES_SUPPORT_LINK_ASSIGN") && !teamLeadLocked
+          }
+          canView={hasPermission("SALES_SUPPORT_LINK_VIEW")}
+          canCreateTask={
+            hasPermission("SALES_SUPPORT_TASK_CREATE") && !teamLeadLocked
+          }
+          supportTeam={supportTeam}
+          supportTasks={supportTasks}
+          onChanged={async () => {
+            await reload();
+            if (!token) return;
+            try {
+              const r = await api.getSupportTasks(token, {
+                profileId: profile.id,
+                view: "all",
+                pageSize: 40,
+              });
+              setSupportTasks(r.data.tasks);
+            } catch {
+              /* keep existing */
             }
-            supportTeam={supportTeam}
-            supportTasks={supportTasks}
-            currentAssignment={profile.currentAssignment}
-            onChanged={async () => {
-              await reload();
-              if (!token) return;
-              try {
-                const r = await api.getSupportTasks(token, {
-                  profileId: profile.id,
-                  view: "all",
-                  pageSize: 40,
-                });
-                setSupportTasks(r.data.tasks);
-              } catch {
-                /* keep existing */
-              }
-            }}
-          />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="surface p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">Role assignments</h2>
-                {hasPermission("ROLE_ASSIGNMENT_CREATE") && (
-                  <Link
-                    href={`/role-assignments/new?profileId=${profile.id}&returnTo=${encodeURIComponent(`/profiles/${profile.id}/support`)}`}
-                    className="text-sm text-[var(--color-brand)] hover:underline"
-                  >
-                    New
-                  </Link>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                Standing DO / DON&apos;T guidance for each Support person.
-              </p>
-              {roleAssignments.length === 0 ? (
-                <EmptyState
-                  title="No support roles yet"
-                  description="Team Lead or Commando can add DO / DON’T guidance for assigned Sales Support."
-                />
-              ) : (
-                <ul className="mt-3 divide-y divide-[var(--color-line)]">
-                  {roleAssignments.map((r) => (
-                    <li key={r.id} className="py-3">
-                      <Link
-                        href={`/role-assignments/${r.id}?returnTo=${encodeURIComponent(`/profiles/${profile.id}/support`)}`}
-                      >
-                        <p className="text-sm font-medium">
-                          {personName(r.salesSupportUser)}
-                        </p>
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {r.salesSupportLink?.isActive
-                            ? "Active"
-                            : "Historical"}
-                        </p>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section className="surface p-4 lg:col-span-1">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">Support tasks</h2>
-              </div>
-              {supportTasks.length === 0 ? (
-                <EmptyState
-                  title="No Support tasks"
-                  description={
-                    (supportTeam?.activeSupport.length ?? 0) > 0
-                      ? "Sales Support is assigned, but no specific tasks have been assigned yet."
-                      : "Assign Sales Support first, then create task-level work."
-                  }
-                />
-              ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Task</th>
-                        <th>Owner</th>
-                        <th>Status</th>
-                        <th>Due</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {supportTasks.map((t) => (
-                        <tr key={t.id}>
-                          <td>
-                            <Link
-                              href={`/my-tasks/${t.id}?returnTo=${encodeURIComponent(`/profiles/${profile.id}/support`)}`}
-                              className="font-medium hover:underline"
-                            >
-                              {t.title}
-                            </Link>
-                          </td>
-                          <td className="text-[var(--color-ink-muted)]">
-                            {personName(t.salesSupportUser)}
-                            {t.salesSupportLink?.responsibilityType
-                              ? ` · ${t.salesSupportLink.responsibilityType}`
-                              : ""}
-                          </td>
-                          <td>
-                            <StatusBadge status={t.status} />
-                          </td>
-                          <td className="tabular-nums text-[var(--color-ink-muted)]">
-                            {formatDate(t.dueDate)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </div>
-        </SectionFrame>
+          }}
+        />
       )}
 
       {section === "interventions" && (
@@ -910,7 +674,10 @@ export function SeWorkspaceContent() {
                 Complete intervention
               </Button>
             ) : isCommando && !assignment && hasPermission("REFERRAL_VIEW") ? (
-              <Link href="/referrals/request" className="action-chip">
+              <Link
+                href={`/referrals/request?profileId=${encodeURIComponent(profile.id)}&returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "interventions"))}`}
+                className="action-chip"
+              >
                 Request this SE
               </Link>
             ) : isTl && !assignment && hasPermission("REFERRAL_CREATE") ? (
@@ -937,7 +704,7 @@ export function SeWorkspaceContent() {
                       assignment.totalDaysUnderCommando}
                   </p>
                   <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-                    Started {formatDate(assignment.startedAt)} · Team Lead{" "}
+                    Started {formatWhen(assignment.startedAt)} · Team Lead{" "}
                     {personName(assignment.teamLead)}
                   </p>
                   {referral?.recommendationFocus ? (
@@ -994,8 +761,12 @@ export function SeWorkspaceContent() {
                     </td>
                     <td>{personName(a.commando)}</td>
                     <td>{personName(a.teamLead)}</td>
-                    <td>{formatDate(a.startedAt)}</td>
-                    <td>{formatDate(a.endedAt)}</td>
+                    <td className="tabular-nums text-[13px]">
+                      {formatWhen(a.startedAt)}
+                    </td>
+                    <td className="tabular-nums text-[13px]">
+                      {formatWhen(a.endedAt)}
+                    </td>
                     <td className="tabular-nums">
                       {a.totalDaysUnderCommando}
                     </td>
@@ -1032,50 +803,47 @@ export function SeWorkspaceContent() {
       )}
 
       {section === "feedback" && (
-        <SectionFrame
-          title="Feedback"
-          description="Feedback history for this Sales Executive."
-          primary={
-            canCreate("FEEDBACK_CREATE") ? (
-              <Link
-                href={seCreateHref(profile.id, "feedback")}
-                className="action-chip"
-              >
-                Add feedback
-              </Link>
-            ) : null
+        <SeFeedbackPanel
+          profileId={profile.id}
+          profileName={profile.displayName}
+          feedback={feedback}
+          canCreate={canCreate("FEEDBACK_CREATE")}
+          teamName={profile.team.name}
+          teamLeadName={
+            profile.currentAssignment?.teamLead
+              ? personName(profile.currentAssignment.teamLead)
+              : null
           }
-        >
-          <section className="surface p-4">
-            {feedback.length === 0 ? (
-              <EmptyState
-                title="No feedback yet"
-                description="Feedback from Team Lead and Commando appears here."
-              />
-            ) : (
-              <ul className="space-y-3">
-                {feedback.map((f) => (
-                  <li key={f.id}>
-                    <Link href={`/feedback/${f.id}`} className="block">
-                      <p className="text-sm font-medium">
-                        {personName(f.createdBy)} ·{" "}
-                        {f.source.replaceAll("_", " ")}
-                      </p>
-                      <p className="line-clamp-3 text-sm text-[var(--color-ink-muted)]">
-                        {f.body}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </SectionFrame>
+          commandoName={
+            profile.currentAssignment?.commando
+              ? personName(profile.currentAssignment.commando)
+              : null
+          }
+          statusLabel={
+            profile.currentAssignment
+              ? "Active Intervention"
+              : workspace?.health?.status
+                ? workspace.health.status === "NEEDS_ATTENTION"
+                  ? "Under review"
+                  : workspace.health.status === "AT_RISK"
+                    ? "At risk"
+                    : "On track"
+                : null
+          }
+          activeIntervention={Boolean(profile.currentAssignment)}
+          onFeedbackChanged={() => {
+            if (!token || !hasPermission("FEEDBACK_VIEW")) return;
+            void api
+              .getFeedback(token, { profileId: profile.id, pageSize: 50 })
+              .then((r) => setFeedback(r.data.feedback))
+              .catch(() => setFeedback([]));
+          }}
+        />
       )}
 
       {section === "performance" && (
         <SectionFrame
-          title={isSe ? "My development" : "Goals"}
+          title={isSe ? "My development" : "Performance"}
           description="Current score, metrics, and SWOT assessments by source."
           primary={
             hasPermission("SWOT_CREATE") &&
@@ -1091,16 +859,21 @@ export function SeWorkspaceContent() {
           }
         >
           <div className="space-y-4">
-            <section className="surface p-4">
+            <section className="surface p-4" id="verdict">
               <h2 className="text-sm font-semibold">Current score</h2>
               {metricsLoading ? (
                 <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
                   Loading…
                 </p>
               ) : metricsError ? (
-                <p className="mt-2 text-sm text-[var(--status-danger)]">
-                  Unable to load performance data
-                </p>
+                <div className="mt-2">
+                  <p className="text-sm text-[var(--status-danger)]">
+                    Unable to load performance data
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                    {metricsError}
+                  </p>
+                </div>
               ) : metrics?.myPerformanceMetric ? (
                 <div className="mt-3 grid gap-4 sm:grid-cols-3">
                   <div>
@@ -1163,7 +936,7 @@ export function SeWorkspaceContent() {
               ) : null}
             </section>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-3" id="swot">
               {(
                 [
                   {
@@ -1180,7 +953,19 @@ export function SeWorkspaceContent() {
                   },
                 ] as const
               ).map(({ source, title }) => {
-                const item = swots.find((s) => s.source === source) ?? null;
+                const versions = swots
+                  .filter((s) => s.source === source)
+                  .slice()
+                  .sort((a, b) => {
+                    const av = a.versionNumber ?? 0;
+                    const bv = b.versionNumber ?? 0;
+                    if (bv !== av) return bv - av;
+                    return (
+                      new Date(b.createdAt).getTime() -
+                      new Date(a.createdAt).getTime()
+                    );
+                  });
+                const item = versions[0] ?? null;
                 const locked =
                   source === "COMMANDO" &&
                   Boolean(assignment) &&
@@ -1188,9 +973,16 @@ export function SeWorkspaceContent() {
                   isSe;
                 return (
                   <section key={source} className="surface p-4">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
-                      {title}
-                    </h2>
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
+                        {title}
+                      </h2>
+                      {item ? (
+                        <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-brand-dark)]">
+                          Current · v{item.versionNumber ?? versions.length}
+                        </span>
+                      ) : null}
+                    </div>
                     {item ? (
                       <div className="mt-3 space-y-2 text-sm">
                         <p className="text-xs text-[var(--color-ink-muted)]">
@@ -1210,7 +1002,7 @@ export function SeWorkspaceContent() {
                     ) : (
                       <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
                         {locked
-                          ? "Not yet available. The Commando SWOT becomes available after the monthly review period ends (when the Commando assignment completes)."
+                          ? "Not shared with you yet. Team Lead or Commando can make this SWOT visible."
                           : `No ${title.toLowerCase()} recorded yet.`}
                       </p>
                     )}
@@ -1221,19 +1013,38 @@ export function SeWorkspaceContent() {
 
             <section className="surface p-4">
               <h2 className="text-sm font-semibold">SWOT history</h2>
-              {swots.length === 0 ? (
+              {swotError ? (
+                <p className="mt-2 text-sm text-[var(--status-danger)]">
+                  {swotError}
+                </p>
+              ) : swots.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
                   No SWOT records.
                 </p>
               ) : (
                 <ul className="mt-3 divide-y divide-[var(--color-line)]">
-                  {swots.map((s) => (
+                  {[...swots]
+                    .sort((a, b) => {
+                      const av = a.versionNumber ?? 0;
+                      const bv = b.versionNumber ?? 0;
+                      if (bv !== av) return bv - av;
+                      return (
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime()
+                      );
+                    })
+                    .map((s) => (
                     <li key={s.id} className="py-3">
                       <Link
                         href={`/swot/${s.id}`}
                         className="flex justify-between gap-3 text-sm"
                       >
-                        <span>{s.source.replaceAll("_", " ")}</span>
+                        <span>
+                          {s.source.replaceAll("_", " ")}
+                          {s.versionNumber != null
+                            ? ` · v${s.versionNumber}`
+                            : ""}
+                        </span>
                         <span className="text-[var(--color-ink-muted)]">
                           {formatDate(s.createdAt)}
                         </span>
@@ -1247,10 +1058,287 @@ export function SeWorkspaceContent() {
         </SectionFrame>
       )}
 
+      {section === "verdict" && (
+        <SectionFrame
+          title="TL Verdict"
+          description={`Team Lead performance verdict and score for ${profile.displayName}.`}
+        >
+          <section className="surface p-4">
+            <h2 className="text-sm font-semibold">Current verdict</h2>
+            {metricsLoading ? (
+              <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
+                Loading…
+              </p>
+            ) : metricsError ? (
+              <div className="mt-2">
+                <p className="text-sm text-[var(--status-danger)]">
+                  Unable to load performance data
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                  {metricsError}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm mt-3"
+                  onClick={() => void retryMetrics()}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : metrics?.myPerformanceMetric ? (
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs text-[var(--color-ink-subtle)]">Score</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {Math.round(
+                      metrics.myPerformanceMetric.averageMetricScore ??
+                        metrics.myPerformanceMetric.rating ??
+                        0,
+                    )}{" "}
+                    <span className="text-base text-[var(--color-ink-muted)]">
+                      / 100
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--color-ink-subtle)]">
+                    Verdict
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {metrics.myPerformanceMetric.verdict?.replaceAll("_", " ") ??
+                      workspace?.health.status.replaceAll("_", " ") ??
+                      "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[var(--color-ink-subtle)]">
+                    Source
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {metrics.myPerformanceMetric.source.replaceAll("_", " ")} ·{" "}
+                    {formatDate(metrics.myPerformanceMetric.evaluatedAt)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                title="No verdict yet"
+                description="Team Lead evaluations will appear here when recorded."
+              />
+            )}
+            {metrics?.myPerformanceMetric?.scores?.length ? (
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {metrics.myPerformanceMetric.scores.map((s) => (
+                  <li key={s.id}>
+                    <p className="text-xs text-[var(--color-ink-subtle)]">
+                      {s.metricLabel}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {s.scoreValue}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="mt-4">
+              <Link
+                href={seWorkspaceHref(profile.id, "performance")}
+                className="text-sm font-medium text-[var(--color-brand)] hover:underline"
+              >
+                Open full performance →
+              </Link>
+            </div>
+          </section>
+        </SectionFrame>
+      )}
+
+      {section === "swot" && (
+        <SectionFrame
+          title="SWOT"
+          description={`Current assessments and immutable version history for ${profile.displayName}. Updating always creates a new version.`}
+          primary={
+            hasPermission("SWOT_CREATE") &&
+            user?.roleCode !== "SUPER_ADMIN" &&
+            !(isTl && teamLeadLocked) ? (
+              <Link
+                href={seCreateHref(profile.id, "swot")}
+                className="action-chip"
+              >
+                {isSe ? "Add SWOT version" : "Update SWOT"}
+              </Link>
+            ) : null
+          }
+        >
+          <div className="space-y-5">
+            <div className="grid gap-4 lg:grid-cols-3">
+              {(
+                [
+                  {
+                    source: "TEAM_LEAD" as const,
+                    title: "Team Lead assessment",
+                  },
+                  {
+                    source: "SALES_EXECUTIVE" as const,
+                    title: "Self assessment",
+                  },
+                  {
+                    source: "COMMANDO" as const,
+                    title: "Commando assessment",
+                  },
+                ] as const
+              ).map(({ source, title }) => {
+                const versions = swots
+                  .filter((s) => s.source === source)
+                  .slice()
+                  .sort((a, b) => {
+                    const av = a.versionNumber ?? 0;
+                    const bv = b.versionNumber ?? 0;
+                    if (bv !== av) return bv - av;
+                    return (
+                      new Date(b.createdAt).getTime() -
+                      new Date(a.createdAt).getTime()
+                    );
+                  });
+                const item = versions[0] ?? null;
+                const locked =
+                  (source === "COMMANDO" || source === "TEAM_LEAD") &&
+                  !item &&
+                  isSe;
+                return (
+                  <section key={source} className="surface p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
+                        {title}
+                      </h2>
+                      {item ? (
+                        <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-brand-dark)]">
+                          Current · v{item.versionNumber ?? versions.length}
+                        </span>
+                      ) : null}
+                    </div>
+                    {item ? (
+                      <div className="mt-3 space-y-2 text-sm">
+                        <p className="text-xs text-[var(--color-ink-muted)]">
+                          {formatDate(item.createdAt)} ·{" "}
+                          {personName(item.createdBy)}
+                          {!isSe && item.source !== "SALES_EXECUTIVE" ? (
+                            <>
+                              {" "}
+                              ·{" "}
+                              {item.visibleToSalesExecutive
+                                ? "Visible to SE"
+                                : "Hidden from SE"}
+                            </>
+                          ) : null}
+                        </p>
+                        <Field label="Strengths" value={item.strength} />
+                        <Field label="Weaknesses" value={item.weakness} />
+                        <Field label="Opportunities" value={item.opportunity} />
+                        <Field label="Threats" value={item.threat} />
+                        <Link
+                          href={`/swot/${item.id}`}
+                          className="inline-block text-sm text-[var(--color-brand)] hover:underline"
+                        >
+                          View version →
+                        </Link>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+                        {locked
+                          ? "Not shared with you yet. Team Lead or Commando can make this SWOT visible."
+                          : `No ${title.toLowerCase()} recorded yet.`}
+                      </p>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+
+            <section className="surface p-4">
+              <h2 className="text-sm font-semibold">SWOT history</h2>
+              <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
+                Older versions are read-only. Team Lead and Commando always see
+                each other’s SWOT; Sales Executives only see versions marked
+                visible.
+              </p>
+              {swotError ? (
+                <p className="mt-3 text-sm text-[var(--status-danger)]">
+                  {swotError}
+                </p>
+              ) : swots.length === 0 ? (
+                <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+                  No SWOT records.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {[...swots]
+                    .sort((a, b) => {
+                      const av = a.versionNumber ?? 0;
+                      const bv = b.versionNumber ?? 0;
+                      if (bv !== av) return bv - av;
+                      return (
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime()
+                      );
+                    })
+                    .map((s) => {
+                      const latestForSource = swots
+                        .filter((x) => x.source === s.source)
+                        .sort((a, b) => {
+                          const av = a.versionNumber ?? 0;
+                          const bv = b.versionNumber ?? 0;
+                          if (bv !== av) return bv - av;
+                          return (
+                            new Date(b.createdAt).getTime() -
+                            new Date(a.createdAt).getTime()
+                          );
+                        })[0];
+                      const isCurrent = latestForSource?.id === s.id;
+                      return (
+                        <li
+                          key={s.id}
+                          className="rounded-[var(--radius-md)] border border-[var(--color-line)] px-4 py-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[14px] font-semibold text-[var(--color-ink)]">
+                                Version {s.versionNumber ?? "—"}
+                                {isCurrent ? (
+                                  <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
+                                    Current
+                                  </span>
+                                ) : null}
+                              </p>
+                              <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
+                                {s.source.replaceAll("_", " ")} ·{" "}
+                                {formatDate(s.createdAt)} ·{" "}
+                                {personName(s.createdBy)}
+                                {!isSe && s.source !== "SALES_EXECUTIVE"
+                                  ? ` · ${s.visibleToSalesExecutive ? "Visible to SE" : "Hidden from SE"}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <Link
+                              href={`/swot/${s.id}`}
+                              className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+                            >
+                              View version
+                            </Link>
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </section>
+          </div>
+        </SectionFrame>
+      )}
+
       {section === "history" && (
         <SectionFrame
           title="History"
-          description="Assignments, SWOT, and activity timeline for this Sales Executive."
+          description={`Audit-style journey for ${profile.displayName}: referral, approval, intervention, reviews, monitoring, actions, support, and completion.`}
         >
           <div className="space-y-4">
             <section className="surface overflow-hidden">
@@ -1279,8 +1367,12 @@ export function SeWorkspaceContent() {
                       </td>
                       <td>{personName(a.commando)}</td>
                       <td>{personName(a.teamLead)}</td>
-                      <td>{formatDate(a.startedAt)}</td>
-                      <td>{formatDate(a.endedAt)}</td>
+                      <td className="tabular-nums text-[13px]">
+                        {formatWhen(a.startedAt)}
+                      </td>
+                      <td className="tabular-nums text-[13px]">
+                        {formatWhen(a.endedAt)}
+                      </td>
                       <td className="tabular-nums">
                         {a.totalDaysUnderCommando}
                       </td>
@@ -1325,6 +1417,10 @@ export function SeWorkspaceContent() {
             </section>
             <section className="surface p-4">
               <h2 className="text-sm font-semibold">Timeline</h2>
+              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+                Referral · Approval · Intervention · Reviews · Monitoring ·
+                Actions · Support · Completion
+              </p>
               {timeline.length === 0 ? (
                 <EmptyState
                   title="No timeline yet"
@@ -1404,124 +1500,6 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs text-[var(--color-ink-subtle)]">{label}</dt>
       <dd className="mt-0.5">{value}</dd>
-    </div>
-  );
-}
-
-function EisenhowerPreview({
-  tasks,
-  profileId,
-  canCreate,
-}: {
-  tasks: EisenhowerTask[];
-  profileId: string;
-  canCreate?: boolean;
-}) {
-  const returnTo = `/profiles/${profileId}/eisenhower`;
-  const months = Array.from(new Set(tasks.map((t) => t.monthLabel)));
-  const groups: Record<string, EisenhowerTask[]> = {
-    DO_FIRST: tasks.filter((t) => t.category === "DO_FIRST" && t.isCurrentMonth),
-    SCHEDULE: tasks.filter((t) => t.category === "SCHEDULE" && t.isCurrentMonth),
-    DELEGATE: tasks.filter((t) => t.category === "DELEGATE" && t.isCurrentMonth),
-    ELIMINATE: tasks.filter(
-      (t) => t.category === "ELIMINATE" && t.isCurrentMonth,
-    ),
-  };
-  return (
-    <div className="mt-3 space-y-3">
-      <p className="text-xs text-[var(--color-ink-muted)]">
-        Months: {months.join(" · ")}
-      </p>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <Quad
-          title="Do first"
-          hint="Important + Urgent"
-          category="DO_FIRST"
-          items={groups.DO_FIRST}
-          returnTo={returnTo}
-          profileId={profileId}
-          canCreate={canCreate}
-        />
-        <Quad
-          title="Schedule"
-          hint="Important + Not urgent"
-          category="SCHEDULE"
-          items={groups.SCHEDULE}
-          returnTo={returnTo}
-          profileId={profileId}
-          canCreate={canCreate}
-        />
-        <Quad
-          title="Delegate"
-          hint="Not important + Urgent"
-          category="DELEGATE"
-          items={groups.DELEGATE}
-          returnTo={returnTo}
-          profileId={profileId}
-          canCreate={canCreate}
-        />
-        <Quad
-          title="Eliminate"
-          hint="Not important + Not urgent"
-          category="ELIMINATE"
-          items={groups.ELIMINATE}
-          returnTo={returnTo}
-          profileId={profileId}
-          canCreate={canCreate}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Quad({
-  title,
-  hint,
-  category,
-  items,
-  returnTo,
-  profileId,
-  canCreate,
-}: {
-  title: string;
-  hint: string;
-  category: "DO_FIRST" | "SCHEDULE" | "DELEGATE" | "ELIMINATE";
-  items: EisenhowerTask[];
-  returnTo: string;
-  profileId: string;
-  canCreate?: boolean;
-}) {
-  return (
-    <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-semibold">{title}</p>
-          <p className="text-[var(--color-ink-subtle)]">{hint}</p>
-        </div>
-        {canCreate ? (
-          <Link
-            href={seCreateHref(profileId, "eisenhower", { category })}
-            className="shrink-0 text-[11px] font-medium text-[var(--color-brand)] hover:underline"
-          >
-            Add
-          </Link>
-        ) : null}
-      </div>
-      <ul className="mt-1 space-y-1">
-        {items.slice(0, 3).map((t) => (
-          <li key={t.id}>
-            <Link
-              href={`/eisenhower/${t.id}?returnTo=${encodeURIComponent(returnTo)}`}
-              className="hover:underline"
-            >
-              {t.title}
-            </Link>
-          </li>
-        ))}
-        {items.length === 0 && (
-          <li className="text-[var(--color-ink-muted)]">None this month</li>
-        )}
-      </ul>
     </div>
   );
 }

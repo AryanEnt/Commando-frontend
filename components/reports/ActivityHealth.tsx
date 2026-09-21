@@ -29,7 +29,7 @@ export function ActivityHealth({ counts }: Props) {
   const rows: Row[] = [
     {
       key: "actions",
-      label: "Action items",
+      label: "Assignment",
       state:
         counts.overdueActions > 0
           ? `${counts.overdueActions} overdue`

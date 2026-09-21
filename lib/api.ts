@@ -99,6 +99,22 @@ export const api = {
       { token },
     );
   },
+  addTeamMember(
+    token: string,
+    teamId: string,
+    body: { userId: string; roleInTeam: string },
+  ) {
+    return request<{ data: { membership: TeamMember } }>(
+      `/api/teams/${teamId}/members`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  endTeamMember(token: string, teamId: string, membershipId: string) {
+    return request<{ data: { membership: TeamMember } }>(
+      `/api/teams/${teamId}/members/${membershipId}/end`,
+      { method: "POST", token, body: JSON.stringify({}) },
+    );
+  },
   createTeam(token: string, body: { name: string; description?: string }) {
     return request<{ data: { team: Team } }>("/api/teams", {
       method: "POST",
@@ -153,6 +169,56 @@ export const api = {
         }>;
       };
     }>(`/api/interventions/${profileId}/timeline`, { token });
+  },
+  getWorkspaceEvents(
+    token: string,
+    params: {
+      profileId: string;
+      type?: WorkspaceEventType;
+      search?: string;
+      range?: WorkspaceEventRange;
+      eisenhowerCategory?: EisenhowerCategory;
+      page?: number;
+      pageSize?: number;
+    },
+  ) {
+    const sp = new URLSearchParams();
+    sp.set("profileId", params.profileId);
+    if (params.type) sp.set("type", params.type);
+    if (params.search) sp.set("search", params.search);
+    if (params.range) sp.set("range", params.range);
+    if (params.eisenhowerCategory)
+      sp.set("eisenhowerCategory", params.eisenhowerCategory);
+    if (params.page) sp.set("page", String(params.page));
+    sp.set("pageSize", String(params.pageSize ?? 50));
+    return request<{
+      data: {
+        events: WorkspaceEvent[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
+    }>(`/api/workspace-events?${sp}`, { token });
+  },
+  createWorkspaceEvent(
+    token: string,
+    body: {
+      salesExecutiveProfileId: string;
+      type: WorkspaceEventType;
+      title: string;
+      notes?: string | null;
+      nextAction?: string | null;
+      urgency?: EventUrgency;
+      importance?: EventImportance;
+      status?: WorkspaceEventStatus;
+      occurredAt?: string;
+      createLinkedRecord?: boolean;
+    },
+  ) {
+    return request<{ data: { event: WorkspaceEvent } }>(
+      "/api/workspace-events",
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
   },
   acknowledgeRecord(
     token: string,
@@ -231,6 +297,7 @@ export const api = {
       commandoUserId: string;
       teamLeadUserId: string;
       teamId: string;
+      startedAt?: string;
     },
   ) {
     return request<{ data: { assignment: Assignment } }>("/api/assignments", {
@@ -244,6 +311,7 @@ export const api = {
     id: string,
     body: {
       status: "COMPLETED" | "EXITED";
+      endedAt?: string;
       completionReason?: string;
       outcome?: string;
       initialProblem?: string;
@@ -544,12 +612,24 @@ export const api = {
       weakness: string;
       opportunity: string;
       threat: string;
+      visibleToSalesExecutive?: boolean;
     },
   ) {
     return request<{ data: { swot: SwotItem } }>("/api/swot", {
       method: "POST",
       token,
       body: JSON.stringify(body),
+    });
+  },
+  setSwotVisibility(
+    token: string,
+    id: string,
+    visibleToSalesExecutive: boolean,
+  ) {
+    return request<{ data: { swot: SwotItem } }>(`/api/swot/${id}/visibility`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ visibleToSalesExecutive }),
     });
   },
   getActivityTypes(
@@ -588,7 +668,7 @@ export const api = {
   createActivityType(
     token: string,
     body: {
-      code: string;
+      code?: string;
       name: string;
       description?: string;
       isActive?: boolean;
@@ -614,12 +694,22 @@ export const api = {
       { method: "PATCH", token, body: JSON.stringify(body) },
     );
   },
+  deleteActivityType(token: string, id: string) {
+    return request<{
+      data: {
+        deleted: boolean;
+        archived: boolean;
+        activityType: ActivityType | null;
+        message: string;
+      };
+    }>(`/api/activity-types/${id}`, { method: "DELETE", token });
+  },
   getDailyLogs(
     token: string,
     params?: {
       search?: string;
       profileId?: string;
-      activityTypeId?: string;
+      status?: "DRAFT" | "SUBMITTED";
       page?: number;
       pageSize?: number;
     },
@@ -627,7 +717,7 @@ export const api = {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.profileId) sp.set("profileId", params.profileId);
-    if (params?.activityTypeId) sp.set("activityTypeId", params.activityTypeId);
+    if (params?.status) sp.set("status", params.status);
     if (params?.page) sp.set("page", String(params.page));
     sp.set("pageSize", String(params?.pageSize ?? 20));
     const q = sp.toString() ? `?${sp}` : "";
@@ -635,9 +725,26 @@ export const api = {
       data: { logs: DailyLog[]; total: number; page: number; pageSize: number };
     }>(`/api/daily-logs${q}`, { token });
   },
+  getDailyLogAttention(token: string, profileId: string) {
+    const sp = new URLSearchParams({ profileId });
+    return request<{ data: { logs: DailyLog[] } }>(
+      `/api/daily-logs/attention?${sp}`,
+      { token },
+    );
+  },
   getDailyLog(token: string, id: string) {
     return request<{ data: { log: DailyLog } }>(`/api/daily-logs/${id}`, {
       token,
+    });
+  },
+  ensureDailyLog(
+    token: string,
+    body: { salesExecutiveProfileId: string; logDate?: string },
+  ) {
+    return request<{ data: { log: DailyLog } }>("/api/daily-logs/ensure", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
     });
   },
   createDailyLog(
@@ -655,6 +762,74 @@ export const api = {
     },
   ) {
     return request<{ data: { log: DailyLog } }>("/api/daily-logs", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+  addDailyLogEntry(
+    token: string,
+    logId: string,
+    body: {
+      activityTypeId: string;
+      sessionTitle: string;
+      observation: string;
+      evidence?: string | null;
+      seResponse?: string | null;
+      coachingGiven?: string | null;
+      expectedChange?: string | null;
+      followUp?: string | null;
+    },
+  ) {
+    return request<{ data: { log: DailyLog } }>(
+      `/api/daily-logs/${logId}/entries`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  updateDailyLogEntry(
+    token: string,
+    logId: string,
+    entryId: string,
+    body: Partial<{
+      activityTypeId: string;
+      sessionTitle: string;
+      observation: string;
+      evidence: string | null;
+      seResponse: string | null;
+      coachingGiven: string | null;
+      expectedChange: string | null;
+      followUp: string | null;
+    }>,
+  ) {
+    return request<{ data: { log: DailyLog } }>(
+      `/api/daily-logs/${logId}/entries/${entryId}`,
+      { method: "PATCH", token, body: JSON.stringify(body) },
+    );
+  },
+  deleteDailyLogEntry(token: string, logId: string, entryId: string) {
+    return request<{ data: { log: DailyLog } }>(
+      `/api/daily-logs/${logId}/entries/${entryId}`,
+      { method: "DELETE", token },
+    );
+  },
+  submitDailyLog(
+    token: string,
+    logId: string,
+    body: {
+      classifications: Array<{
+        entryId: string;
+        urgency: "URGENT" | "NOT_URGENT";
+        importance: "IMPORTANT" | "NOT_IMPORTANT";
+      }>;
+    },
+  ) {
+    return request<{
+      data: {
+        log: DailyLog;
+        eisenhowerCreated: number;
+        prioritizedCount: number;
+      };
+    }>(`/api/daily-logs/${logId}/submit`, {
       method: "POST",
       token,
       body: JSON.stringify(body),
@@ -686,6 +861,17 @@ export const api = {
       };
     }>(`/api/weekly-reviews${q}`, { token });
   },
+  getWeeklyReviewHub(
+    token: string,
+    params: { profileId: string; weekStart?: string },
+  ) {
+    const sp = new URLSearchParams({ profileId: params.profileId });
+    if (params.weekStart) sp.set("weekStart", params.weekStart);
+    return request<{ data: WeeklyReviewHub }>(
+      `/api/weekly-reviews/hub?${sp}`,
+      { token },
+    );
+  },
   getWeeklyReview(token: string, id: string) {
     return request<{ data: { review: WeeklyReview } }>(
       `/api/weekly-reviews/${id}`,
@@ -699,10 +885,23 @@ export const api = {
       weekLabel: string;
       weekStartDate: string;
       meetingDate: string;
+      roomName: string;
+      meetingTime: string;
+      meetingMinutes?: {
+        key: string;
+        fileName: string;
+        contentType: string;
+        size?: number;
+      } | null;
       performanceSummary: string;
       whatWentWell: string;
       improvement: string;
-      nextWeekAction: string;
+      nextWeekAction?: string;
+      nextWeekActions?: string[];
+      followUpActions?: Array<{
+        actionItemId: string;
+        status: "COMPLETED" | "ACTIVE" | "CANCELLED";
+      }>;
       attendeeUserIds?: string[];
     },
   ) {
@@ -719,6 +918,14 @@ export const api = {
       weekLabel?: string;
       weekStartDate?: string;
       meetingDate?: string;
+      roomName?: string;
+      meetingTime?: string;
+      meetingMinutes?: {
+        key: string;
+        fileName: string;
+        contentType: string;
+        size?: number;
+      } | null;
       performanceSummary?: string;
       whatWentWell?: string;
       improvement?: string;
@@ -742,6 +949,38 @@ export const api = {
       `/api/weekly-reviews/${id}/acknowledge`,
       { method: "POST", token },
     );
+  },
+  presignUpload(
+    token: string,
+    body: {
+      purpose: "weekly-review-minutes";
+      fileName: string;
+      contentType: string;
+      contentLength: number;
+    },
+  ) {
+    return request<{
+      data: {
+        key: string;
+        uploadUrl: string;
+        headers: Record<string, string>;
+        expiresInSeconds: number;
+      };
+    }>("/api/uploads/presign", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+  getWeeklyReviewMinutesUrl(token: string, id: string) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(`/api/weekly-reviews/${id}/minutes-url`, { token });
   },
   getMonitoringCategories(
     token: string,
@@ -805,6 +1044,19 @@ export const api = {
       `/api/monitoring/categories/${id}`,
       { method: "PATCH", token, body: JSON.stringify(body) },
     );
+  },
+  deleteMonitoringCategory(token: string, id: string) {
+    return request<{
+      data: {
+        deleted: boolean;
+        archived: boolean;
+        category: MonitoringCategory | null;
+        message: string;
+      };
+    }>(`/api/monitoring/categories/${id}`, {
+      method: "DELETE",
+      token,
+    });
   },
   createMonitoringChecklistItem(
     token: string,
@@ -1204,84 +1456,6 @@ export const api = {
       { method: "POST", token, body: JSON.stringify(body) },
     );
   },
-  getRoleAssignmentTemplates(token: string) {
-    return request<{
-      data: {
-        templates: {
-          primaryResponsibility: string;
-          shouldDo: string[];
-          shouldNotDo: string[];
-        };
-      };
-    }>("/api/role-assignments/templates", { token });
-  },
-  getRoleAssignments(
-    token: string,
-    params?: {
-      search?: string;
-      profileId?: string;
-      salesSupportUserId?: string;
-      status?: "ACTIVE" | "SUPERSEDED" | "ARCHIVED";
-      includeHistory?: boolean;
-      page?: number;
-      pageSize?: number;
-    },
-  ) {
-    const sp = new URLSearchParams();
-    if (params?.search) sp.set("search", params.search);
-    if (params?.profileId) sp.set("profileId", params.profileId);
-    if (params?.salesSupportUserId) {
-      sp.set("salesSupportUserId", params.salesSupportUserId);
-    }
-    if (params?.status) sp.set("status", params.status);
-    if (params?.includeHistory) sp.set("includeHistory", "true");
-    if (params?.page) sp.set("page", String(params.page));
-    sp.set("pageSize", String(params?.pageSize ?? 20));
-    const q = sp.toString() ? `?${sp}` : "";
-    return request<{
-      data: {
-        roleAssignments: RoleAssignment[];
-        total: number;
-        page: number;
-        pageSize: number;
-      };
-    }>(`/api/role-assignments${q}`, { token });
-  },
-  getRoleAssignment(token: string, id: string) {
-    return request<{ data: { roleAssignment: RoleAssignment } }>(
-      `/api/role-assignments/${id}`,
-      { token },
-    );
-  },
-  createRoleAssignment(
-    token: string,
-    body: {
-      salesExecutiveProfileId: string;
-      salesSupportUserId: string;
-      primaryResponsibility: string;
-      shouldDo: string[];
-      shouldNotDo: string[];
-    },
-  ) {
-    return request<{ data: { roleAssignment: RoleAssignment } }>(
-      "/api/role-assignments",
-      { method: "POST", token, body: JSON.stringify(body) },
-    );
-  },
-  updateRoleAssignment(
-    token: string,
-    id: string,
-    body: {
-      primaryResponsibility?: string;
-      shouldDo?: string[];
-      shouldNotDo?: string[];
-    },
-  ) {
-    return request<{ data: { roleAssignment: RoleAssignment } }>(
-      `/api/role-assignments/${id}`,
-      { method: "PATCH", token, body: JSON.stringify(body) },
-    );
-  },
   getEisenhowerTasks(
     token: string,
     params?: {
@@ -1329,6 +1503,18 @@ export const api = {
         tasks: EisenhowerTask[];
       };
     }>(`/api/eisenhower/matrix${q}`, { token });
+  },
+  getEisenhowerWorkspace(
+    token: string,
+    params: { profileId: string; assignmentId?: string },
+  ) {
+    const sp = new URLSearchParams();
+    sp.set("profileId", params.profileId);
+    if (params.assignmentId) sp.set("assignmentId", params.assignmentId);
+    return request<{ data: EisenhowerWorkspace }>(
+      `/api/eisenhower/workspace?${sp.toString()}`,
+      { token },
+    );
   },
   getEisenhowerTask(token: string, id: string) {
     return request<{ data: { task: EisenhowerTask } }>(
@@ -1909,6 +2095,9 @@ export type SwotItem = {
   weakness: string;
   opportunity: string;
   threat: string;
+  versionNumber?: number;
+  supersedesId?: string | null;
+  visibleToSalesExecutive?: boolean;
   createdById: string;
   createdBy: {
     id: string;
@@ -1930,18 +2119,67 @@ export type ActivityType = {
   archivedAt: string | null;
 };
 
-export type DailyLog = {
+export type DailyLogEntry = {
   id: string;
-  salesExecutiveProfileId: string;
-  profile: { id: string; displayName: string };
+  dailyLogId: string;
   activityTypeId: string;
   activityType: { id: string; code: string; name: string };
   sessionTitle: string;
   observation: string;
-  assignmentId: string | null;
-  createdBy: { id: string; firstName: string; lastName: string; email: string };
+  evidence: string | null;
+  seResponse: string | null;
+  coachingGiven: string | null;
+  expectedChange: string | null;
+  followUp: string | null;
+  urgency: "URGENT" | "NOT_URGENT" | null;
+  importance: "IMPORTANT" | "NOT_IMPORTANT" | null;
+  eisenhowerCategory:
+    | "DO_FIRST"
+    | "SCHEDULE"
+    | "DELEGATE"
+    | "ELIMINATE"
+    | null;
+  eisenhowerTaskId: string | null;
+  sortOrder: number;
   loggedAt: string;
+  createdById: string;
+  createdBy: { id: string; firstName: string; lastName: string; email: string };
   createdAt: string;
+  updatedAt: string;
+};
+
+export type DailyLog = {
+  id: string;
+  salesExecutiveProfileId: string;
+  profile: {
+    id: string;
+    displayName: string;
+    userId?: string;
+    teamId?: string;
+  };
+  assignmentId: string | null;
+  assignment: {
+    id: string;
+    status: string;
+    startedAt: string;
+    endedAt: string | null;
+    commando?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+  } | null;
+  logDate: string;
+  status: "DRAFT" | "SUBMITTED";
+  submittedAt: string | null;
+  createdById: string;
+  createdBy: { id: string; firstName: string; lastName: string; email: string };
+  entryCount: number;
+  entries: DailyLogEntry[];
+  createdAt: string;
+  updatedAt: string;
+  isEditable: boolean;
 };
 
 export type WeeklyReview = {
@@ -1954,7 +2192,7 @@ export type WeeklyReview = {
     teamId: string;
   };
   assignmentId: string | null;
-  commandoUserId: string;
+  commandoUserId: string | null;
   commando: {
     id: string;
     firstName: string;
@@ -1971,6 +2209,14 @@ export type WeeklyReview = {
   weekLabel: string;
   weekStartDate: string;
   meetingDate: string;
+  roomName: string | null;
+  meetingTime: string | null;
+  meetingMinutes: {
+    fileName: string;
+    contentType: string;
+    size: number | null;
+    uploadedAt: string | null;
+  } | null;
   performanceSummary: string;
   whatWentWell: string;
   improvement: string;
@@ -2004,6 +2250,163 @@ export type WeeklyReview = {
   createdAt: string;
   updatedAt: string;
   isEditable: boolean;
+};
+
+export type WeeklyReviewHubAction = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  dueDate: string | null;
+  completedAt: string | null;
+  weeklyReview: {
+    id: string;
+    weekLabel: string;
+    weekStartDate: string;
+    meetingDate: string;
+    createdAt: string;
+  } | null;
+};
+
+export type WeeklyReviewHubPerson = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role?: { code: string };
+};
+
+export type WeeklyReviewHub = {
+  week: { start: string; end: string; label: string };
+  profile: {
+    id: string;
+    displayName: string;
+    teamName?: string;
+    teamLead?: WeeklyReviewHubPerson | null;
+    commando?: WeeklyReviewHubPerson | null;
+    interventionActive?: boolean;
+  };
+  review: WeeklyReview | null;
+  glance: {
+    dailyLogs: number;
+    dailyLogEntries: number;
+    monitoring: number;
+    actions: number;
+    priorities: number;
+    feedback?: number;
+    swot?: number;
+    support: number;
+    overdueActions?: number;
+    draftLogs?: number;
+  };
+  attention: string[];
+  checklistFocus: Array<{ label: string; count: number }>;
+  dailyLogs: Array<{
+    id: string;
+    logDate: string;
+    status: "DRAFT" | "SUBMITTED";
+    entryCount: number;
+    submittedAt: string | null;
+    entries: Array<{
+      id: string;
+      sessionTitle: string;
+      observation: string;
+      evidence: string | null;
+      seResponse: string | null;
+      coachingGiven: string | null;
+      expectedChange: string | null;
+      followUp: string | null;
+      loggedAt: string;
+      activityType: { id: string; name: string; code: string };
+      eisenhowerCategory: string | null;
+      hasEvidence: boolean;
+      hasCoaching: boolean;
+    }>;
+  }>;
+  monitoring: Array<{
+    id: string;
+    observedAt: string;
+    category: { id: string; name: string; code: string };
+    observation: string | null;
+    checklistCompleted: number;
+    checklistTotal: number;
+    responses: Array<{
+      id: string;
+      label: string;
+      description: string | null;
+      value: string;
+      sortOrder: number;
+    }>;
+    supportInvolvements: Array<{
+      displayName: string;
+      responsibility: string | null;
+    }>;
+  }>;
+  actions: {
+    completed: WeeklyReviewHubAction[];
+    active: WeeklyReviewHubAction[];
+    overdue: WeeklyReviewHubAction[];
+    other: WeeklyReviewHubAction[];
+  };
+  feedback?: Array<{
+    id: string;
+    body: string;
+    source: string;
+    createdAt: string;
+    createdBy: WeeklyReviewHubPerson;
+  }>;
+  swot?: Array<{
+    id: string;
+    source: string;
+    strength: string;
+    weakness: string;
+    opportunity: string;
+    threat: string;
+    versionNumber: number;
+    createdAt: string;
+    createdBy: WeeklyReviewHubPerson;
+  }>;
+  eisenhower: {
+    DO_FIRST: Array<{
+      id: string;
+      title: string;
+      notes: string | null;
+      status: string;
+      dueDate: string | null;
+      category: string;
+    }>;
+    SCHEDULE: Array<{
+      id: string;
+      title: string;
+      notes: string | null;
+      status: string;
+      dueDate: string | null;
+      category: string;
+    }>;
+    DELEGATE: Array<{
+      id: string;
+      title: string;
+      notes: string | null;
+      status: string;
+      dueDate: string | null;
+      category: string;
+    }>;
+    ELIMINATE: Array<{
+      id: string;
+      title: string;
+      notes: string | null;
+      status: string;
+      dueDate: string | null;
+      category: string;
+    }>;
+  };
+  support: Array<{
+    monitoringId: string;
+    observedAt: string;
+    categoryName: string;
+    displayName: string;
+    responsibility: string | null;
+  }>;
 };
 
 export type MonitoringChecklistItem = {
@@ -2321,7 +2724,34 @@ export type SupportTask = {
   updatedAt: string;
 };
 
-export type RoleAssignment = {
+export type EisenhowerCategory =
+  | "DO_FIRST"
+  | "SCHEDULE"
+  | "DELEGATE"
+  | "ELIMINATE";
+
+export type WorkspaceEventType =
+  | "MONITORING"
+  | "COACHING"
+  | "FEEDBACK"
+  | "DAILY_LOG"
+  | "REVIEW"
+  | "ACTION"
+  | "SUPPORT"
+  | "INTERVENTION"
+  | "SWOT"
+  | "GENERAL";
+
+export type EventUrgency = "URGENT" | "NOT_URGENT";
+export type EventImportance = "IMPORTANT" | "NOT_IMPORTANT";
+export type WorkspaceEventStatus =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED";
+export type WorkspaceEventRange = "today" | "week" | "month" | "all";
+
+export type WorkspaceEvent = {
   id: string;
   salesExecutiveProfileId: string;
   profile: {
@@ -2329,66 +2759,37 @@ export type RoleAssignment = {
     displayName: string;
     userId: string;
     teamId: string;
-    team: { id: string; name: string };
   };
-  team: { id: string; name: string };
-  salesSupportUserId: string;
-  salesSupportUser: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    role: { code: string };
-  };
-  salesSupportLinkId: string | null;
-  salesSupportLink: {
-    id: string;
-    isActive: boolean;
-    startedAt: string;
-    endedAt: string | null;
-  } | null;
   assignmentId: string | null;
   assignment: {
     id: string;
     status: string;
     startedAt: string;
     endedAt: string | null;
-    teamId: string;
   } | null;
-  commando: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  } | null;
-  teamLead: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  } | null;
-  primaryResponsibility: string;
-  shouldDo: Array<{ id: string; text: string; sortOrder: number }>;
-  shouldNotDo: Array<{ id: string; text: string; sortOrder: number }>;
-  status: "ACTIVE" | "SUPERSEDED" | "ARCHIVED";
-  replacesId: string | null;
+  type: WorkspaceEventType;
+  title: string;
+  notes: string | null;
+  nextAction: string | null;
+  urgency: EventUrgency;
+  importance: EventImportance;
+  status: WorkspaceEventStatus;
+  eisenhowerCategory: EisenhowerCategory;
+  occurredAt: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  href: string | null;
   createdById: string;
   createdBy: {
     id: string;
     firstName: string;
     lastName: string;
     email: string;
-    role: { code: string };
+    role?: { code: string } | null;
   };
   createdAt: string;
   updatedAt: string;
 };
-
-export type EisenhowerCategory =
-  | "DO_FIRST"
-  | "SCHEDULE"
-  | "DELEGATE"
-  | "ELIMINATE";
 
 export type EisenhowerStatus =
   | "OPEN"
@@ -2411,6 +2812,12 @@ export type EisenhowerTask = {
     status: string;
     startedAt: string;
     endedAt: string | null;
+    commando?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email?: string;
+    };
   } | null;
   month: string;
   monthLabel: string;
@@ -2431,6 +2838,83 @@ export type EisenhowerTask = {
   };
   createdAt: string;
   updatedAt: string;
+};
+
+export type EisenhowerWorkspacePerson = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+};
+
+export type EisenhowerWorkspaceAssignment = {
+  id: string;
+  interventionNumber: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  commando: EisenhowerWorkspacePerson;
+};
+
+export type EisenhowerWorkspaceHistoryItem = {
+  assignmentId: string;
+  interventionNumber: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  commando: EisenhowerWorkspacePerson;
+  taskCount: number;
+  hasEisenhower: boolean;
+  canViewMatrix: boolean;
+};
+
+export type EisenhowerCommandoOption = {
+  assignmentId: string;
+  interventionNumber: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  commando: EisenhowerWorkspacePerson;
+  /** e.g. "Chris Commando (Commando)" */
+  label: string;
+  lockedForViewer: boolean;
+  hasEisenhower: boolean;
+  canViewMatrix: boolean;
+};
+
+export type EisenhowerWorkspace = {
+  profileId: string;
+  lifecycle: {
+    isDuringCommando: boolean;
+    isAfterCommando: boolean;
+    hasActiveAssignment: boolean;
+    hasCompletedAssignment: boolean;
+  };
+  latestFocus:
+    | "TEAM_LEAD"
+    | "COMMANDO"
+    | "TEAM_LEAD_WITH_LOCKED_COMMANDO";
+  activeIntervention: EisenhowerWorkspaceAssignment | null;
+  teamLead: {
+    owner: "TEAM_LEAD";
+    label: string;
+    availability: "AVAILABLE";
+    tasks: EisenhowerTask[];
+    updatedAt: string | null;
+    updatedBy: EisenhowerWorkspacePerson | null;
+  };
+  commando: {
+    owner: "COMMANDO";
+    label: string;
+    state: "LOCKED" | "AVAILABLE" | "EMPTY";
+    lockedMessage: string | null;
+    assignment: EisenhowerWorkspaceAssignment | null;
+    tasks: EisenhowerTask[] | null;
+    updatedAt: string | null;
+    updatedBy: EisenhowerWorkspacePerson | null;
+  };
+  commandoOptions: EisenhowerCommandoOption[];
+  interventionHistory: EisenhowerWorkspaceHistoryItem[];
 };
 
 export type ActionItemStatus =
@@ -2456,11 +2940,26 @@ export type ActionItem = {
     startedAt: string;
     endedAt: string | null;
   } | null;
+  weeklyReviewId?: string | null;
+  weeklyReview?: {
+    id: string;
+    weekLabel: string;
+    weekStartDate: string;
+    meetingDate: string;
+    createdAt: string;
+  } | null;
   title: string;
   description: string | null;
   status: ActionItemStatus;
   dueDate: string | null;
   completedAt: string | null;
+  completedById?: string | null;
+  completedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
   expiredAt: string | null;
   replacesId: string | null;
   replaces: {

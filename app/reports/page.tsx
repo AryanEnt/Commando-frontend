@@ -17,7 +17,6 @@ import { OperationalSummary } from "@/components/reports/OperationalSummary";
 import { OperationalTimeline } from "@/components/reports/OperationalTimeline";
 import { OrganizationCoverage } from "@/components/reports/OrganizationCoverage";
 import { ReportsHeader } from "@/components/reports/ReportsHeader";
-import { WorkflowMap } from "@/components/reports/WorkflowMap";
 
 export default function ReportsHubPage() {
   const { token, user, hasPermission } = useAuth();
@@ -138,8 +137,6 @@ export default function ReportsHubPage() {
               <ActivityHealth counts={overview.counts} />
             </div>
           </div>
-
-          <WorkflowMap counts={overview.counts} />
 
           <div className="grid gap-4 lg:grid-cols-12">
             <div className="lg:col-span-5">

@@ -80,6 +80,37 @@ function NewSwotForm() {
   }, [token, lockedProfileId]);
 
   useEffect(() => {
+    if (!token || !form.salesExecutiveProfileId || !user) return;
+    const source =
+      user.roleCode === "TEAM_LEAD"
+        ? "TEAM_LEAD"
+        : user.roleCode === "COMMANDO_EXECUTIVE"
+          ? "COMMANDO"
+          : user.roleCode === "SALES_EXECUTIVE"
+            ? "SALES_EXECUTIVE"
+            : null;
+    if (!source) return;
+    void api
+      .getSwotList(token, {
+        profileId: form.salesExecutiveProfileId,
+        source,
+        pageSize: 5,
+      })
+      .then((res) => {
+        const latest = res.data.items[0];
+        if (!latest) return;
+        setForm((prev) => ({
+          ...prev,
+          strength: prev.strength || latest.strength,
+          weakness: prev.weakness || latest.weakness,
+          opportunity: prev.opportunity || latest.opportunity,
+          threat: prev.threat || latest.threat,
+        }));
+      })
+      .catch(() => undefined);
+  }, [token, form.salesExecutiveProfileId, user]);
+
+  useEffect(() => {
     if (!token || user?.roleCode !== "SALES_EXECUTIVE") return;
     void api.getProfiles(token).then((res) => {
       const own = res.data.profiles[0];
@@ -105,7 +136,7 @@ function NewSwotForm() {
         returnTo
           ? returnTo
           : form.salesExecutiveProfileId
-            ? `/profiles/${form.salesExecutiveProfileId}/performance`
+            ? `/profiles/${form.salesExecutiveProfileId}/swot`
             : `/swot/${res.data.swot.id}`,
       );
     } catch (err) {
@@ -154,11 +185,12 @@ function NewSwotForm() {
           ← Back
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          Create SWOT
+          Update SWOT
         </h1>
         <p className="text-sm text-slate-600">
-          Source will be recorded as <strong>{sourceHint}</strong>. This creates
-          a new historical record.
+          Source will be recorded as <strong>{sourceHint}</strong>. Saving
+          creates a <strong>new version</strong> — previous SWOT content stays
+          available in history.
         </p>
       </div>
 

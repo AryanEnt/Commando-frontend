@@ -4,12 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type ControlTowerData } from "@/lib/api";
 import { ErrorState } from "@/components/ui";
 import {
-  AttentionPanel,
+  CommandCenter,
+  ControlTowerAside,
   ControlTowerHeader,
   ControlTowerSkeleton,
   GovernanceHub,
-  OperationsPulse,
-  PlatformPulse,
+  PlatformKpiStrip,
   RecentActivity,
   WorkflowHealth,
   buildWorkflowRows,
@@ -59,9 +59,12 @@ export function SuperAdminControlTower({ token }: { token: string }) {
   }, [load]);
 
   const workflowRows = tower ? buildWorkflowRows(tower) : [];
+  const visibleAlerts =
+    tower?.alerts.filter((a) => a.code !== "INACTIVE_USERS") ?? [];
+  const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
 
   return (
-    <div className="space-y-6 lg:space-y-7">
+    <div className="space-y-5 lg:space-y-6">
       <ControlTowerHeader
         generatedAt={tower?.generatedAt}
         loadedAt={loadedAt}
@@ -85,23 +88,27 @@ export function SuperAdminControlTower({ token }: { token: string }) {
             />
           )}
 
-          <PlatformPulse metrics={tower.metrics} />
+          <PlatformKpiStrip metrics={tower.metrics} />
 
-          <div className="grid gap-3 lg:grid-cols-12 lg:items-stretch">
-            <div className="lg:col-span-7">
-              <OperationsPulse metrics={tower.metrics} rows={workflowRows} />
+          <div className="grid gap-4 xl:grid-cols-12 xl:items-start">
+            <div className="min-w-0 space-y-4 xl:col-span-8">
+              <CommandCenter
+                alerts={tower.alerts}
+                attention={tower.attention}
+                metrics={tower.metrics}
+                workflowRows={workflowRows}
+              />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <WorkflowHealth rows={workflowRows} />
+                <RecentActivity items={tower.recentActivity ?? []} />
+              </div>
             </div>
-            <div className="lg:col-span-5">
-              <AttentionPanel alerts={tower.alerts} />
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-12 lg:items-stretch">
-            <div className="lg:col-span-7">
-              <WorkflowHealth rows={workflowRows} />
-            </div>
-            <div className="lg:col-span-5">
-              <RecentActivity items={tower.recentActivity ?? []} />
+            <div className="xl:col-span-4">
+              <ControlTowerAside
+                metrics={tower.metrics}
+                alertCount={visibleAlerts.length}
+                hasCritical={hasCritical}
+              />
             </div>
           </div>
 

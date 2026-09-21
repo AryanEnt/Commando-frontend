@@ -1,105 +1,175 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, AlertTriangle, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ChevronRight, Crosshair } from "lucide-react";
 import type { ControlTowerAlert } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { attentionActionLabel } from "./utils";
 
 type Props = {
   alerts: ControlTowerAlert[];
+  /** Optional filter applied by command-center tabs. */
+  filterCodes?: string[] | null;
 };
 
-export function AttentionPanel({ alerts }: Props) {
-  const attention = alerts.filter((a) => a.severity !== "info");
-  const hasIssues = attention.length > 0;
+function severityMeta(severity: ControlTowerAlert["severity"]) {
+  if (severity === "critical") {
+    return {
+      priority: "High",
+      bar: "bg-[var(--status-danger)]",
+      badge: <StatusBadge status="CRITICAL" label="Critical" />,
+    };
+  }
+  if (severity === "warning") {
+    return {
+      priority: "Medium",
+      bar: "bg-[var(--status-warn)]",
+      badge: <StatusBadge status="NEEDS_ATTENTION" label="Warning" />,
+    };
+  }
+  return {
+    priority: "Low",
+    bar: "bg-[var(--status-info)]",
+    badge: <StatusBadge status="PENDING" label="Watch" />,
+  };
+}
+
+export function AttentionPanel({ alerts, filterCodes = null }: Props) {
+  const base = alerts.filter((a) => a.code !== "INACTIVE_USERS");
+  const attentionItems =
+    filterCodes == null
+      ? base
+      : base.filter((a) => filterCodes.includes(a.code));
+  const hasIssues = attentionItems.length > 0;
+  const criticalCount = attentionItems.filter(
+    (a) => a.severity === "critical",
+  ).length;
 
   return (
     <section
       aria-labelledby="attention-heading"
-      className={`flex h-full flex-col rounded-[var(--radius-md)] border p-4 sm:p-5 ${
-        hasIssues
-          ? "border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)]"
-          : "border-[var(--color-line)] bg-[var(--color-surface)]"
-      }`}
+      className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink-subtle)]">
-            Attention
-          </p>
-          <h2
-            id="attention-heading"
-            className="mt-1 text-[15px] font-semibold tracking-tight text-[var(--color-ink)]"
-          >
-            {hasIssues
-              ? `${attention.length} item${attention.length === 1 ? "" : "s"}`
-              : "All systems operational"}
-          </h2>
-        </div>
-        {!hasIssues && (
+      <div
+        className={`flex flex-wrap items-start justify-between gap-3 border-b px-4 py-4 sm:px-5 ${
+          hasIssues
+            ? "border-[var(--status-warn-ring)] bg-gradient-to-r from-[var(--status-warn-bg)] via-[var(--status-warn-bg)]/40 to-[var(--color-surface)]"
+            : "border-[var(--color-line)] bg-[var(--color-surface-2)]"
+        }`}
+      >
+        <div className="flex min-w-0 items-start gap-3">
           <span
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)]"
+            className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ${
+              hasIssues
+                ? "bg-[var(--status-danger-bg)] text-[var(--status-danger)] ring-1 ring-inset ring-[var(--status-danger-ring)]"
+                : "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-1 ring-inset ring-[var(--status-success-ring)]"
+            }`}
             aria-hidden
           >
-            <CheckCircle2 size={18} strokeWidth={1.75} />
+            {hasIssues ? (
+              <Crosshair size={16} strokeWidth={1.75} />
+            ) : (
+              <CheckCircle2 size={16} strokeWidth={1.75} />
+            )}
           </span>
-        )}
+          <div className="min-w-0">
+            <h2
+              id="attention-heading"
+              className="text-[1.05rem] font-semibold tracking-tight text-[var(--color-ink)]"
+            >
+              Attention required
+            </h2>
+            <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
+              {hasIssues
+                ? `${attentionItems.length} exception${attentionItems.length === 1 ? "" : "s"} across platform workflows${
+                    criticalCount ? ` · ${criticalCount} critical` : ""
+                  }`
+                : "No operational exceptions in this view"}
+            </p>
+          </div>
+        </div>
+        {hasIssues ? (
+          <Link
+            href="/reports"
+            className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+          >
+            View all
+          </Link>
+        ) : null}
       </div>
 
       {!hasIssues ? (
-        <div className="mt-4 flex flex-1 flex-col justify-center">
-          <p className="text-sm font-medium text-[var(--status-success)]">
-            ✓ No exceptions requiring attention
+        <div className="px-4 py-8 sm:px-5">
+          <p className="text-[14px] font-medium text-[var(--status-success)]">
+            All monitored workflows look healthy
           </p>
-          <p className="mt-2 max-w-xs text-xs leading-relaxed text-[var(--color-ink-muted)]">
-            All monitored workflows are currently within expected state.
+          <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-[var(--color-ink-muted)]">
+            Referrals, interventions, actions, reviews, and support tasks have
+            no open exceptions requiring Super Admin follow-up.
           </p>
         </div>
       ) : (
-        <ul className="mt-4 flex-1 space-y-2">
-          {attention.map((alert) => {
-            const critical = alert.severity === "critical";
-            const Icon = critical ? ShieldAlert : AlertTriangle;
-            return (
-              <li key={alert.code}>
-                <Link
-                  href={alert.href}
-                  className="group flex items-start gap-3 rounded-[var(--radius-sm)] border border-transparent bg-[var(--color-surface)]/80 px-3 py-2.5 transition duration-200 hover:border-[var(--color-line)] hover:bg-[var(--color-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
-                >
-                  <span
-                    className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                      critical
-                        ? "bg-[var(--status-danger-bg)] text-[var(--status-danger)]"
-                        : "bg-[var(--status-warn-bg)] text-[var(--status-warn)]"
-                    }`}
-                    aria-label={critical ? "Critical" : "Warning"}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-left">
+            <thead>
+              <tr className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)]/70 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-subtle)]">
+                <th className="px-4 py-2.5 sm:px-5">Priority</th>
+                <th className="px-3 py-2.5">Exception</th>
+                <th className="px-3 py-2.5">Count</th>
+                <th className="px-3 py-2.5">Severity</th>
+                <th className="hidden px-3 py-2.5 lg:table-cell">Context</th>
+                <th className="px-4 py-2.5 sm:px-5">
+                  <span className="sr-only">Action</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-line)]">
+              {attentionItems.map((alert) => {
+                const meta = severityMeta(alert.severity);
+                return (
+                  <tr
+                    key={alert.code}
+                    className="group relative transition hover:bg-[var(--color-surface-2)]/70"
                   >
-                    <Icon size={13} strokeWidth={2} aria-hidden />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                    <td className="relative px-4 py-3.5 align-middle sm:px-5">
+                      <span
+                        className={`absolute inset-y-0 left-0 w-1 ${meta.bar}`}
+                        aria-hidden
+                      />
+                      <span className="pl-2 text-[12px] font-semibold text-[var(--color-ink-muted)]">
+                        {meta.priority}
+                      </span>
+                    </td>
+                    <td className="max-w-[16rem] px-3 py-3.5 align-middle">
+                      <p className="text-[13px] font-semibold text-[var(--color-ink)]">
                         {alert.title}
                       </p>
-                      <span className="text-xs font-semibold tabular-nums text-[var(--color-ink)]">
-                        {alert.count}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                      <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)] lg:hidden">
+                        {alert.reason}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3.5 align-middle text-[14px] font-semibold tabular-nums text-[var(--color-ink)]">
+                      {alert.count}
+                    </td>
+                    <td className="px-3 py-3.5 align-middle">{meta.badge}</td>
+                    <td className="hidden max-w-[14rem] px-3 py-3.5 align-middle text-[12px] text-[var(--color-ink-muted)] lg:table-cell">
                       {alert.reason}
-                    </p>
-                    <span className="sr-only">Severity: {alert.severity}</span>
-                  </div>
-                  <span
-                    aria-hidden
-                    className="mt-1 text-[var(--color-ink-subtle)] transition group-hover:translate-x-0.5"
-                  >
-                    →
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                    </td>
+                    <td className="px-4 py-3.5 align-middle text-right sm:px-5">
+                      <Link
+                        href={alert.href}
+                        className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--color-ink)] shadow-[var(--shadow-sm)] transition hover:border-[var(--color-brand)] hover:bg-[var(--color-brand-soft)] hover:text-[var(--color-brand)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                      >
+                        {attentionActionLabel(alert.severity)}
+                        <ChevronRight size={13} aria-hidden />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

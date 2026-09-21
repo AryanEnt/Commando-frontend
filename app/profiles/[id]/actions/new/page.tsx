@@ -5,10 +5,12 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
+import { dueIsoFromInputs } from "@/lib/dates";
 import {
   SeContextualCreatePage,
   handleApiSubmit,
 } from "@/components/SeContextualCreatePage";
+import { DueDateTimePicker } from "@/components/DueDateTimePicker";
 import { Button, TextArea, TextInput } from "@/components/ui";
 
 export default function ContextualActionNewPage() {
@@ -51,6 +53,7 @@ function ActionForm({
     title: "",
     description: "",
     dueDate: "",
+    dueTime: "",
   });
 
   async function onSubmit(e: FormEvent) {
@@ -59,11 +62,11 @@ function ActionForm({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createActionItem(token, {
+      await api.createActionItem(token, {
         salesExecutiveProfileId: profileId,
         title: form.title,
         description: form.description.trim() || null,
-        dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null,
+        dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
       onSuccess(`/profiles/${profileId}/actions`);
     } catch (err) {
@@ -90,11 +93,13 @@ function ActionForm({
         value={form.description}
         onChange={(e) => setForm({ ...form, description: e.target.value })}
       />
-      <TextInput
-        label="Due date"
-        type="date"
-        value={form.dueDate}
-        onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+      <DueDateTimePicker
+        date={form.dueDate}
+        time={form.dueTime}
+        disabled={submitting}
+        onChange={({ date, time }) =>
+          setForm((f) => ({ ...f, dueDate: date, dueTime: time }))
+        }
       />
       <Button type="submit" disabled={submitting || !form.title.trim()}>
         {submitting ? "Saving…" : "Create action"}

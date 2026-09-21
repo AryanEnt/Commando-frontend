@@ -39,7 +39,6 @@ export default function UsersPage() {
   const [roleCode, setRoleCode] = useState("");
   const [teamId, setTeamId] = useState("");
   const [isActive, setIsActive] = useState("");
-  const [profileStatus, setProfileStatus] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -58,9 +57,8 @@ export default function UsersPage() {
   const canStatus = hasPermission("USER_STATUS_UPDATE");
 
   const filtersKey = useMemo(
-    () =>
-      [search, roleCode, teamId, isActive, profileStatus].join("|"),
-    [search, roleCode, teamId, isActive, profileStatus],
+    () => [search, roleCode, teamId, isActive].join("|"),
+    [search, roleCode, teamId, isActive],
   );
 
   async function load(nextPage = page, nextPageSize = pageSize) {
@@ -72,12 +70,6 @@ export default function UsersPage() {
         roleCode: roleCode || undefined,
         teamId: teamId || undefined,
         isActive: isActive === "" ? undefined : isActive === "true",
-        profileStatus:
-          profileStatus === "created" ||
-          profileStatus === "missing" ||
-          profileStatus === "n_a"
-            ? profileStatus
-            : undefined,
         page: nextPage,
         pageSize: nextPageSize,
         sort: "createdAt",
@@ -196,16 +188,6 @@ export default function UsersPage() {
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </SelectField>
-        <SelectField
-          label="Profile"
-          value={profileStatus}
-          onChange={(e) => setProfileStatus(e.target.value)}
-        >
-          <option value="">All</option>
-          <option value="created">Profile created</option>
-          <option value="missing">Profile missing</option>
-          <option value="n_a">Not applicable</option>
-        </SelectField>
       </FilterBar>
 
       {error && <ErrorState message={error} />}
@@ -271,17 +253,17 @@ export default function UsersPage() {
                         {formatDate(u.createdAt)}
                       </td>
                       <td className="text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <Link
                             href={`/users/${u.id}`}
-                            className="text-sm text-[var(--color-brand)] hover:underline"
+                            className="btn btn-secondary btn-sm"
                           >
                             View
                           </Link>
                           {u.profileStatus === "created" && u.profile ? (
                             <Link
                               href={`/profiles/${u.profile.id}`}
-                              className="text-sm text-[var(--color-ink-muted)] hover:underline"
+                              className="btn btn-ghost btn-sm"
                             >
                               Profile
                             </Link>
@@ -290,7 +272,7 @@ export default function UsersPage() {
                           hasPermission("PROFILE_MANAGE") ? (
                             <Link
                               href="/profiles"
-                              className="text-sm text-[var(--color-ink-muted)] hover:underline"
+                              className="btn btn-ghost btn-sm"
                             >
                               Create profile
                             </Link>
@@ -298,7 +280,11 @@ export default function UsersPage() {
                           {canStatus && me?.id !== u.id ? (
                             <button
                               type="button"
-                              className="text-sm text-[var(--color-ink-muted)] hover:underline"
+                              className={
+                                u.isActive
+                                  ? "btn btn-danger btn-sm"
+                                  : "btn btn-secondary btn-sm"
+                              }
                               onClick={() => setStatusTarget(u)}
                             >
                               {u.isActive ? "Deactivate" : "Activate"}

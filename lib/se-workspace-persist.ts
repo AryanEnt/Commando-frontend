@@ -16,7 +16,6 @@ const RELATED_PREFIXES = [
   "/eisenhower",
   "/swot",
   "/sync-evaluations",
-  "/role-assignments",
   "/my-tasks",
 ] as const;
 
@@ -61,10 +60,9 @@ export function seSectionFromRelatedPathname(
   if (pathname.startsWith("/feedback")) return "feedback";
   if (pathname.startsWith("/monitoring")) return "monitoring";
   if (pathname.startsWith("/eisenhower")) return "eisenhower";
-  if (pathname.startsWith("/swot")) return "overview";
+  if (pathname.startsWith("/swot")) return "swot";
   if (
     pathname.startsWith("/sync-evaluations") ||
-    pathname.startsWith("/role-assignments") ||
     pathname.startsWith("/my-tasks")
   ) {
     return "support";

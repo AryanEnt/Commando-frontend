@@ -3,13 +3,12 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowRight,
-  Building2,
   ClipboardCheck,
   FileSearch,
   LayoutGrid,
+  Network,
   ScrollText,
-  Shield,
+  Settings2,
   Users,
   UsersRound,
 } from "lucide-react";
@@ -33,25 +32,25 @@ const GROUPS: GovernanceGroup[] = [
       {
         href: "/users",
         label: "Users",
-        desc: "Roles and access",
+        desc: "Accounts, roles, access",
         icon: Users,
       },
       {
         href: "/teams",
         label: "Teams",
-        desc: "Membership",
+        desc: "Membership and structure",
         icon: UsersRound,
       },
       {
         href: "/organization",
         label: "Organization",
-        desc: "Structure overview",
-        icon: Building2,
+        desc: "Team → people map",
+        icon: Network,
       },
       {
         href: "/profiles",
         label: "Sales Executives",
-        desc: "Profiles & history",
+        desc: "Profiles and history",
         icon: LayoutGrid,
       },
     ],
@@ -60,6 +59,12 @@ const GROUPS: GovernanceGroup[] = [
     title: "Configuration",
     items: [
       {
+        href: "/configuration",
+        label: "Configuration",
+        desc: "Platform setup hub",
+        icon: Settings2,
+      },
+      {
         href: "/activity-types",
         label: "Activity Types",
         desc: "Coaching catalog",
@@ -67,61 +72,26 @@ const GROUPS: GovernanceGroup[] = [
       },
       {
         href: "/monitoring-checklists",
-        label: "Monitoring Checklists",
-        desc: "Templates",
+        label: "Checklists",
+        desc: "Monitoring templates",
         icon: ScrollText,
       },
     ],
   },
   {
-    title: "Oversight",
+    title: "Oversight & Audit",
     items: [
       {
         href: "/reports",
-        label: "Reports & Oversight",
-        desc: "Investigate details",
+        label: "Reports",
+        desc: "Oversight and investigation",
         icon: FileSearch,
-      },
-      {
-        href: "/audit-logs",
-        label: "Audit Trail",
-        desc: "Immutable history",
-        icon: Shield,
       },
     ],
   },
 ];
 
-function GovernanceItemRow({ item }: { item: GovernanceItem }) {
-  const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      className="group flex items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2.5 transition duration-200 hover:bg-[var(--color-surface-2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
-    >
-      <span
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)] transition group-hover:text-[var(--color-ink)]"
-        aria-hidden
-      >
-        <Icon size={15} strokeWidth={1.75} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-[var(--color-ink)]">
-          {item.label}
-        </span>
-        <span className="block text-xs text-[var(--color-ink-muted)]">
-          {item.desc}
-        </span>
-      </span>
-      <ArrowRight
-        size={14}
-        className="shrink-0 text-[var(--color-ink-subtle)] opacity-0 transition duration-200 group-hover:translate-x-0.5 group-hover:opacity-100"
-        aria-hidden
-      />
-    </Link>
-  );
-}
-
+/** Full governance directory — kept below the command-center body. */
 export function GovernanceHub() {
   return (
     <section aria-labelledby="governance-heading">
@@ -130,9 +100,9 @@ export function GovernanceHub() {
           id="governance-heading"
           className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]"
         >
-          Governance
+          Governance shortcuts
         </h2>
-        <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+        <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
           Administration, configuration, and oversight
         </p>
       </div>
@@ -141,17 +111,38 @@ export function GovernanceHub() {
         {GROUPS.map((group) => (
           <div
             key={group.title}
-            className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-2"
+            className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-[var(--shadow-sm)]"
           >
-            <h3 className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
+            <h3 className="px-3 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
               {group.title}
             </h3>
             <ul>
-              {group.items.map((item) => (
-                <li key={item.href}>
-                  <GovernanceItemRow item={item} />
-                </li>
-              ))}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className="group flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 transition hover:bg-[var(--color-surface-2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
+                    >
+                      <span
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)] transition group-hover:bg-[var(--color-brand-soft)] group-hover:text-[var(--color-brand)]"
+                        aria-hidden
+                      >
+                        <Icon size={14} strokeWidth={1.75} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-medium text-[var(--color-ink)]">
+                          {item.label}
+                        </span>
+                        <span className="block text-[12px] text-[var(--color-ink-muted)]">
+                          {item.desc}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

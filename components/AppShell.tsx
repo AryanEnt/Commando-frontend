@@ -44,18 +44,22 @@ import {
 import { personName, roleLabel } from "@/lib/labels";
 import { api, type ProfileListItem } from "@/lib/api";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { Avatar } from "@/components/ui";
-import { SeWorkspaceProvider } from "@/lib/se-workspace-context";
+import { Avatar, IconButton } from "@/components/ui";
+import { SeWorkspaceProvider, useSeWorkspace } from "@/lib/se-workspace-context";
 import { useOwnSalesProfileId } from "@/lib/own-profile";
 import {
   seNavForRole,
   seSectionFromPathname,
+  seWorkspaceHref,
+  type SeSection,
 } from "@/lib/se-workspace-nav";
 import {
   clearSeWorkspaceMemory,
   isSeRelatedPathname,
   readRememberedSeProfileId,
+  readRememberedSeSection,
   rememberSeWorkspace,
+  seSectionFromRelatedPathname,
 } from "@/lib/se-workspace-persist";
 
 const SIDEBAR_COLLAPSED_KEY = "commando.sidebar.collapsed";
@@ -87,6 +91,35 @@ function readCollapsedPreference() {
   } catch {
     return false;
   }
+}
+
+/** Compact SE context chip in global header (managers on SE-related routes). */
+function SeHeaderContextChip({ href }: { href: string }) {
+  const { profile, loading } = useSeWorkspace();
+  if (loading && !profile) {
+    return (
+      <span className="hidden truncate text-meta lg:inline">Loading…</span>
+    );
+  }
+  if (!profile) return null;
+  const under = Boolean(profile.currentAssignment);
+  return (
+    <Link
+      href={href}
+      className="hidden max-w-[16rem] items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1.5 transition hover:border-[var(--color-line-strong)] hover:bg-[var(--color-surface)] md:inline-flex"
+      title={`Open ${profile.displayName}`}
+    >
+      <Avatar name={profile.displayName} size="sm" />
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium text-[var(--color-ink)]">
+          {profile.displayName}
+        </span>
+        <span className="block truncate text-[11px] text-[var(--color-ink-muted)]">
+          {under ? "Active intervention" : "Sales Executive"} · {profile.team.name}
+        </span>
+      </span>
+    </Link>
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -148,6 +181,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname, pathProfileId, isSalesExecutive]);
 
   const seProfileId = pathProfileId ?? rememberedProfileId;
+  const showSeHeaderContext =
+    Boolean(seProfileId) && !isSalesExecutive && !pathProfileId;
+  const seChipHref = useMemo(() => {
+    if (!seProfileId) return "/profiles";
+    const remembered = readRememberedSeSection();
+    const related = seSectionFromRelatedPathname(pathname);
+    const section = (related ?? remembered) as SeSection | null;
+    return seWorkspaceHref(seProfileId, section ?? undefined);
+  }, [seProfileId, pathname]);
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
@@ -195,11 +237,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   ? "users"
                   : item.section === "history"
                     ? "history"
-                    : "profiles",
+                    : item.section === "eisenhower"
+                      ? "tasks"
+                      : item.section === "performance"
+                        ? "reports"
+                        : "profiles",
       }));
     }
-    return navItemsForRole(user.roleCode, hasPermission);
-  }, [user, hasPermission, isSalesExecutive, ownProfileId]);
+    const base = navItemsForRole(user.roleCode, hasPermission);
+    const ctxId = pathProfileId ?? rememberedProfileId;
+    if (!ctxId) return base;
+    // Keep Eisenhower inside the active SE workspace when context is set.
+    return base.map((item) =>
+      item.href === "/eisenhower"
+        ? { ...item, href: `/profiles/${ctxId}/eisenhower` }
+        : item,
+    );
+  }, [
+    user,
+    hasPermission,
+    isSalesExecutive,
+    ownProfileId,
+    pathProfileId,
+    rememberedProfileId,
+  ]);
 
   useEffect(() => {
     if (
@@ -240,14 +301,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-[var(--color-ink-muted)]">
-        Loading…
+      <div className="flex h-dvh items-center justify-center overflow-hidden text-meta">
+        Loading Commando…
       </div>
     );
   }
 
   if (!user) {
-    return <>{children}</>;
+    return (
+      <div className="h-dvh min-h-0 overflow-y-auto overflow-x-hidden">
+        {children}
+      </div>
+    );
   }
 
   const displayName = personName(user);
@@ -258,7 +323,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const frame = (
     <div
-      className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]"
+      className="flex h-dvh min-h-0 overflow-hidden bg-[var(--color-canvas)] text-[var(--color-ink)]"
       style={
         {
           ["--sidebar-current-w" as string]: collapsed
@@ -271,32 +336,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           aria-label="Close navigation"
-          className="fixed inset-0 z-30 bg-[var(--color-ink)]/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-[var(--color-ink)]/40 overlay-backdrop lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 flex-col bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-[transform,width] duration-200 ease-[var(--ease)] lg:w-[var(--sidebar-current-w)] lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 flex-col border-r border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-[transform,width] duration-200 ease-[var(--ease)] lg:w-[var(--sidebar-current-w)] lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
+        {/* Brand */}
         <div
-          className={`flex h-14 shrink-0 items-center gap-2 px-3 justify-between ${
+          className={`flex h-14 shrink-0 items-center gap-2 border-b border-[var(--color-sidebar-border)] px-3 ${
             collapsed
-              ? "lg:h-auto lg:min-h-14 lg:flex-col lg:justify-center lg:gap-1 lg:py-2"
-              : ""
+              ? "lg:h-auto lg:min-h-14 lg:flex-col lg:justify-center lg:gap-1 lg:py-2.5"
+              : "justify-between"
           }`}
         >
           <Link
             href={homeHref}
-            className={`flex min-w-0 items-center gap-2.5 ${
+            className={`flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
               collapsed ? "lg:justify-center" : ""
             }`}
             onClick={() => setSidebarOpen(false)}
             title="COMMANDO"
           >
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-xs font-semibold text-white">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--color-brand)] text-xs font-bold tracking-tight text-white shadow-[var(--shadow-glow)]">
               C
             </span>
             <span className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
@@ -310,7 +376,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             type="button"
-            className="hidden rounded p-1.5 text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white lg:inline-flex"
+            className="hidden h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white lg:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={toggleCollapsed}
@@ -323,8 +389,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
+        {/* Primary nav */}
         <div
-          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 px-2 ${
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 ${
             collapsed ? "lg:px-1.5" : ""
           }`}
         >
@@ -341,8 +408,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {item.section && item.section !== prev?.section && (
                     <p
                       className={`mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-sidebar-subtle)] ${
-                        index === 0 ? "mt-1" : "mt-4"
-                      } ${collapsed ? "lg:hidden" : ""}`}
+                        index === 0 ? "mt-0.5" : "mt-4"
+                      } ${collapsed ? "lg:sr-only" : ""}`}
                     >
                       {item.section}
                     </p>
@@ -352,31 +419,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     title={item.label}
                     onClick={() => setSidebarOpen(false)}
                     aria-current={active ? "page" : undefined}
-                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition duration-150 ${
+                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13px] transition duration-150 ${
                       collapsed
                         ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
                         : ""
                     } ${
                       active
-                        ? "bg-[var(--color-sidebar-active)] font-medium text-white"
+                        ? "bg-[var(--color-sidebar-active)] font-semibold text-white shadow-[var(--shadow-glow)]"
                         : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
                     }`}
                   >
-                    {active && (
-                      <span
-                        className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[var(--color-accent)] ${
-                          collapsed ? "lg:hidden" : ""
-                        }`}
-                        aria-hidden
-                      />
-                    )}
                     {Icon ? (
                       <Icon
                         size={16}
                         className={
                           active
                             ? "shrink-0 text-white"
-                            : "shrink-0 text-[var(--color-sidebar-subtle)] group-hover:text-white"
+                            : "shrink-0 text-[var(--color-sidebar-subtle)] group-hover:text-[#6ee7b7]"
                         }
                       />
                     ) : null}
@@ -390,6 +449,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
 
+        {/* Account */}
         <div
           className={`shrink-0 border-t border-[var(--color-sidebar-border)] p-3 ${
             collapsed ? "lg:p-2" : ""
@@ -401,9 +461,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }`}
           >
             <Avatar name={displayName} size="sm" />
-            <div
-              className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}
-            >
+            <div className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>
               <p className="truncate text-xs font-medium text-white">
                 {displayName}
               </p>
@@ -416,7 +474,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               title="Log out"
               aria-label="Log out"
               onClick={() => logout().then(() => router.push("/login"))}
-              className="rounded p-1.5 text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white"
             >
               <LogOut size={14} />
             </button>
@@ -424,21 +482,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-col transition-[padding] duration-200 ease-[var(--ease)] lg:pl-[var(--sidebar-current-w)]">
-        <header className="sticky top-0 z-20 h-14 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 backdrop-blur-sm">
-          <div className="flex h-14 items-center justify-between gap-3 px-4">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-line)] text-[var(--color-ink-muted)] lg:hidden"
-                aria-label="Open navigation"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <Menu size={16} />
-              </button>
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-[padding] duration-200 ease-[var(--ease)] lg:pl-[var(--sidebar-current-w)]">
+        <header className="z-20 shrink-0 border-b border-[var(--color-line)] bg-[var(--color-surface)]/95 shadow-[var(--shadow-sm)] backdrop-blur-sm">
+          <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              {/* Wrapper required: .btn { display:inline-flex } overrides lg:hidden on IconButton */}
+              <div className="lg:hidden">
+                <IconButton
+                  label={sidebarOpen ? "Close navigation" : "Open navigation"}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSidebarOpen((open) => !open)}
+                >
+                  <Menu size={16} />
+                </IconButton>
+              </div>
               <Breadcrumbs />
+              {showSeHeaderContext && seProfileId ? (
+                <>
+                  <span
+                    className="hidden text-[var(--color-ink-subtle)] md:inline"
+                    aria-hidden
+                  >
+                    ·
+                  </span>
+                  <SeHeaderContextChip href={seChipHref} />
+                </>
+              ) : null}
             </div>
-            <div className="flex items-center gap-2.5">
+
+            <div className="flex shrink-0 items-center gap-2">
               {!isIndividualHome && hasPermission("PROFILE_VIEW") && (
                 <div className="relative hidden sm:block">
                   <label className="sr-only" htmlFor="global-search">
@@ -459,8 +532,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         setSearchOpen(true);
                       }}
                       onFocus={() => setSearchOpen(true)}
-                      placeholder="Search people…"
-                      className="h-8 w-52 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-canvas)] pl-8 pr-12 text-sm md:w-64"
+                      placeholder="Search Sales Executives…"
+                      className="h-8 w-52 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-canvas)] pl-8 pr-12 text-[13px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] md:w-64"
                     />
                     <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-subtle)] md:inline">
                       ⌘K
@@ -468,25 +541,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   {searchOpen &&
                     (query.trim().length >= 2 || results.length > 0) && (
-                      <div className="absolute right-0 z-30 mt-1.5 w-80 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]">
+                      <div
+                        className="absolute right-0 z-30 mt-1.5 w-80 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]"
+                        role="listbox"
+                        aria-label="Search results"
+                      >
                         <div className="flex items-center justify-between border-b border-[var(--color-line)] px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
-                            People
-                          </p>
-                          <button
-                            type="button"
-                            aria-label="Close search"
-                            className="text-[var(--color-ink-subtle)] hover:text-[var(--color-ink)]"
+                          <p className="text-eyebrow">People</p>
+                          <IconButton
+                            label="Close search"
+                            size="sm"
+                            variant="ghost"
                             onClick={() => setSearchOpen(false)}
                           >
                             <X size={14} />
-                          </button>
+                          </IconButton>
                         </div>
                         {results.length === 0 ? (
-                          <p className="px-3 py-4 text-sm text-[var(--color-ink-muted)]">
+                          <p className="px-3 py-4 text-meta">
                             {query.trim().length < 2
                               ? "Type at least 2 characters"
-                              : "No matching sales executives"}
+                              : "No matching Sales Executives"}
                           </p>
                         ) : (
                           <ul>
@@ -494,6 +569,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                               <li key={p.id}>
                                 <Link
                                   href={`/profiles/${p.id}`}
+                                  role="option"
                                   className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-[var(--color-surface-2)]"
                                   onClick={() => {
                                     setSearchOpen(false);
@@ -502,10 +578,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                 >
                                   <Avatar name={p.displayName} size="sm" />
                                   <span className="min-w-0">
-                                    <span className="block truncate text-sm font-medium">
+                                    <span className="block truncate text-[13px] font-medium text-[var(--color-ink)]">
                                       {p.displayName}
                                     </span>
-                                    <span className="block truncate text-xs text-[var(--color-ink-muted)]">
+                                    <span className="block truncate text-meta">
                                       {p.team.name}
                                       {p.currentAssignment
                                         ? ` · ${personName(p.currentAssignment.commando)}`
@@ -521,10 +597,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     )}
                 </div>
               )}
-              <span className="hidden rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-ink-muted)] sm:inline">
+              <span className="hidden rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-ink-muted)] ring-1 ring-inset ring-[var(--color-line)] sm:inline">
                 {roleLabel(user.roleCode)}
               </span>
-              <Avatar name={displayName} size="sm" />
             </div>
           </div>
         </header>

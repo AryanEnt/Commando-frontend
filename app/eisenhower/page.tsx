@@ -6,17 +6,13 @@ import { useSearchParams } from "next/navigation";
 import {
   api,
   type EisenhowerCategory,
-  type EisenhowerStatus,
   type EisenhowerTask,
   type ProfileListItem,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate } from "@/lib/dates";
-import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
 import {
-  Button,
   EmptyState,
   ErrorState,
   Field,
@@ -33,33 +29,56 @@ const CATEGORIES: {
   key: EisenhowerCategory;
   label: string;
   axis: string;
-  tone: string;
+  accent: string;
+  tint: string;
+  bar: string;
 }[] = [
   {
     key: "DO_FIRST",
-    label: "Do now",
-    axis: "Urgent · Important",
-    tone: "border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)]",
+    label: "Do first",
+    axis: "Important + Urgent",
+    accent: "text-[var(--status-danger)]",
+    tint: "bg-[var(--status-danger-bg)]/55",
+    bar: "bg-[var(--status-danger)]",
   },
   {
     key: "SCHEDULE",
     label: "Schedule",
-    axis: "Not urgent · Important",
-    tone: "border-[var(--status-info-ring)] bg-[var(--status-info-bg)]",
+    axis: "Important + Not urgent",
+    accent: "text-[var(--status-info)]",
+    tint: "bg-[var(--status-info-bg)]/55",
+    bar: "bg-[var(--status-info)]",
   },
   {
     key: "DELEGATE",
     label: "Delegate",
-    axis: "Urgent · Not important",
-    tone: "border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)]",
+    axis: "Not important + Urgent",
+    accent: "text-[var(--color-accent)]",
+    tint: "bg-[var(--color-accent-soft)]",
+    bar: "bg-[var(--color-accent)]",
   },
   {
     key: "ELIMINATE",
     label: "Eliminate",
-    axis: "Not urgent · Not important",
-    tone: "border-[var(--color-line)] bg-[var(--color-surface-2)]",
+    axis: "Not important + Not urgent",
+    accent: "text-[var(--status-neutral)]",
+    tint: "bg-[var(--status-neutral-bg)]",
+    bar: "bg-[var(--status-neutral)]",
   },
 ];
+
+function formatMonthHeading(monthKey: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!match) return monthKey;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return monthKey;
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 function currentMonthValue() {
   const now = new Date();
@@ -81,7 +100,6 @@ function EisenhowerContent() {
   const [month, setMonth] = useState(currentMonthValue());
   const [profileId, setProfileId] = useState(searchParams.get("profileId") ?? "");
   const [category, setCategory] = useState("");
-  const [status, setStatus] = useState("");
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [matrix, setMatrix] = useState<Record<
     EisenhowerCategory,
@@ -93,8 +111,7 @@ function EisenhowerContent() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const canCreate = hasPermission("EISENHOWER_CREATE");
-  const canUpdate = hasPermission("EISENHOWER_UPDATE");
+  const canCreate = hasPermission("DAILY_LOG_CREATE");
 
   useEffect(() => {
     if (!token) return;
@@ -121,7 +138,6 @@ function EisenhowerContent() {
             profileId: profileId || undefined,
             month: month || undefined,
             category: (category as EisenhowerCategory) || undefined,
-            status: (status as EisenhowerStatus) || undefined,
             page,
             pageSize,
           });
@@ -142,22 +158,12 @@ function EisenhowerContent() {
     return () => {
       cancelled = true;
     };
-  }, [token, view, month, profileId, category, status, page, pageSize]);
+  }, [token, view, month, profileId, category, page, pageSize]);
 
   const isCurrentMonth = useMemo(
     () => month === currentMonthValue(),
     [month],
   );
-
-  async function setTaskStatus(id: string, next: EisenhowerStatus) {
-    if (!token || !canUpdate) return;
-    await api.updateEisenhowerTaskStatus(token, id, next);
-    const res = await api.getEisenhowerMatrix(token, {
-      profileId: profileId || undefined,
-      month,
-    });
-    setMatrix(res.data.byCategory);
-  }
 
   const matrixEmpty =
     view === "matrix" &&
@@ -168,7 +174,7 @@ function EisenhowerContent() {
     <div className="space-y-6">
       <PageHeader
         title="Eisenhower Matrix"
-        description="Urgent vs important. Place work in the quadrant that matches how it should be handled."
+        description="Priorities from Daily Logs — urgency and importance place them so Sales Executives know what to focus on."
         actions={
           <>
             <SegmentedControl
@@ -185,10 +191,10 @@ function EisenhowerContent() {
             />
             {canCreate && (
               <Link
-                href="/eisenhower/new"
+                href="/daily-logs/new"
                 className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
               >
-                New task
+                Add Daily Log
               </Link>
             )}
           </>
@@ -237,20 +243,6 @@ function EisenhowerContent() {
                 </option>
               ))}
             </SelectField>
-            <SelectField
-              label="Status"
-              value={status}
-              onChange={(e) => {
-                setPage(1);
-                setStatus(e.target.value);
-              }}
-            >
-              <option value="">All statuses</option>
-              <option value="OPEN">OPEN</option>
-              <option value="IN_PROGRESS">IN_PROGRESS</option>
-              <option value="DONE">DONE</option>
-              <option value="CANCELLED">CANCELLED</option>
-            </SelectField>
           </>
         )}
       </FilterBar>
@@ -261,67 +253,46 @@ function EisenhowerContent() {
 
       {!loading && view === "matrix" && matrixEmpty && (
         <EmptyState
-          title="No tasks this month"
-          description="Create a task or switch to another month."
-          actionHref={canCreate ? "/eisenhower/new" : undefined}
-          actionLabel={canCreate ? "New task" : undefined}
+          title="No priorities this month"
+          description="Add a Daily Log with urgency and importance to place priorities here."
+          actionHref={canCreate ? "/daily-logs/new" : undefined}
+          actionLabel={canCreate ? "Add Daily Log" : undefined}
         />
       )}
 
       {!loading && view === "matrix" && matrix && !matrixEmpty && (
-        <div className="space-y-2">
-          <div className="hidden grid-cols-[7rem_1fr_1fr] text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)] md:grid">
-            <span />
-            <span>Urgent</span>
-            <span>Not urgent</span>
+        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-line)] px-5 py-4 sm:px-6">
+            <div>
+              <p className="text-[1.0625rem] font-semibold tracking-[-0.02em] text-[var(--color-ink)] sm:text-lg">
+                {formatMonthHeading(month)}
+              </p>
+              <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+                Monthly priorities for Sales Executives
+                {isCurrentMonth ? " · Current period" : " · Historical period"}
+              </p>
+            </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-[7rem_1fr_1fr]">
-            <p className="hidden items-center justify-center text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)] md:flex">
-              Important
-            </p>
-            <Quadrant
-              cat={CATEGORIES[0]!}
-              tasks={matrix.DO_FIRST}
-              canUpdate={canUpdate}
-              onStatus={setTaskStatus}
-            />
-            <Quadrant
-              cat={CATEGORIES[1]!}
-              tasks={matrix.SCHEDULE}
-              canUpdate={canUpdate}
-              onStatus={setTaskStatus}
-            />
-            <p className="hidden items-center justify-center text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)] md:flex">
-              Not important
-            </p>
-            <Quadrant
-              cat={CATEGORIES[2]!}
-              tasks={matrix.DELEGATE}
-              canUpdate={canUpdate}
-              onStatus={setTaskStatus}
-            />
-            <Quadrant
-              cat={CATEGORIES[3]!}
-              tasks={matrix.ELIMINATE}
-              canUpdate={canUpdate}
-              onStatus={setTaskStatus}
-            />
+          <div className="grid grid-cols-1 auto-rows-[20rem] gap-3 p-4 sm:grid-cols-2 sm:auto-rows-[22rem] sm:gap-3.5 sm:p-5 lg:auto-rows-[24rem]">
+            {CATEGORIES.map((cat) => (
+              <Quadrant key={cat.key} cat={cat} tasks={matrix[cat.key]} />
+            ))}
           </div>
         </div>
       )}
 
       {!loading && view === "list" && tasks.length === 0 && !error && (
         <EmptyState
-          title="No tasks found"
-          description="Adjust filters or create a new task."
-          actionHref={canCreate ? "/eisenhower/new" : undefined}
-          actionLabel={canCreate ? "New task" : undefined}
+          title="No priorities found"
+          description="Adjust filters or add a Daily Log."
+          actionHref={canCreate ? "/daily-logs/new" : undefined}
+          actionLabel={canCreate ? "Add Daily Log" : undefined}
         />
       )}
 
       {!loading && view === "list" && tasks.length > 0 && (
         <Panel
-          title={`Tasks · ${total}`}
+          title={`Priorities · ${total}`}
           tone={isCurrentMonth ? "active" : "history"}
         >
           <div className="overflow-x-auto">
@@ -332,8 +303,6 @@ function EisenhowerContent() {
                   <th className="px-3 py-2">Profile</th>
                   <th className="px-3 py-2">Category</th>
                   <th className="px-3 py-2">Title</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Due</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -351,12 +320,6 @@ function EisenhowerContent() {
                     <td className="px-3 py-2">{task.profile.displayName}</td>
                     <td className="px-3 py-2">{task.category}</td>
                     <td className="px-3 py-2 font-medium">{task.title}</td>
-                    <td className="px-3 py-2">
-                      <StatusBadge status={task.status} />
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-slate-700">
-                      {formatDate(task.dueDate)}
-                    </td>
                     <td className="px-3 py-2 text-right">
                       <Link
                         href={`/eisenhower/${task.id}`}
@@ -393,68 +356,69 @@ function EisenhowerContent() {
 function Quadrant({
   cat,
   tasks,
-  canUpdate,
-  onStatus,
 }: {
   cat: (typeof CATEGORIES)[number];
   tasks: EisenhowerTask[];
-  canUpdate: boolean;
-  onStatus: (id: string, status: EisenhowerStatus) => Promise<void>;
 }) {
+  const countLabel =
+    tasks.length === 1 ? "1 priority" : `${tasks.length} priorities`;
+  const scrollable = tasks.length > 3;
+  const scrollClass =
+    "min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:color-mix(in_srgb,var(--color-ink)_18%,transparent)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--color-ink)]/15 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--color-ink)]/25";
+
   return (
-    <section className={`min-h-[12rem] rounded-[var(--radius-md)] border p-3 ${cat.tone}`}>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold">{cat.label}</h2>
-          <p className="text-[10px] uppercase tracking-wide text-[var(--color-ink-subtle)]">
-            {cat.axis}
-          </p>
-        </div>
-        <span className="text-xs">{tasks.length}</span>
-      </div>
-      <ul className="space-y-2">
-        {tasks.map((task) => (
-          <li
-            key={task.id}
-            className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-2 text-sm"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <Link href={`/eisenhower/${task.id}`} className="font-medium">
-                {task.title}
-              </Link>
-              <StatusBadge status={task.status} />
-            </div>
-            <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-              {task.profile.displayName}
-              {task.dueDate ? ` · due ${formatDate(task.dueDate)}` : ""}
-              {task.isExpired ? " · expired" : ""}
+    <section
+      aria-labelledby={`global-eisenhower-${cat.key}`}
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-line)] ${cat.tint} transition duration-150 ease-out hover:border-[var(--color-line-strong)] hover:shadow-[var(--shadow-sm)]`}
+    >
+      <div className={`absolute inset-y-0 left-0 w-[3px] ${cat.bar}`} aria-hidden />
+      <header className="shrink-0 px-5 pb-3 pt-5">
+        <h2
+          id={`global-eisenhower-${cat.key}`}
+          className="text-base font-semibold tracking-[-0.015em] text-[var(--color-ink)] sm:text-[1.0625rem]"
+        >
+          <span className={cat.accent}>{cat.label}</span>
+        </h2>
+        <p className="mt-1 text-[0.8125rem] text-[var(--color-ink-muted)]">
+          {cat.axis}
+        </p>
+        <p className="mt-2 text-[0.75rem] font-medium tabular-nums text-[var(--color-ink-subtle)]">
+          {countLabel}
+          {scrollable ? " · scroll to see all" : ""}
+        </p>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-5">
+        {tasks.length === 0 ? (
+          <div className="flex flex-1 flex-col justify-center rounded-[var(--radius-md)] border border-dashed border-[var(--color-line)] bg-[var(--color-surface)]/55 px-4 py-6 text-center">
+            <p className="text-sm font-medium text-[var(--color-ink-muted)]">
+              Nothing in this quadrant
             </p>
-            {canUpdate && task.status !== "DONE" && (
-              <div className="mt-2 flex gap-1">
-                {task.status === "OPEN" && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void onStatus(task.id, "IN_PROGRESS")}
-                  >
-                    Start
-                  </Button>
-                )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void onStatus(task.id, "DONE")}
+            <p className="mt-1 text-[0.8125rem] text-[var(--color-ink-subtle)]">
+              Priorities arrive here from Daily Logs.
+            </p>
+          </div>
+        ) : (
+          <ul className={scrollClass}>
+            {tasks.map((task) => (
+              <li
+                key={task.id}
+                className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3.5 py-3 shadow-[var(--shadow-sm)]"
+              >
+                <Link
+                  href={`/eisenhower/${task.id}`}
+                  className="block min-w-0 text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em] text-[var(--color-ink)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus)]"
                 >
-                  Complete
-                </Button>
-              </div>
-            )}
-          </li>
-        ))}
-        {tasks.length === 0 && (
-          <li className="text-xs text-[var(--color-ink-muted)]">No tasks in this quadrant.</li>
+                  {task.title}
+                </Link>
+                <p className="mt-1.5 text-[0.8125rem] text-[var(--color-ink-muted)]">
+                  {task.profile.displayName}
+                  {task.isExpired ? " · expired" : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
-      </ul>
+      </div>
     </section>
   );
 }

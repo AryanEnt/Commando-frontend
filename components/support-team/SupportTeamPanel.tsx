@@ -125,37 +125,49 @@ export function SupportTeamPanel({
 
   return (
     <div className="space-y-4">
-      <section className="surface p-4">
-        <h2 className="text-sm font-semibold">Commando</h2>
-        <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-          Active intervention owner for {profileName}.
-        </p>
-        {commando ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-[var(--color-ink)]">
-                {personName(commando)}
+      <section className="kpi-card kpi-teal !p-4">
+        <div className="flex items-start gap-3">
+          <span className="icon-well icon-well-accent h-9 w-9 shrink-0" aria-hidden>
+            <span className="text-[11px] font-bold">C</span>
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-section-title">Commando</h2>
+            <p className="mt-0.5 text-meta">
+              Active intervention owner for {profileName}.
+            </p>
+            {commando ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-ink)]">
+                    {personName(commando)}
+                  </p>
+                  <p className="text-xs text-[var(--color-ink-muted)]">
+                    {commando.email}
+                  </p>
+                </div>
+                <StatusBadge status={commando.status} label="Active" />
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+                No active Commando intervention.
               </p>
-              <p className="text-xs text-[var(--color-ink-muted)]">
-                {commando.email}
-              </p>
-            </div>
-            <StatusBadge status={commando.status} label="Active" />
+            )}
           </div>
-        ) : (
-          <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
-            No active Commando intervention.
-          </p>
-        )}
+        </div>
       </section>
 
-      <section className="surface p-4">
+      <section className="kpi-card kpi-mint !p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Active Support</h2>
-            <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-              Sales Support Executives currently assigned to this person.
-            </p>
+          <div className="flex items-start gap-3">
+            <span className="icon-well icon-well-brand h-9 w-9 shrink-0" aria-hidden>
+              <span className="text-[11px] font-bold">S</span>
+            </span>
+            <div>
+              <h2 className="text-section-title">Active Support</h2>
+              <p className="mt-0.5 text-meta">
+                Sales Support Executives currently assigned to this person.
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {canCreateTask && active.length > 0 ? (
@@ -203,7 +215,7 @@ export function SupportTeamPanel({
             />
           </div>
         ) : (
-          <ul className="mt-3 divide-y divide-[var(--color-line)]">
+          <ul className="mt-3 max-h-[18rem] divide-y divide-[var(--color-line)] overflow-y-auto rounded-[var(--radius-md)] border border-[var(--color-brand-ring)] bg-[var(--color-surface)] px-3">
             {active.map((link) => {
               const linkTasks = supportTasks.filter(
                 (t) =>
@@ -214,7 +226,7 @@ export function SupportTeamPanel({
                 <li key={link.id} className="space-y-3 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                      <p className="text-sm font-semibold text-[var(--color-ink)]">
                         {personName(link.supportUser)}
                         {link.responsibilityType
                           ? ` · ${responsibilityTypeLabel(link.responsibilityType)}`
@@ -254,7 +266,7 @@ export function SupportTeamPanel({
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-ink-subtle)]">
+                    <p className="text-eyebrow">
                       Assigned tasks · {linkTasks.length}
                     </p>
                     {linkTasks.length === 0 ? (
@@ -262,12 +274,12 @@ export function SupportTeamPanel({
                         No specific tasks assigned yet.
                       </p>
                     ) : (
-                      <ul className="mt-2 space-y-1.5">
-                        {linkTasks.slice(0, 5).map((task) => (
+                      <ul className="mt-2 max-h-[8rem] space-y-1.5 overflow-y-auto">
+                        {linkTasks.slice(0, 8).map((task) => (
                           <li key={task.id}>
                             <Link
                               href={`/my-tasks/${task.id}?returnTo=${encodeURIComponent(`/profiles/${profileId}/support`)}`}
-                              className="flex items-center justify-between gap-3 text-sm hover:underline"
+                              className="flex items-center justify-between gap-3 rounded-[8px] px-2 py-1.5 text-sm transition hover:bg-[var(--color-brand-soft)]"
                             >
                               <span className="min-w-0 truncate font-medium">
                                 {task.title}
@@ -295,18 +307,18 @@ export function SupportTeamPanel({
             aria-expanded={historyOpen}
           >
             <div>
-              <h2 className="text-sm font-semibold">History</h2>
-              <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+              <h2 className="text-section-title">History</h2>
+              <p className="mt-0.5 text-meta">
                 {history.length} ended assignment
                 {history.length === 1 ? "" : "s"}
               </p>
             </div>
-            <span className="text-xs font-medium text-[var(--color-brand)]">
+            <span className="text-xs font-semibold text-[var(--color-brand)]">
               {historyOpen ? "Hide" : "Show"}
             </span>
           </button>
           {historyOpen ? (
-            <ul className="mt-3 divide-y divide-[var(--color-line)]">
+            <ul className="mt-3 max-h-[14rem] divide-y divide-[var(--color-line)] overflow-y-auto">
               {history.map((link) => (
                 <li key={link.id} className="py-3">
                   <p className="text-sm font-medium text-[var(--color-ink)]">
@@ -326,7 +338,7 @@ export function SupportTeamPanel({
         </section>
       ) : null}
 
-      <AssignSupportDrawer
+      <AssignSupportPersonDrawer
         open={assignOpen}
         profileId={profileId}
         profileName={profileName}
@@ -363,7 +375,7 @@ export function SupportTeamPanel({
   );
 }
 
-function AssignSupportDrawer({
+export function AssignSupportPersonDrawer({
   open,
   profileId,
   profileName,
@@ -473,7 +485,7 @@ function AssignSupportDrawer({
   return (
     <Drawer
       open={open}
-      title="Assign Support Sales"
+      title="Assign Support"
       description={`Select a Sales Support Executive for ${profileName}.`}
       onClose={onClose}
       footer={

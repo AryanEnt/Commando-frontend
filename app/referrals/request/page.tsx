@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -30,23 +30,42 @@ type RequestableProfile = {
 };
 
 export default function CommandoRequestPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading request…" />}>
+      <CommandoRequestForm />
+    </Suspense>
+  );
+}
+
+function CommandoRequestForm() {
   const { token, user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { pushToast } = useToast();
   const [profiles, setProfiles] = useState<RequestableProfile[]>([]);
   const [search, setSearch] = useState("");
-  const [profileId, setProfileId] = useState("");
+  const [profileId, setProfileId] = useState(
+    () => searchParams.get("profileId") ?? "",
+  );
   const [requestReason, setRequestReason] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const returnTo =
+    searchParams.get("returnTo") ??
+    (profileId ? `/profiles/${profileId}` : "/referrals");
 
   useEffect(() => {
     if (user && user.roleCode !== "COMMANDO_EXECUTIVE") {
       router.replace("/referrals");
     }
   }, [user, router]);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("profileId");
+    if (fromQuery) setProfileId(fromQuery);
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +100,7 @@ export default function CommandoRequestPage() {
   }, [token, search]);
 
   const selected = profiles.find((p) => p.id === profileId);
+  const preselectedLocked = Boolean(searchParams.get("profileId"));
 
   async function submit() {
     if (!token || !profileId || !requestReason.trim()) return;
@@ -117,23 +137,33 @@ export default function CommandoRequestPage() {
       {error && <ErrorState message={error} />}
 
       <section className="surface space-y-4 p-4 sm:p-5">
-        <TextInput
-          label="Search Sales Executives"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Name or team…"
-        />
+        {!preselectedLocked ? (
+          <TextInput
+            label="Search Sales Executives"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Name or team…"
+          />
+        ) : null}
 
         <div>
           <p className="text-sm font-medium text-[var(--color-ink)]">
             Sales Executive
           </p>
           <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-            Only executives without an active intervention are listed.
+            {preselectedLocked
+              ? "Pre-selected from the Sales Executive workspace. A request is not an active intervention until approved."
+              : "Only executives without an active intervention are listed."}
           </p>
           <div className="mt-2">
             {loading ? (
               <LoadingState label="Loading…" />
+            ) : preselectedLocked ? (
+              <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm font-medium">
+                {selected
+                  ? `${selected.displayName} · ${selected.team.name}`
+                  : "Selected Sales Executive"}
+              </div>
             ) : (
               <SearchableSelect
                 value={profileId}
@@ -201,7 +231,7 @@ export default function CommandoRequestPage() {
           <Button
             variant="secondary"
             disabled={submitting}
-            onClick={() => router.push("/referrals")}
+            onClick={() => router.push(returnTo)}
           >
             Cancel
           </Button>

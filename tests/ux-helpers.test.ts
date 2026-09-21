@@ -44,7 +44,7 @@ describe("navigation helpers", () => {
       true,
     );
     expect(items.some((i) => i.href === "/dashboard")).toBe(true);
-    expect(items.some((i) => i.section === "Work")).toBe(true);
+    expect(items.some((i) => i.section === "My work")).toBe(true);
     expect(items.some((i) => i.label === "My workspace")).toBe(true);
   });
 
@@ -68,10 +68,9 @@ describe("navigation helpers", () => {
   it("personalizes Sales Support primary nav", () => {
     const items = navItemsForRole("SALES_SUPPORT_EXECUTIVE", () => true);
     expect(items.map((i) => i.label)).toEqual([
-      "My workspace",
-      "My tasks",
-      "Sync evaluations",
-      "Role assignments",
+      "Dashboard",
+      "My Support Tasks",
+      "Sync Evaluations",
     ]);
     expect(items.every((i) => i.href !== "/profiles")).toBe(true);
   });
@@ -85,7 +84,15 @@ describe("navigation helpers", () => {
     expect(hrefs).not.toContain("/performance");
     expect(items.some((i) => i.section === "Performance")).toBe(false);
     expect(hrefs).toContain("/profiles");
-    expect(hrefs).toContain("/organization");
+    expect(hrefs).toContain("/teams");
+    expect(hrefs).toContain("/eisenhower");
+  });
+
+  it("groups Commando nav around interventions", () => {
+    const items = navItemsForRole("COMMANDO_EXECUTIVE", () => true);
+    expect(items.map((i) => i.label)).toContain("Requests & Interventions");
+    expect(items.map((i) => i.label)).toContain("Eisenhower");
+    expect(items.some((i) => i.section === "Interventions")).toBe(true);
   });
 });
 
@@ -111,8 +118,9 @@ describe("SE workspace navigation", () => {
   it("personalizes Sales Executive workspace nav", () => {
     const labels = seNavForRole("SALES_EXECUTIVE").map((i) => i.label);
     expect(labels[0]).toBe("My workspace");
-    expect(labels).toContain("My actions");
-    expect(labels).toContain("Weekly Reviews");
+    expect(labels).toContain("My Assignment");
+    expect(labels).toContain("My Reviews");
+    expect(labels).toContain("Performance");
     expect(labels).toContain("Feedback");
     expect(labels).toContain("History");
     expect(labels).not.toContain("Coaching");
@@ -124,7 +132,7 @@ describe("SE workspace navigation", () => {
     expect(labels).toEqual([
       "Overview",
       "My support",
-      "Related actions",
+      "Related assignment",
       "History",
     ]);
   });
@@ -136,6 +144,8 @@ describe("SE workspace navigation", () => {
     expect(seSectionFromPathname("/profiles/x/interventions")).toBe(
       "interventions",
     );
+    expect(seSectionFromPathname("/profiles/x/daily-logs/abc")).toBe("coaching");
+    expect(seSectionFromPathname("/profiles/x/checklist")).toBe("checklist");
   });
 
   it("keeps related entity routes mapped to SE sections", () => {

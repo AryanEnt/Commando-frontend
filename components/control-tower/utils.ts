@@ -1,17 +1,17 @@
 import type { ControlTowerActivityItem, ControlTowerData } from "@/lib/api";
 
 export const ACTIVITY_LABELS: Record<string, string> = {
-  COMMANDO_ASSIGNMENT_STARTED: "Commando assignment created",
+  COMMANDO_ASSIGNMENT_STARTED: "Intervention started",
   COMMANDO_ASSIGNMENT_ENDED: "Intervention completed",
   COMMANDO_ASSIGNMENT_EXITED: "Intervention exited",
   COMMANDO_ASSIGNMENT_TRANSFERRED: "Assignment transferred",
   INTERVENTION_OUTCOME_RECORDED: "Intervention outcome recorded",
   REFERRAL_SUBMITTED: "Referral submitted",
   REFERRAL_ACKNOWLEDGED: "Referral acknowledged",
-  REFERRAL_IN_PROGRESS: "Referral marked in progress",
+  REFERRAL_IN_PROGRESS: "Referral in progress",
   REFERRAL_COMPLETED: "Handoff closed",
   COMMANDO_REQUEST_SUBMITTED: "Commando request submitted",
-  REFERRAL_INFORMATION_PROVIDED: "Team Lead provided referral information",
+  REFERRAL_INFORMATION_PROVIDED: "Referral information provided",
   REFERRAL_REJECTED: "Commando request rejected",
   WEEKLY_REVIEW_SUBMITTED: "Weekly review submitted",
   SUPPORT_TASK_CREATED: "Support task assigned",
@@ -21,14 +21,17 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   ROLE_ASSIGNMENT_CREATED: "Role assignment created",
 };
 
-export type WorkflowStatus = "Healthy" | "Attention" | "Review";
+export type WorkflowStatus = "Healthy" | "Attention" | "Watch";
 
 export type WorkflowRow = {
   key: string;
   workflow: string;
   state: string;
+  count: number;
   status: WorkflowStatus;
   href: string;
+  /** Keeps request pipeline distinct from active interventions. */
+  category: "requests" | "interventions" | "accountability" | "support" | "activity";
 };
 
 export function formatControlTowerTime(iso: string) {
@@ -92,79 +95,117 @@ export function activityLabel(item: ControlTowerActivityItem) {
   );
 }
 
-export function buildWorkflowRows(tower: ControlTowerData): WorkflowRow[] {
-  return [
-    {
-      key: "referrals",
-      workflow: "Referrals",
-      state:
-        tower.metrics.referrals.submitted > 0
-          ? `${tower.metrics.referrals.submitted} awaiting acknowledgement`
-          : "No pending acknowledgements",
-      status: tower.metrics.referrals.submitted > 0 ? "Attention" : "Healthy",
-      href: "/referrals?status=SUBMITTED",
-    },
-    {
-      key: "actions",
-      workflow: "Action Items",
-      state:
-        tower.metrics.overdueActionItems > 0
-          ? `${tower.metrics.overdueActionItems} overdue`
-          : "None overdue",
-      status: tower.metrics.overdueActionItems > 0 ? "Attention" : "Healthy",
-      href: "/reports",
-    },
-    {
-      key: "reviews",
-      workflow: "Weekly Reviews",
-      state:
-        tower.metrics.draftWeeklyReviews > 0
-          ? `${tower.metrics.draftWeeklyReviews} drafts`
-          : "No open drafts",
-      status: tower.metrics.draftWeeklyReviews > 0 ? "Review" : "Healthy",
-      href: "/reports",
-    },
-    {
-      key: "support",
-      workflow: "Support Tasks",
-      state:
-        tower.metrics.overdueSupportTasks > 0
-          ? `${tower.metrics.overdueSupportTasks} overdue`
-          : "None overdue",
-      status: tower.metrics.overdueSupportTasks > 0 ? "Attention" : "Healthy",
-      href: "/reports",
-    },
-  ];
+export function attentionActionLabel(
+  severity: "info" | "warning" | "critical",
+) {
+  if (severity === "critical") return "Investigate";
+  if (severity === "warning") return "Review";
+  return "View";
 }
 
-/** Health score from real workflow states only (0–100). */
-export function workflowHealthPercent(rows: WorkflowRow[]) {
-  if (rows.length === 0) return 100;
-  const healthy = rows.filter((r) => r.status === "Healthy").length;
-  return Math.round((healthy / rows.length) * 100);
+/**
+ * Workflow health rows from real metrics.
+ * Referrals (requests) are never merged with active interventions.
+ */
+export function buildWorkflowRows(tower: ControlTowerData): WorkflowRow[] {
+  const m = tower.metrics;
+  return [
+    {
+      key: "referrals-pending",
+      workflow: "Referrals awaiting acknowledgement",
+      state:
+        m.referrals.submitted > 0
+          ? "Submitted — waiting for Commando"
+          : "No pending acknowledgements",
+      count: m.referrals.submitted,
+      status: m.referrals.submitted > 0 ? "Attention" : "Healthy",
+      href: "/referrals?status=SUBMITTED",
+      category: "requests",
+    },
+    {
+      key: "referrals-pipeline",
+      workflow: "Referrals in flight",
+      state: "Acknowledged or in progress (not yet an active intervention)",
+      count: m.referrals.acknowledged + m.referrals.inProgress,
+      status:
+        m.referrals.acknowledged + m.referrals.inProgress > 0
+          ? "Watch"
+          : "Healthy",
+      href: "/referrals",
+      category: "requests",
+    },
+    {
+      key: "interventions-active",
+      workflow: "Active interventions",
+      state: "Sales Executives with an active Commando assignment",
+      count: m.interventions.active,
+      status: m.interventions.active > 0 ? "Watch" : "Healthy",
+      href: "/reports/commando-performance?status=ACTIVE",
+      category: "interventions",
+    },
+    {
+      key: "actions-overdue",
+      workflow: "Overdue assignments",
+      state:
+        m.overdueActionItems > 0
+          ? "Past due and still open"
+          : "None overdue",
+      count: m.overdueActionItems,
+      status: m.overdueActionItems > 0 ? "Attention" : "Healthy",
+      href: "/reports",
+      category: "accountability",
+    },
+    {
+      key: "reviews-draft",
+      workflow: "Draft weekly reviews",
+      state:
+        m.draftWeeklyReviews > 0
+          ? "Started but not submitted"
+          : "No open drafts",
+      count: m.draftWeeklyReviews,
+      status: m.draftWeeklyReviews > 0 ? "Watch" : "Healthy",
+      href: "/reports",
+      category: "accountability",
+    },
+    {
+      key: "monitoring-7d",
+      workflow: "Monitoring (last 7 days)",
+      state: "Live monitoring records observed this week",
+      count: m.monitoringLast7d,
+      status: "Healthy",
+      href: "/reports",
+      category: "activity",
+    },
+    {
+      key: "support-overdue",
+      workflow: "Overdue support tasks",
+      state:
+        m.overdueSupportTasks > 0
+          ? "Pending or in progress past due date"
+          : "None overdue",
+      count: m.overdueSupportTasks,
+      status: m.overdueSupportTasks > 0 ? "Attention" : "Healthy",
+      href: "/reports",
+      category: "support",
+    },
+  ];
 }
 
 export function statusTone(status: WorkflowStatus) {
   if (status === "Healthy") {
     return {
-      dot: "bg-[var(--status-success)]",
-      text: "text-[var(--status-success)]",
-      bar: "bg-[var(--status-success)]",
+      badge: "ON_TRACK" as const,
       label: "Healthy",
     };
   }
   if (status === "Attention") {
     return {
-      dot: "bg-[var(--status-warn)]",
-      text: "text-[var(--status-warn)]",
-      bar: "bg-[var(--status-warn)]",
+      badge: "NEEDS_ATTENTION" as const,
       label: "Attention",
     };
   }
   return {
-    dot: "bg-[var(--status-info)]",
-    text: "text-[var(--status-info)]",
-    bar: "bg-[var(--status-info)]",
-    label: "Review",
+    badge: "PENDING" as const,
+    label: "Watch",
   };
 }

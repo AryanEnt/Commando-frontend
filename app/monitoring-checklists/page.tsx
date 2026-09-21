@@ -11,7 +11,6 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { StatusBadge } from "@/components/StatusBadge";
-import { AdminActionMenu } from "@/components/admin/AdminActionMenu";
 import {
   AdminPageShell,
   AdminResultCount,
@@ -35,6 +34,8 @@ type PendingToggle =
   | { kind: "category"; item: MonitoringCategory }
   | { kind: "item"; item: MonitoringChecklistItem }
   | null;
+
+type PendingDelete = MonitoringCategory | null;
 
 type CategoryDraft = { code: string; name: string; description: string };
 type ItemDraft = { code: string; label: string };
@@ -65,8 +66,10 @@ export default function MonitoringChecklistsPage() {
   const [itemDraft, setItemDraft] = useState<ItemDraft>({ code: "", label: "" });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<PendingToggle>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function load(overrides?: { page?: number }) {
     if (!token) return;
@@ -240,6 +243,26 @@ export default function MonitoringChecklistsPage() {
     }
   }
 
+  async function confirmDelete() {
+    if (!token || !pendingDelete) return;
+    const id = pendingDelete.id;
+    setDeleting(true);
+    try {
+      const res = await api.deleteMonitoringCategory(token, id);
+      pushToast(res.data.message, "success");
+      setPendingDelete(null);
+      if (selectedId === id) setSelectedId("");
+      await load();
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError ? err.message : "Could not delete checklist",
+        "error",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!hasPermission("MONITORING_CHECKLIST_MANAGE")) {
     return (
       <ErrorState message="You do not have permission to manage monitoring checklists." />
@@ -254,8 +277,8 @@ export default function MonitoringChecklistsPage() {
   return (
     <AdminPageShell
       breadcrumb={[{ label: "Checklists" }]}
-      title="Checklists"
-      description="Configure live monitoring categories and the checklist items Commandos complete during sessions."
+      title="Checklist templates"
+      description="Baseline categories and items. Team Leads and Commandos customize per SE on the Checklist page — historical monitoring never changes."
       actions={
         <Button onClick={openCreateCategory}>+ Create checklist</Button>
       }
@@ -348,6 +371,9 @@ export default function MonitoringChecklistsPage() {
                     <AdminTh>Checklist</AdminTh>
                     <AdminTh>Items</AdminTh>
                     <AdminTh>Status</AdminTh>
+                    <AdminTh className="w-[1%] whitespace-nowrap text-right">
+                      Actions
+                    </AdminTh>
                   </tr>
                 </thead>
                 <tbody>
@@ -387,6 +413,31 @@ export default function MonitoringChecklistsPage() {
                             status={c.isActive ? "ACTIVE" : "INACTIVE"}
                             label={c.isActive ? "Active" : "Inactive"}
                           />
+                        </AdminTd>
+                        <AdminTd className="text-right">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPending({ kind: "category", item: c });
+                              }}
+                            >
+                              {c.isActive ? "Deactivate" : "Activate"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-[var(--status-danger)] hover:text-[var(--status-danger)]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingDelete(c);
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </AdminTd>
                       </tr>
                     );
@@ -429,20 +480,32 @@ export default function MonitoringChecklistsPage() {
                       </p>
                     ) : null}
                   </div>
-                  <AdminActionMenu
-                    items={[
-                      {
-                        label: "Edit",
-                        onSelect: () => openEditCategory(selected),
-                      },
-                      {
-                        label: selected.isActive ? "Deactivate" : "Activate",
-                        tone: selected.isActive ? "danger" : "default",
-                        onSelect: () =>
-                          setPending({ kind: "category", item: selected }),
-                      },
-                    ]}
-                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openEditCategory(selected)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        setPending({ kind: "category", item: selected })
+                      }
+                    >
+                      {selected.isActive ? "Deactivate" : "Activate"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-[var(--status-danger)]"
+                      onClick={() => setPendingDelete(selected)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-4 p-4">
@@ -695,6 +758,21 @@ export default function MonitoringChecklistsPage() {
         busy={toggling}
         onCancel={() => setPending(null)}
         onConfirm={() => void confirmToggle()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete checklist?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.name}" (${pendingDelete.code}) will be permanently removed if it has never been used in a monitoring session. If it has history, it will be deactivated instead.`
+            : ""
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => void confirmDelete()}
       />
     </AdminPageShell>
   );

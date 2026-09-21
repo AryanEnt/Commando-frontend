@@ -8,13 +8,10 @@ import {
   api,
   ApiError,
   type EisenhowerCategory,
-  type EisenhowerStatus,
   type EisenhowerTask,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
-import { formatDate } from "@/lib/dates";
-import { StatusBadge } from "@/components/StatusBadge";
 import {
   Button,
   DateTimeCell,
@@ -32,13 +29,6 @@ const CATEGORIES: EisenhowerCategory[] = [
   "SCHEDULE",
   "DELEGATE",
   "ELIMINATE",
-];
-
-const STATUSES: EisenhowerStatus[] = [
-  "OPEN",
-  "IN_PROGRESS",
-  "DONE",
-  "CANCELLED",
 ];
 
 export default function EisenhowerTaskDetailPage() {
@@ -64,7 +54,6 @@ function EisenhowerTaskDetail() {
     title: "",
     notes: "",
     category: "DO_FIRST" as EisenhowerCategory,
-    dueDate: "",
   });
 
   const canEdit = hasPermission("EISENHOWER_UPDATE");
@@ -81,9 +70,6 @@ function EisenhowerTaskDetail() {
             title: res.data.task.title,
             notes: res.data.task.notes ?? "",
             category: res.data.task.category,
-            dueDate: res.data.task.dueDate
-              ? new Date(res.data.task.dueDate).toISOString().slice(0, 10)
-              : "",
           });
           setError(null);
         }
@@ -108,35 +94,15 @@ function EisenhowerTaskDetail() {
         title: form.title,
         notes: form.notes.trim() || null,
         category: form.category,
-        dueDate: form.dueDate
-          ? new Date(form.dueDate).toISOString()
-          : null,
       });
       setTask(res.data.task);
       setEditing(false);
-      pushToast("Task updated", "success");
+      pushToast("Priority updated", "success");
       if (returnTo) {
         router.push(returnTo);
       }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to save";
-      setError(msg);
-      pushToast(msg, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onStatus(status: EisenhowerStatus) {
-    if (!token || !task) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.updateEisenhowerTaskStatus(token, task.id, status);
-      setTask(res.data.task);
-      pushToast("Status updated", "success");
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to update";
       setError(msg);
       pushToast(msg, "error");
     } finally {
@@ -163,21 +129,13 @@ function EisenhowerTaskDetail() {
     : "← Eisenhower";
 
   const detailPanel = task.isHistory ? (
-    <ReadOnlyPanel title="Eisenhower task">
+    <ReadOnlyPanel title="Eisenhower priority">
       <dl className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase text-slate-500">Due</dt>
-          <dd className="tabular-nums">{formatDate(task.dueDate)}</dd>
-        </div>
         <div>
           <dt className="text-xs uppercase text-slate-500">Created by</dt>
           <dd>
             {task.createdBy.firstName} {task.createdBy.lastName}
           </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-slate-500">Assignment</dt>
-          <dd className="font-mono text-xs">{task.assignmentId ?? "—"}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase text-slate-500">Updated</dt>
@@ -192,21 +150,13 @@ function EisenhowerTaskDetail() {
       </div>
     </ReadOnlyPanel>
   ) : (
-    <Panel title="Current month task" tone="active">
+    <Panel title="Current month priority" tone="active">
       <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase text-slate-500">Due</dt>
-          <dd className="tabular-nums">{formatDate(task.dueDate)}</dd>
-        </div>
         <div>
           <dt className="text-xs uppercase text-slate-500">Created by</dt>
           <dd>
             {task.createdBy.firstName} {task.createdBy.lastName}
           </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase text-slate-500">Assignment</dt>
-          <dd className="font-mono text-xs">{task.assignmentId ?? "—"}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase text-slate-500">Updated</dt>
@@ -235,11 +185,8 @@ function EisenhowerTaskDetail() {
           <p className="text-sm text-slate-600">
             {task.profile.displayName} · {task.monthLabel} · {task.category}
             {task.isHistory ? " · history" : " · current month"}
+            {task.isExpired ? " · expired" : ""}
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <StatusBadge status={task.status} />
-            {task.isExpired && <StatusBadge status="EXPIRED" />}
-          </div>
         </div>
         {canEdit && !editing && !task.isHistory && (
           <Button variant="secondary" onClick={() => setEditing(true)}>
@@ -249,22 +196,6 @@ function EisenhowerTaskDetail() {
       </div>
 
       {error && <ErrorState message={error} />}
-
-      {canEdit && !task.isHistory && (
-        <div className="flex flex-wrap gap-2">
-          {STATUSES.map((s) => (
-            <Button
-              key={s}
-              variant="secondary"
-              size="sm"
-              disabled={busy || task.status === s}
-              onClick={() => void onStatus(s)}
-            >
-              {s}
-            </Button>
-          ))}
-        </div>
-      )}
 
       {editing && !task.isHistory ? (
         <form
@@ -298,12 +229,6 @@ function EisenhowerTaskDetail() {
             rows={4}
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          />
-          <TextInput
-            label="Due date"
-            type="date"
-            value={form.dueDate}
-            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
           />
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>

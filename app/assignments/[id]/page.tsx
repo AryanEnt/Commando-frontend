@@ -12,6 +12,7 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   Button,
   DateTimeCell,
+  DateTimeFields,
   ErrorState,
   LoadingState,
   Panel,
@@ -19,6 +20,11 @@ import {
   SelectField,
   TextArea,
 } from "@/components/ui";
+import {
+  combineLocalDateTime,
+  toLocalDateInput,
+  toLocalTimeInput,
+} from "@/lib/dates";
 
 export default function AssignmentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -34,6 +40,8 @@ export default function AssignmentDetailPage() {
   const [interventionProvided, setInterventionProvided] = useState("");
   const [improvementObserved, setImprovementObserved] = useState("");
   const [remainingGaps, setRemainingGaps] = useState("");
+  const [endDate, setEndDate] = useState(toLocalDateInput());
+  const [endTime, setEndTime] = useState(toLocalTimeInput());
   const [newCommandoUserId, setNewCommandoUserId] = useState("");
   const [transferReason, setTransferReason] = useState("");
   const [commandos, setCommandos] = useState<
@@ -65,6 +73,7 @@ export default function AssignmentDetailPage() {
     try {
       const res = await api.endAssignment(token, params.id, {
         status,
+        endedAt: combineLocalDateTime(endDate, endTime),
         completionReason: reason || undefined,
         outcome: outcome || undefined,
         initialProblem: initialProblem || undefined,
@@ -221,6 +230,14 @@ export default function AssignmentDetailPage() {
             <option value="COMPLETED">Completed</option>
             <option value="EXITED">Exited</option>
           </SelectField>
+          <DateTimeFields
+            label="End"
+            date={endDate}
+            time={endTime}
+            required
+            onDateChange={setEndDate}
+            onTimeChange={setEndTime}
+          />
           <TextArea
             label="Completion / exit reason"
             rows={3}

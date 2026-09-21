@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
+import { dueIsoFromInputs } from "@/lib/dates";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
+import { DueDateTimePicker } from "@/components/DueDateTimePicker";
 import {
   Button,
   ErrorState,
@@ -24,6 +26,7 @@ export default function NewActionItemPage() {
     title: "",
     description: "",
     dueDate: "",
+    dueTime: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -45,11 +48,9 @@ export default function NewActionItemPage() {
         salesExecutiveProfileId: form.salesExecutiveProfileId,
         title: form.title,
         description: form.description.trim() || null,
-        dueDate: form.dueDate
-          ? new Date(form.dueDate).toISOString()
-          : null,
+        dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
-      pushToast("Action item created", "success");
+      pushToast("Assignment created", "success");
       router.push(`/action-items/${res.data.actionItem.id}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Failed to create";
@@ -62,7 +63,7 @@ export default function NewActionItemPage() {
 
   if (!hasPermission("ACTION_ITEM_CREATE")) {
     return (
-      <ErrorState message="You do not have permission to create action items." />
+      <ErrorState message="You do not have permission to create assignments." />
     );
   }
 
@@ -71,14 +72,14 @@ export default function NewActionItemPage() {
       <div>
         <Link href={cancelHref} className="text-sm text-slate-600 underline">
           {user?.roleCode === "TEAM_LEAD"
-            ? "← Sales Executive actions"
-            : "← Action Items"}
+            ? "← Sales Executive assignment"
+            : "← Assignment"}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          New action item
+          New assignment
         </h1>
         <p className="text-sm text-slate-600">
-          Creates an ACTIVE item for the selected Sales Executive profile.
+          Creates an ACTIVE assignment for the selected Sales Executive profile.
         </p>
       </div>
 
@@ -106,11 +107,13 @@ export default function NewActionItemPage() {
             setForm({ ...form, description: e.target.value })
           }
         />
-        <TextInput
-          label="Due date"
-          type="date"
-          value={form.dueDate}
-          onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+        <DueDateTimePicker
+          date={form.dueDate}
+          time={form.dueTime}
+          disabled={submitting}
+          onChange={({ date, time }) =>
+            setForm((f) => ({ ...f, dueDate: date, dueTime: time }))
+          }
         />
         {error && <ErrorState message={error} />}
         <Button type="submit" disabled={submitting}>

@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, type ActivityType, type DailyLog } from "@/lib/api";
+import { api, type DailyLog } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
+import { StatusBadge } from "@/components/StatusBadge";
+import { formatDate } from "@/lib/dates";
 import {
   EmptyState,
   ErrorState,
   FilterBar,
   PageHeader,
+  SegmentedControl,
   TableSkeleton,
   TextInput,
 } from "@/components/ui";
@@ -18,23 +20,15 @@ import {
 export default function DailyLogsPage() {
   const { token, user, hasPermission } = useAuth();
   const [logs, setLogs] = useState<DailyLog[]>([]);
-  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
-  const [activityTypeId, setActivityTypeId] = useState("");
+  const [status, setStatus] = useState<"all" | "DRAFT" | "SUBMITTED">("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const canCreate =
     hasPermission("DAILY_LOG_CREATE") && user?.roleCode !== "SUPER_ADMIN";
-
-  useEffect(() => {
-    if (!token) return;
-    void api.getActivityTypes(token).then((res) => {
-      setActivityTypes(res.data.activityTypes);
-    });
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +38,7 @@ export default function DailyLogsPage() {
       try {
         const res = await api.getDailyLogs(token, {
           search: search || undefined,
-          activityTypeId: activityTypeId || undefined,
+          status: status === "all" ? undefined : status,
           page,
           pageSize,
         });
@@ -64,20 +58,20 @@ export default function DailyLogsPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, search, activityTypeId, page, pageSize]);
+  }, [token, search, status, page, pageSize]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Daily Coaching Logs"
-        description="Recent and historical coaching sessions. Activity types come from configuration."
+        title="Daily Logs"
+        description="One log per Sales Executive per day. Add activities throughout the day, then prioritize on submit."
         actions={
           canCreate ? (
             <Link
               href="/daily-logs/new"
               className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
-              New log
+              Continue today&apos;s log
             </Link>
           ) : null
         }
@@ -92,21 +86,21 @@ export default function DailyLogsPage() {
               setPage(1);
               setSearch(e.target.value);
             }}
-            placeholder="Session title or notes…"
+            placeholder="Profile or activity…"
           />
         </div>
-        <SearchableSelect
-          label="Activity type"
-          value={activityTypeId}
-          onChange={(id) => {
+        <SegmentedControl
+          ariaLabel="Status filter"
+          value={status}
+          onChange={(v) => {
             setPage(1);
-            setActivityTypeId(id);
+            setStatus(v as "all" | "DRAFT" | "SUBMITTED");
           }}
-          placeholder="All activity types"
-          options={activityTypes.map((t) => ({
-            value: t.id,
-            label: t.name,
-          }))}
+          options={[
+            { value: "all", label: "All" },
+            { value: "DRAFT", label: "Draft" },
+            { value: "SUBMITTED", label: "Submitted" },
+          ]}
         />
       </FilterBar>
 
@@ -116,59 +110,63 @@ export default function DailyLogsPage() {
       {!loading && !error && logs.length === 0 && (
         <EmptyState
           title="No daily logs found"
-          description="Try adjusting filters or create a new coaching log."
+          description="Try adjusting filters or open today's log."
           actionHref={canCreate ? "/daily-logs/new" : undefined}
-          actionLabel={canCreate ? "New log" : undefined}
+          actionLabel={canCreate ? "Continue today's log" : undefined}
         />
       )}
 
       {!loading && logs.length > 0 && (
-        <div className="space-y-6">
-          {Object.entries(
-            logs.reduce<Record<string, DailyLog[]>>((acc, log) => {
-              const key = new Date(log.loggedAt).toISOString().slice(0, 10);
-              (acc[key] ??= []).push(log);
-              return acc;
-            }, {}),
-          ).map(([day, dayLogs]) => {
-            const isToday = day === new Date().toISOString().slice(0, 10);
-            return (
-              <section key={day}>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-subtle)]">
-                  {isToday ? "Today" : day} {isToday ? "· current work" : ""}
-                </h2>
-                <ol className="relative space-y-3 border-l border-[var(--color-line)] pl-4">
-                  {dayLogs.map((log) => (
-                    <li key={log.id} className="relative">
-                      <span className="absolute -left-[1.15rem] mt-1.5 h-2 w-2 rounded-full bg-[var(--color-brand)]" />
-                      <Link href={`/daily-logs/${log.id}`} className="surface block p-3">
-                        <p className="text-sm font-medium">{log.sessionTitle}</p>
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {log.profile.displayName} · {log.activityType.name} ·{" "}
-                          {log.createdBy.firstName} {log.createdBy.lastName}
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-sm text-[var(--color-ink-muted)]">
-                          {log.observation}
-                        </p>
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            );
-          })}
-          <PaginationControls
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            disabled={loading}
-            noun="logs"
-            onPageChange={setPage}
-            onPageSizeChange={(n) => {
-              setPage(1);
-              setPageSize(n);
-            }}
-          />
+        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[var(--color-surface-2)]/50 text-xs uppercase text-[var(--color-ink-subtle)]">
+              <tr>
+                <th className="px-4 py-2.5">Date</th>
+                <th className="px-4 py-2.5">Sales Executive</th>
+                <th className="px-4 py-2.5">Activities</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id} className="border-t border-[var(--color-line)]">
+                  <td className="px-4 py-3 tabular-nums">
+                    {formatDate(log.logDate)}
+                  </td>
+                  <td className="px-4 py-3 font-medium">
+                    {log.profile.displayName}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">{log.entryCount}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={log.status} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/profiles/${log.salesExecutiveProfileId}/daily-logs/${log.id}`}
+                      className="font-medium text-[var(--color-brand)] hover:underline"
+                    >
+                      {log.status === "DRAFT" ? "Continue" : "View"}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="border-t border-[var(--color-line)] px-4 py-3">
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              disabled={loading}
+              noun="logs"
+              onPageChange={setPage}
+              onPageSizeChange={(n) => {
+                setPage(1);
+                setPageSize(n);
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

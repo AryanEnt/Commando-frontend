@@ -28,10 +28,11 @@ export function Breadcrumbs() {
   const homeLabel =
     user?.roleCode === "SUPER_ADMIN"
       ? "Control Tower"
-      : user?.roleCode === "SALES_SUPPORT_EXECUTIVE" ||
-          user?.roleCode === "SALES_EXECUTIVE"
-        ? "My workspace"
-        : "Home";
+      : user?.roleCode === "SALES_SUPPORT_EXECUTIVE"
+        ? "Dashboard"
+        : user?.roleCode === "SALES_EXECUTIVE"
+          ? "My workspace"
+          : "Home";
 
   const crumbs = parts.map((part, index) => {
     const href = "/" + parts.slice(0, index + 1).join("/");
@@ -42,26 +43,39 @@ export function Breadcrumbs() {
     return { href, label, isLast };
   });
 
+  // Super Admin: first crumb "dashboard" → Control Tower
+  if (user?.roleCode === "SUPER_ADMIN" && crumbs[0]?.href === "/dashboard") {
+    crumbs[0] = { ...crumbs[0], label: "Control Tower" };
+  }
+
   return (
     <nav
       aria-label="Breadcrumb"
-      className="hidden min-w-0 text-sm text-[var(--color-ink-muted)] md:block"
+      className="hidden min-w-0 text-meta md:block"
     >
       <ol className="flex flex-wrap items-center gap-1">
         <li>
-          <Link href="/dashboard" className="hover:text-[var(--color-ink)]">
+          <Link
+            href="/dashboard"
+            className="transition hover:text-[var(--color-ink)]"
+          >
             {homeLabel}
           </Link>
         </li>
         {crumbs.map((crumb) => (
           <li key={crumb.href} className="flex items-center gap-1">
-            <span aria-hidden>/</span>
+            <span aria-hidden className="text-[var(--color-ink-subtle)]">
+              /
+            </span>
             {crumb.isLast ? (
               <span className="truncate font-medium text-[var(--color-ink)]">
                 {crumb.label}
               </span>
             ) : (
-              <Link href={crumb.href} className="hover:text-[var(--color-ink)]">
+              <Link
+                href={crumb.href}
+                className="transition hover:text-[var(--color-ink)]"
+              >
                 {crumb.label}
               </Link>
             )}

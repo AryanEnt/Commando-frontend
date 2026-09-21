@@ -473,7 +473,7 @@ export default function ReferralDetailPage() {
               {[
                 { href: `${profileHref}/coaching`, label: "Coaching" },
                 { href: `${profileHref}/monitoring`, label: "Monitoring" },
-                { href: `${profileHref}/actions`, label: "Action items" },
+                { href: `${profileHref}/actions`, label: "Assignment" },
                 { href: `${profileHref}/reviews`, label: "Weekly reviews" },
                 { href: `${profileHref}/eisenhower`, label: "Eisenhower" },
                 { href: `${profileHref}/feedback`, label: "Feedback" },

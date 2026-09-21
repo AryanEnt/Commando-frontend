@@ -1,12 +1,11 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, type ActivityType } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { StatusBadge } from "@/components/StatusBadge";
-import { AdminActionMenu } from "@/components/admin/AdminActionMenu";
 import {
   AdminPageShell,
   AdminResultCount,
@@ -27,12 +26,23 @@ import {
 } from "@/components/ui";
 
 type Draft = {
-  code: string;
   name: string;
   description: string;
 };
 
-const emptyDraft: Draft = { code: "", name: "", description: "" };
+const emptyDraft: Draft = { name: "", description: "" };
+
+function previewCode(name: string): string {
+  const raw = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+  let code = raw || "ACTIVITY";
+  if (!/^[A-Z]/.test(code)) code = `A_${code}`;
+  return code.slice(0, 64);
+}
 
 export default function ActivityTypesPage() {
   const { token, hasPermission } = useAuth();
@@ -50,8 +60,12 @@ export default function ActivityTypesPage() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pendingToggle, setPendingToggle] = useState<ActivityType | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ActivityType | null>(null);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const autoCode = useMemo(() => previewCode(draft.name), [draft.name]);
 
   async function load() {
     if (!token) return;
@@ -92,7 +106,6 @@ export default function ActivityTypesPage() {
   function openEdit(item: ActivityType) {
     setEditing(item);
     setDraft({
-      code: item.code,
       name: item.name,
       description: item.description ?? "",
     });
@@ -102,9 +115,6 @@ export default function ActivityTypesPage() {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (drawerMode === "create" && !draft.code.trim()) {
-      next.code = "Code is required";
-    }
     if (!draft.name.trim()) next.name = "Name is required";
     setFieldErrors(next);
     return Object.keys(next).length === 0;
@@ -118,7 +128,6 @@ export default function ActivityTypesPage() {
     try {
       if (drawerMode === "create") {
         await api.createActivityType(token, {
-          code: draft.code.trim().toUpperCase(),
           name: draft.name.trim(),
           description: draft.description.trim() || undefined,
         });
@@ -169,6 +178,24 @@ export default function ActivityTypesPage() {
       );
     } finally {
       setToggling(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!token || !pendingDelete) return;
+    setDeleting(true);
+    try {
+      const res = await api.deleteActivityType(token, pendingDelete.id);
+      pushToast(res.data.message, "success");
+      setPendingDelete(null);
+      await load();
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError ? err.message : "Could not delete activity type",
+        "error",
+      );
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -297,19 +324,30 @@ export default function ActivityTypesPage() {
                     />
                   </AdminTd>
                   <AdminTd className="text-right">
-                    <AdminActionMenu
-                      items={[
-                        {
-                          label: "Edit",
-                          onSelect: () => openEdit(item),
-                        },
-                        {
-                          label: item.isActive ? "Deactivate" : "Activate",
-                          tone: item.isActive ? "danger" : "default",
-                          onSelect: () => setPendingToggle(item),
-                        },
-                      ]}
-                    />
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(item)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPendingToggle(item)}
+                      >
+                        {item.isActive ? "Deactivate" : "Activate"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[var(--status-danger)]"
+                        onClick={() => setPendingDelete(item)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </AdminTd>
                 </tr>
               ))}
@@ -368,36 +406,37 @@ export default function ActivityTypesPage() {
             <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--color-ink-subtle)]">
               Basic information
             </h3>
-            {drawerMode === "create" ? (
-              <TextInput
-                label="Code"
-                hint="Unique identifier · UPPER_SNAKE"
-                required
-                value={draft.code}
-                onChange={(e) =>
-                  setDraft({ ...draft, code: e.target.value })
-                }
-                error={fieldErrors.code}
-                placeholder="FIELD_COACHING"
-              />
-            ) : (
-              <div>
-                <p className="text-sm font-medium">Code</p>
-                <p className="mt-1 font-mono text-sm text-[var(--color-ink-muted)]">
-                  {draft.code}
-                </p>
-                <p className="mt-1 text-xs text-[var(--color-ink-subtle)]">
-                  Codes cannot be changed after creation.
-                </p>
-              </div>
-            )}
             <TextInput
               label="Display name"
               required
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               error={fieldErrors.name}
+              placeholder="e.g. Field coaching"
             />
+            {drawerMode === "create" ? (
+              <div>
+                <p className="text-sm font-medium text-[var(--color-ink)]">
+                  Code
+                </p>
+                <p className="mt-1 font-mono text-sm text-[var(--color-ink-muted)]">
+                  {draft.name.trim() ? autoCode : "—"}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-ink-subtle)]">
+                  Generated automatically from the name.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm font-medium">Code</p>
+                <p className="mt-1 font-mono text-sm text-[var(--color-ink-muted)]">
+                  {editing?.code}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-ink-subtle)]">
+                  Codes cannot be changed after creation.
+                </p>
+              </div>
+            )}
             <TextArea
               label="Description"
               hint="Shown when selecting an activity in Daily Logs"
@@ -429,6 +468,21 @@ export default function ActivityTypesPage() {
         busy={toggling}
         onCancel={() => setPendingToggle(null)}
         onConfirm={() => void confirmToggle()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete activity type?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.name}" (${pendingDelete.code}) will be permanently removed if unused. If it appears in Daily Logs, it will be deactivated instead.`
+            : ""
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => void confirmDelete()}
       />
     </AdminPageShell>
   );

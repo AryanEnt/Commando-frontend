@@ -1,7 +1,11 @@
 export { ControlTowerHeader } from "./ControlTowerHeader";
-export { PlatformPulse, MetricBlock } from "./PlatformPulse";
-export { OperationsPulse } from "./OperationsPulse";
+export { PlatformKpiStrip } from "./PlatformKpiStrip";
+export { PlatformPulse } from "./PlatformPulse";
 export { AttentionPanel } from "./AttentionPanel";
+export { AwaitingAcknowledgement } from "./AwaitingAcknowledgement";
+export { OverdueActionsPanel } from "./OverdueActionsPanel";
+export { CommandCenter } from "./CommandCenter";
+export { ControlTowerAside } from "./ControlTowerAside";
 export { WorkflowHealth } from "./WorkflowHealth";
 export { RecentActivity } from "./RecentActivity";
 export { GovernanceHub } from "./GovernanceHub";

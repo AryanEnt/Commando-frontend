@@ -1,101 +1,50 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { api, type DailyLog } from "@/lib/api";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import {
-  DateTimeCell,
-  ErrorState,
-  LoadingState,
-  ReadOnlyPanel,
-} from "@/components/ui";
+import { seDailyLogHref } from "@/lib/se-workspace-nav";
+import { ErrorState, LoadingState } from "@/components/ui";
 
-export default function DailyLogDetailPage() {
+/**
+ * Legacy /daily-logs/:id → redirect into SE workspace so sidebar remains.
+ */
+export default function DailyLogDetailRedirectPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Opening Daily Log…" />}>
+      <RedirectInner />
+    </Suspense>
+  );
+}
+
+function RedirectInner() {
   const params = useParams<{ id: string }>();
   const { token } = useAuth();
-  const [log, setLog] = useState<DailyLog | null>(null);
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!token || !params.id) return;
     let cancelled = false;
     void (async () => {
-      if (!token || !params.id) return;
       try {
         const res = await api.getDailyLog(token, params.id);
-        if (!cancelled) {
-          setLog(res.data.log);
-          setError(null);
-        }
+        if (cancelled) return;
+        router.replace(
+          seDailyLogHref(res.data.log.salesExecutiveProfileId, res.data.log.id),
+        );
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load");
+          setError(err instanceof Error ? err.message : "Failed to open");
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [token, params.id]);
+  }, [token, params.id, router]);
 
-  if (error) {
-    return (
-      <div className="space-y-2">
-        <Link href="/daily-logs" className="text-sm text-slate-600 underline">
-          ← Daily Logs
-        </Link>
-        <ErrorState message={error} />
-      </div>
-    );
-  }
-  if (!log) return <LoadingState />;
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href={`/profiles/${log.salesExecutiveProfileId}/coaching`}
-          className="text-sm font-medium text-[var(--color-brand)] hover:underline"
-        >
-          ← Back to {log.profile.displayName}
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          {log.sessionTitle}
-        </h1>
-        <p className="text-sm text-slate-600">
-          {log.profile.displayName} · {log.activityType.name}
-        </p>
-      </div>
-
-      <ReadOnlyPanel title="Daily coaching log">
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs uppercase text-slate-500">Logged</dt>
-            <dd className="mt-1">
-              <DateTimeCell value={log.loggedAt} />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase text-slate-500">Created by</dt>
-            <dd className="mt-1">
-              {log.createdBy.firstName} {log.createdBy.lastName}
-            </dd>
-          </div>
-          {log.assignmentId && (
-            <div>
-              <dt className="text-xs uppercase text-slate-500">Assignment</dt>
-              <dd className="mt-1 font-mono text-xs">{log.assignmentId}</dd>
-            </div>
-          )}
-        </dl>
-        <div>
-          <h2 className="text-xs uppercase text-slate-500">Observation</h2>
-          <p className="mt-2 whitespace-pre-wrap text-slate-900">
-            {log.observation}
-          </p>
-        </div>
-      </ReadOnlyPanel>
-    </div>
-  );
+  if (error) return <ErrorState message={error} />;
+  return <LoadingState label="Opening in Sales Executive workspace…" />;
 }

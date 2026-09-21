@@ -13,6 +13,7 @@ import { useToast } from "@/lib/toast-context";
 import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
+  DateTimeFields,
   EmptyState,
   ErrorState,
   FilterBar,
@@ -22,6 +23,12 @@ import {
   SegmentedControl,
   TableSkeleton,
 } from "@/components/ui";
+import {
+  combineLocalDateTime,
+  formatWhen,
+  toLocalDateInput,
+  toLocalTimeInput,
+} from "@/lib/dates";
 
 export default function AssignmentsPage() {
   return (
@@ -53,6 +60,8 @@ function AssignmentsContent() {
     commandoUserId: "",
     teamLeadUserId: "",
     teamId: "",
+    startDate: toLocalDateInput(),
+    startTime: toLocalTimeInput(),
   });
 
   useEffect(() => {
@@ -104,13 +113,21 @@ function AssignmentsContent() {
     e.preventDefault();
     if (!token) return;
     try {
-      await api.createAssignment(token, form);
+      await api.createAssignment(token, {
+        salesExecutiveProfileId: form.salesExecutiveProfileId,
+        commandoUserId: form.commandoUserId,
+        teamLeadUserId: form.teamLeadUserId,
+        teamId: form.teamId,
+        startedAt: combineLocalDateTime(form.startDate, form.startTime),
+      });
       pushToast("Assignment created", "success");
       setForm({
         salesExecutiveProfileId: "",
         commandoUserId: "",
         teamLeadUserId: "",
         teamId: "",
+        startDate: toLocalDateInput(),
+        startTime: toLocalTimeInput(),
       });
       const res = await api.getAssignments(token, {
         currentOnly,
@@ -212,6 +229,14 @@ function AssignmentsContent() {
               hint: u.email,
             }))}
           />
+          <DateTimeFields
+            label="Start"
+            date={form.startDate}
+            time={form.startTime}
+            required
+            onDateChange={(startDate) => setForm({ ...form, startDate })}
+            onTimeChange={(startTime) => setForm({ ...form, startTime })}
+          />
           <Button type="submit" disabled={Boolean(selectedProfile?.currentAssignment)}>
             Assign Commando
           </Button>
@@ -246,6 +271,8 @@ function AssignmentsContent() {
                   <th className="px-3 py-2">Commando</th>
                   <th className="px-3 py-2">Team Lead</th>
                   <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Started</th>
+                  <th className="px-3 py-2">Ended</th>
                   <th className="px-3 py-2">Days</th>
                   <th className="px-3 py-2" />
                 </tr>
@@ -264,6 +291,12 @@ function AssignmentsContent() {
                     </td>
                     <td className="px-3 py-2">
                       <StatusBadge status={a.status} />
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-[13px] text-slate-700">
+                      {formatWhen(a.startedAt)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-[13px] text-slate-700">
+                      {formatWhen(a.endedAt)}
                     </td>
                     <td className="px-3 py-2 tabular-nums">
                       {a.totalDaysUnderCommando}

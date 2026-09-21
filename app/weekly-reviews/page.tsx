@@ -202,6 +202,16 @@ function WeeklyReviewsContent() {
                         </td>
                         <td className="px-3 py-2 tabular-nums text-slate-700">
                           {formatDate(review.meetingDate)}
+                          {review.meetingTime ? (
+                            <span className="block text-xs text-slate-500">
+                              {review.meetingTime}
+                              {review.roomName ? ` · ${review.roomName}` : ""}
+                            </span>
+                          ) : review.roomName ? (
+                            <span className="block text-xs text-slate-500">
+                              {review.roomName}
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2">
                           <StatusBadge status={review.status} />

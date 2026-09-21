@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type ActionItem, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate } from "@/lib/dates";
+import { useToast } from "@/lib/toast-context";
+import { formatDue } from "@/lib/dates";
 import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { PaginationControls } from "@/components/PaginationControls";
 import {
+  Button,
   EmptyState,
   ErrorState,
   FilterBar,
@@ -30,6 +32,7 @@ export default function ActionItemsPage() {
 
 function ActionItemsContent() {
   const { token, hasPermission } = useAuth();
+  const { pushToast } = useToast();
   const [view, setView] = useState<"active" | "history">("active");
   const [items, setItems] = useState<ActionItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
@@ -40,7 +43,9 @@ function ActionItemsContent() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const canCreate = hasPermission("ACTION_ITEM_CREATE");
+  const canComplete = hasPermission("ACTION_ITEM_UPDATE");
 
   useEffect(() => {
     if (!token) return;
@@ -83,18 +88,43 @@ function ActionItemsContent() {
     return `${p.firstName} ${p.lastName}`;
   }
 
+  async function completeAction(id: string) {
+    if (!token || !canComplete) return;
+    setCompletingId(id);
+    try {
+      await api.completeActionItem(token, id);
+      pushToast("Action completed", "success");
+      const res = await api.getActionItems(token, {
+        view,
+        profileId: profileId || undefined,
+        search: search || undefined,
+        page,
+        pageSize,
+      });
+      setItems(res.data.actionItems);
+      setTotal(res.data.total);
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : "Could not complete action",
+        "error",
+      );
+    } finally {
+      setCompletingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Action Items"
-        description="Profile-specific coaching actions. Completed, expired, and replaced items stay in History."
+        title="Assignment"
+        description="Profile-specific coaching assignments. Completed, expired, and replaced items stay in History."
         actions={
           canCreate ? (
             <Link
               href="/action-items/new"
               className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
-              New action item
+              New assignment
             </Link>
           ) : null
         }
@@ -102,7 +132,7 @@ function ActionItemsContent() {
 
       <FilterBar>
         <SegmentedControl
-          ariaLabel="Action items view"
+          ariaLabel="Assignment view"
           value={view}
           onChange={(v) => {
             setPage(1);
@@ -146,16 +176,16 @@ function ActionItemsContent() {
         <EmptyState
           title={
             view === "active"
-              ? "No active action items"
+              ? "No active assignments"
               : "No history yet"
           }
           description={
             view === "active"
-              ? "Create an action item or switch to History."
+              ? "Create an assignment or switch to History."
               : "Completed and replaced items will appear here."
           }
           actionHref={canCreate ? "/action-items/new" : undefined}
-          actionLabel={canCreate ? "New action item" : undefined}
+          actionLabel={canCreate ? "New assignment" : undefined}
         />
       )}
 
@@ -163,7 +193,7 @@ function ActionItemsContent() {
         <Panel
           title={
             view === "active"
-              ? `Active action items · ${total}`
+              ? `Active assignments · ${total}`
               : `History · ${total}`
           }
           tone={view === "active" ? "active" : "history"}
@@ -192,15 +222,31 @@ function ActionItemsContent() {
                       <StatusBadge status={item.status} />
                     </td>
                     <td className="px-3 py-2 tabular-nums text-slate-700">
-                      {formatDate(item.dueDate)}
+                      {formatDue(item.dueDate)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <Link
-                        href={`/action-items/${item.id}`}
-                        className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                      >
-                        View
-                      </Link>
+                      <div className="flex items-center justify-end gap-2">
+                        {canComplete &&
+                        view === "active" &&
+                        item.status === "ACTIVE" ? (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            disabled={completingId === item.id}
+                            onClick={() => void completeAction(item.id)}
+                          >
+                            {completingId === item.id
+                              ? "Completing…"
+                              : "Complete"}
+                          </Button>
+                        ) : null}
+                        <Link
+                          href={`/action-items/${item.id}`}
+                          className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                        >
+                          View
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -213,7 +259,7 @@ function ActionItemsContent() {
               pageSize={pageSize}
               total={total}
               disabled={loading}
-              noun="action items"
+              noun="assignments"
               onPageChange={setPage}
               onPageSizeChange={(n) => {
                 setPage(1);

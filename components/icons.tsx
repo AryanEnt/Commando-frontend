@@ -107,6 +107,12 @@ export const Icons = {
       <path d="M12 7v5l3 2" />
     </Svg>
   ),
+  calendar: (p: IconProps) => (
+    <Svg {...p}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3 11h18" />
+    </Svg>
+  ),
   grid: (p: IconProps) => (
     <Svg {...p}>
       <rect x="3" y="3" width="8" height="8" rx="1" />

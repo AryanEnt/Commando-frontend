@@ -10,8 +10,27 @@ export type SeSection =
   | "performance"
   | "support"
   | "monitoring"
+  | "checklist"
   | "interventions"
-  | "history";
+  | "history"
+  | "swot"
+  | "verdict"
+  | "timeline";
+
+export type SeNavIcon =
+  | "dashboard"
+  | "users"
+  | "tasks"
+  | "reviews"
+  | "monitoring"
+  | "feedback"
+  | "history"
+  | "calendar"
+  | "report"
+  | "referral"
+  | "swot"
+  | "check"
+  | "clock";
 
 export type SeNavItem = {
   section: SeSection;
@@ -19,187 +38,368 @@ export type SeNavItem = {
   href: (profileId: string) => string;
   /** Optional sidebar group label (Sales Executive nav). */
   sectionGroup?: string;
+  icon?: SeNavIcon;
+  /** Highlight as the core workflow action (e.g. Monitoring for Commando). */
+  primary?: boolean;
+};
+
+export type SeNavGroup = {
+  id: "quick" | "activity" | "management" | "other";
+  label: string;
+  /** Quick Access — visually more prominent. */
+  prominent?: boolean;
+  items: SeNavItem[];
 };
 
 const ALL_ITEMS: SeNavItem[] = [
-  { section: "overview", label: "Overview", href: (id) => `/profiles/${id}` },
+  {
+    section: "overview",
+    label: "Overview",
+    href: (id) => `/profiles/${id}`,
+    icon: "dashboard",
+  },
+  {
+    section: "timeline",
+    label: "Timeline",
+    href: (id) => `/profiles/${id}/timeline`,
+    icon: "clock",
+  },
   {
     section: "interventions",
     label: "Intervention",
     href: (id) => `/profiles/${id}/interventions`,
+    icon: "referral",
+  },
+  {
+    section: "verdict",
+    label: "TL Verdict",
+    href: (id) => `/profiles/${id}/verdict`,
+    icon: "check",
   },
   {
     section: "coaching",
-    label: "Coaching",
+    label: "Daily Logs",
     href: (id) => `/profiles/${id}/coaching`,
+    icon: "reviews",
+  },
+  {
+    section: "checklist",
+    label: "Checklist",
+    href: (id) => `/profiles/${id}/checklist`,
+    icon: "check",
   },
   {
     section: "monitoring",
-    label: "Monitoring",
+    label: "Monitor",
     href: (id) => `/profiles/${id}/monitoring`,
+    icon: "monitoring",
   },
   {
     section: "reviews",
-    label: "Reviews",
+    label: "Weekly Reviews",
     href: (id) => `/profiles/${id}/reviews`,
+    icon: "reviews",
   },
   {
     section: "actions",
-    label: "Actions",
+    label: "Assignment",
     href: (id) => `/profiles/${id}/actions`,
+    icon: "tasks",
   },
   {
     section: "eisenhower",
     label: "Eisenhower",
     href: (id) => `/profiles/${id}/eisenhower`,
+    icon: "calendar",
   },
   {
     section: "support",
     label: "Support",
     href: (id) => `/profiles/${id}/support`,
+    icon: "users",
   },
   {
     section: "feedback",
     label: "Feedback",
     href: (id) => `/profiles/${id}/feedback`,
+    icon: "feedback",
   },
   {
     section: "performance",
-    label: "Goals",
+    label: "Performance",
     href: (id) => `/profiles/${id}/performance`,
+    icon: "report",
+  },
+  {
+    section: "swot",
+    label: "SWOT",
+    href: (id) => `/profiles/${id}/swot`,
+    icon: "swot",
   },
   {
     section: "history",
     label: "History",
     href: (id) => `/profiles/${id}/history`,
+    icon: "history",
   },
 ];
 
-/** Sections available per role. */
+const bySection = () => new Map(ALL_ITEMS.map((item) => [item.section, item]));
+
+function item(
+  section: SeSection,
+  overrides?: Partial<SeNavItem>,
+): SeNavItem {
+  const base = bySection().get(section);
+  if (!base) throw new Error(`Unknown SE section: ${section}`);
+  return { ...base, ...overrides };
+}
+
+/** Flat sections available per role (legacy consumers + mobile select). */
 const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
   TEAM_LEAD: [
     "overview",
-    "interventions",
+    "timeline",
+    "performance",
+    "verdict",
+    "swot",
     "coaching",
+    "checklist",
     "monitoring",
     "reviews",
-    "actions",
     "eisenhower",
     "support",
-    "feedback",
-    "performance",
     "history",
+    "actions",
+    "feedback",
+    "interventions",
   ],
   COMMANDO_EXECUTIVE: [
-    "overview",
-    "interventions",
-    "coaching",
     "monitoring",
-    "reviews",
+    "checklist",
     "actions",
-    "eisenhower",
-    "support",
     "feedback",
     "performance",
+    "timeline",
+    "overview",
+    "swot",
+    "coaching",
+    "reviews",
+    "eisenhower",
+    "support",
     "history",
+    "interventions",
   ],
   SALES_EXECUTIVE: [
     "overview",
+    "timeline",
     "reviews",
-    "performance",
     "actions",
-    "feedback",
     "eisenhower",
     "support",
+    "feedback",
     "history",
+    "performance",
   ],
   SALES_SUPPORT_EXECUTIVE: ["overview", "support", "actions", "history"],
   SUPER_ADMIN: [
-    "overview",
-    "interventions",
-    "coaching",
     "monitoring",
-    "reviews",
+    "checklist",
     "actions",
-    "eisenhower",
-    "support",
     "feedback",
     "performance",
+    "timeline",
+    "overview",
+    "swot",
+    "coaching",
+    "reviews",
+    "eisenhower",
+    "support",
     "history",
+    "interventions",
   ],
 };
+
+/** Grouped manager sidebar (Commando / Team Lead / Super Admin). */
+export function seGroupedNavForRole(roleCode: string): SeNavGroup[] {
+  if (roleCode === "TEAM_LEAD") {
+    return [
+      {
+        id: "quick",
+        label: "Quick access",
+        prominent: true,
+        items: [
+          item("overview"),
+          item("performance"),
+          item("verdict"),
+          item("swot"),
+        ],
+      },
+      {
+        id: "activity",
+        label: "Activity",
+        items: [
+          item("timeline"),
+          item("coaching"),
+          item("checklist"),
+          item("monitoring"),
+        ],
+      },
+      {
+        id: "management",
+        label: "Management",
+        items: [item("reviews"), item("eisenhower")],
+      },
+      {
+        id: "other",
+        label: "Other",
+        items: [
+          item("support"),
+          item("history"),
+          item("actions"),
+          item("feedback"),
+          item("interventions"),
+        ],
+      },
+    ];
+  }
+
+  // Commando + Super Admin
+  return [
+    {
+      id: "quick",
+      label: "Quick access",
+      prominent: true,
+      items: [
+        item("monitoring", { primary: true }),
+        item("checklist"),
+        item("actions"),
+        item("feedback"),
+        item("performance"),
+      ],
+    },
+    {
+      id: "activity",
+      label: "Activity",
+      items: [item("timeline"), item("coaching")],
+    },
+    {
+      id: "management",
+      label: "Management",
+      items: [
+        item("overview"),
+        item("swot"),
+        item("reviews"),
+        item("eisenhower"),
+      ],
+    },
+    {
+      id: "other",
+      label: "Other",
+      items: [item("support"), item("history"), item("interventions")],
+    },
+  ];
+}
 
 export function seNavForRole(roleCode: string): SeNavItem[] {
   const sections =
     ROLE_SECTIONS[roleCode as RoleCode] ?? ROLE_SECTIONS.COMMANDO_EXECUTIVE;
-  const bySection = new Map(ALL_ITEMS.map((item) => [item.section, item]));
+  const map = bySection();
   return sections
-    .map((section) => bySection.get(section))
-    .filter((item): item is SeNavItem => Boolean(item))
-    .map((item) => {
+    .map((section) => map.get(section))
+    .filter((navItem): navItem is SeNavItem => Boolean(navItem))
+    .map((navItem) => {
       if (roleCode === "SALES_EXECUTIVE") {
-        if (item.section === "overview") {
-          return { ...item, label: "Overview", sectionGroup: "My performance" };
+        if (navItem.section === "overview") {
+          return {
+            ...navItem,
+            label: "My workspace",
+            sectionGroup: "My performance",
+          };
         }
-        if (item.section === "reviews") {
-          return { ...item, label: "Weekly Reviews", sectionGroup: "My performance" };
+        if (navItem.section === "reviews") {
+          return {
+            ...navItem,
+            label: "My Reviews",
+            sectionGroup: "My performance",
+          };
         }
-        if (item.section === "performance") {
-          return { ...item, label: "Development", sectionGroup: "My performance" };
+        if (navItem.section === "actions") {
+          return {
+            ...navItem,
+            label: "My Assignment",
+            sectionGroup: "My performance",
+          };
         }
-        if (item.section === "actions") {
-          return { ...item, label: "Actions", sectionGroup: "My performance" };
+        if (navItem.section === "eisenhower") {
+          return {
+            ...navItem,
+            label: "Monthly Planning",
+            sectionGroup: "Planning",
+          };
         }
-        if (item.section === "feedback") {
-          return { ...item, label: "Feedback", sectionGroup: "My performance" };
+        if (navItem.section === "support") {
+          return { ...navItem, label: "Support Team", sectionGroup: "Support" };
         }
-        if (item.section === "eisenhower") {
-          return { ...item, label: "Monthly Planning", sectionGroup: "Planning" };
+        if (navItem.section === "feedback") {
+          return { ...navItem, label: "Feedback", sectionGroup: "Development" };
         }
-        if (item.section === "support") {
-          return { ...item, label: "Support Team", sectionGroup: "Support" };
+        if (navItem.section === "history") {
+          return { ...navItem, label: "History", sectionGroup: "Development" };
         }
-        if (item.section === "history") {
-          return { ...item, label: "History", sectionGroup: "Activity" };
+        if (navItem.section === "performance") {
+          return {
+            ...navItem,
+            label: "Performance",
+            sectionGroup: "Development",
+          };
         }
-        return item;
+        return navItem;
       }
       if (roleCode === "SALES_SUPPORT_EXECUTIVE") {
-        if (item.section === "support") {
-          return { ...item, label: "My support" };
+        if (navItem.section === "support") {
+          return { ...navItem, label: "My support" };
         }
-        if (item.section === "actions") {
-          return { ...item, label: "Related actions" };
+        if (navItem.section === "actions") {
+          return { ...navItem, label: "Related assignment" };
         }
-        return item;
+        return navItem;
       }
-      return item;
+      return navItem;
     });
 }
+
+const PATH_SECTIONS: SeSection[] = [
+  "coaching",
+  "checklist",
+  "monitoring",
+  "reviews",
+  "eisenhower",
+  "actions",
+  "support",
+  "interventions",
+  "feedback",
+  "performance",
+  "history",
+  "swot",
+  "verdict",
+  "timeline",
+];
 
 export function seSectionFromPathname(pathname: string): SeSection {
   const match = pathname.match(/^\/profiles\/[^/]+(?:\/([^/]+))?/);
   const segment = match?.[1];
   if (!segment) return "overview";
-  if (
-    (
-      [
-        "coaching",
-        "monitoring",
-        "reviews",
-        "eisenhower",
-        "actions",
-        "support",
-        "interventions",
-        "feedback",
-        "performance",
-        "history",
-      ] as SeSection[]
-    ).includes(segment as SeSection)
-  ) {
+  /** Daily Log journal lives under /daily-logs/:id but belongs to coaching. */
+  if (segment === "daily-logs") return "coaching";
+  if (PATH_SECTIONS.includes(segment as SeSection)) {
     return segment as SeSection;
   }
   return "overview";
+}
+
+export function seDailyLogHref(profileId: string, logId: string) {
+  return `/profiles/${profileId}/daily-logs/${logId}`;
 }
 
 export function seWorkspaceHref(profileId: string, section?: SeSection) {
@@ -208,9 +408,8 @@ export function seWorkspaceHref(profileId: string, section?: SeSection) {
 }
 
 export function seSectionLabel(section: SeSection): string {
-  const fromNav = ALL_ITEMS.find((item) => item.section === section);
+  const fromNav = ALL_ITEMS.find((navItem) => navItem.section === section);
   if (fromNav) return fromNav.label;
-  if (section === "interventions") return "Interventions";
   return "Overview";
 }
 
@@ -224,7 +423,6 @@ export function seCreateHref(
     | "feedback"
     | "swot"
     | "eisenhower",
-  options?: { category?: string },
 ) {
   switch (kind) {
     case "monitoring":
@@ -238,14 +436,9 @@ export function seCreateHref(
     case "feedback":
       return `/profiles/${profileId}/feedback/new`;
     case "swot":
-      return `/swot/new?profileId=${profileId}&returnTo=${encodeURIComponent(`/profiles/${profileId}`)}`;
-    case "eisenhower": {
-      const params = new URLSearchParams({
-        profileId,
-        returnTo: `/profiles/${profileId}/eisenhower`,
-      });
-      if (options?.category) params.set("category", options.category);
-      return `/eisenhower/new?${params.toString()}`;
-    }
+      return `/swot/new?profileId=${profileId}&returnTo=${encodeURIComponent(`/profiles/${profileId}/swot`)}`;
+    case "eisenhower":
+      // Priorities are created via Daily Log (urgency + importance).
+      return `/profiles/${profileId}/coaching/new`;
   }
 }

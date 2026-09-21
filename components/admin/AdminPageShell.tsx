@@ -71,7 +71,7 @@ export function AdminPageShell({
 
 export function AdminToolbar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3">
+    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-brand-ring)] bg-[var(--color-mint)] px-3 py-3">
       {children}
     </div>
   );

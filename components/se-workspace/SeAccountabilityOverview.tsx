@@ -20,7 +20,7 @@ import type {
   WeeklyReview,
   InterventionWorkspace,
 } from "@/lib/api";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatWhen } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -56,7 +56,19 @@ type Props = {
 };
 
 function latestBySource(swots: SwotItem[], source: SwotItem["source"]) {
-  return swots.find((s) => s.source === source) ?? null;
+  return (
+    swots
+      .filter((s) => s.source === source)
+      .slice()
+      .sort((a, b) => {
+        const av = a.versionNumber ?? 0;
+        const bv = b.versionNumber ?? 0;
+        if (bv !== av) return bv - av;
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      })[0] ?? null
+  );
 }
 
 function activityDayLabel(iso: string) {
@@ -190,7 +202,7 @@ export function SeAccountabilityOverview({
   if (overdueCount > 0 && !attention.some((a) => a.code === "ACTIONS_OVERDUE")) {
     attentionItems.push({
       key: "overdue-actions",
-      title: "Overdue actions",
+      title: "Overdue assignments",
       meta: `${overdueCount} action${overdueCount === 1 ? "" : "s"} past due`,
       href: seWorkspaceHref(profile.id, "actions"),
       tone: "danger",
@@ -356,7 +368,7 @@ export function SeAccountabilityOverview({
                 <div>
                   <dt className="text-xs text-[var(--color-ink-subtle)]">Started</dt>
                   <dd className="text-[var(--color-ink)]">
-                    {formatDate(assignment.startedAt)}
+                    {formatWhen(assignment.startedAt)}
                   </dd>
                 </div>
                 {referral?.recommendationFocus || referral?.whatIsTheGap ? (
@@ -433,9 +445,14 @@ export function SeAccountabilityOverview({
             <Skeleton className="h-12 w-48" />
           </div>
         ) : metricsError ? (
-          <p className="mt-4 text-sm text-[var(--color-ink-muted)]">
-            Unable to load performance data right now.
-          </p>
+          <div className="mt-4">
+            <p className="text-sm text-[var(--color-ink)]">
+              Unable to load performance data
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
+              {metricsError}
+            </p>
+          </div>
         ) : score != null ? (
           <div className="mt-4 flex flex-wrap items-end gap-6">
             <div>
@@ -623,7 +640,7 @@ export function SeAccountabilityOverview({
               {recentReviews.map((r) => (
                 <li key={r.id}>
                   <Link
-                    href={`/weekly-reviews/${r.id}`}
+                    href={`/weekly-reviews/${r.id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`}
                     className="flex items-center justify-between gap-2 text-sm hover:underline"
                   >
                     <span className="truncate font-medium text-[var(--color-ink)]">
