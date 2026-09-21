@@ -93,6 +93,14 @@ function actionProgress(items: ActionItem[]) {
   return { done, total: tracked.length, items: tracked };
 }
 
+function needsSignature(review: WeeklyReview) {
+  return (
+    review.status === "SUBMITTED" &&
+    !review.salesExecutiveSigned &&
+    !review.signed
+  );
+}
+
 function ReviewStatusBadge({
   review,
   awaiting,
@@ -107,9 +115,45 @@ function ReviewStatusBadge({
     return <StatusBadge status="SIGNED" label="Signed" />;
   }
   if (review.status === "SUBMITTED") {
-    return <StatusBadge status="COMPLETED" label="Completed" />;
+    return <StatusBadge status="PENDING" label="Needs your signature" />;
   }
   return <StatusBadge status={review.status} />;
+}
+
+function SignBanner({
+  review,
+  onSign,
+  signing,
+  compact,
+}: {
+  review: WeeklyReview;
+  onSign?: (id: string) => void;
+  signing?: boolean;
+  compact?: boolean;
+}) {
+  if (!needsSignature(review) || !onSign) return null;
+  const author = personName(review.commando ?? review.createdBy);
+  return (
+    <div className={`srv-sign-banner${compact ? " is-compact" : ""}`}>
+      <div className="srv-sign-banner-copy">
+        <p className="srv-sign-banner-kicker">Action needed</p>
+        <p className="srv-sign-banner-title">Sign this weekly review</p>
+        <p className="srv-sign-banner-desc">
+          {author} shared this review with you. Signing confirms you have read
+          it.
+        </p>
+      </div>
+      <Button
+        type="button"
+        size={compact ? "sm" : "md"}
+        disabled={signing}
+        onClick={() => onSign(review.id)}
+      >
+        <CheckCircle2 size={16} aria-hidden />
+        {signing ? "Signing…" : "Sign this review"}
+      </Button>
+    </div>
+  );
 }
 
 function ActionProgressBlock({
@@ -246,10 +290,7 @@ function ReviewDetailBody({
   const summary = review.performanceSummary.trim();
   const well = review.whatWentWell.trim();
   const improve = review.improvement.trim();
-  const needsSign =
-    review.status === "SUBMITTED" &&
-    !review.salesExecutiveSigned &&
-    !review.signed;
+  const signed = review.salesExecutiveSigned || review.signed;
   const meetingBits = [
     review.roomName?.trim(),
     review.meetingTime?.trim(),
@@ -257,12 +298,25 @@ function ReviewDetailBody({
 
   return (
     <div className={`srv-detail${compact ? " is-compact" : ""}`}>
+      <SignBanner
+        review={review}
+        onSign={onSign}
+        signing={signing}
+      />
+
+      {signed ? (
+        <p className="srv-signed-banner" role="status">
+          <CheckCircle2 size={16} aria-hidden />
+          You signed this review
+        </p>
+      ) : null}
+
       <div className="srv-detail-hero">
         <div className="srv-detail-hero-top">
           <div className="srv-detail-who">
             <Avatar name={personName(author)} size="md" />
             <div className="min-w-0">
-              <p className="srv-detail-kicker">Commando review</p>
+              <p className="srv-detail-kicker">Weekly review</p>
               <p className="srv-detail-name">{personName(author)}</p>
               <p className="srv-detail-sub">
                 Reviewed {formatDate(review.meetingDate || review.submittedAt)}
@@ -331,7 +385,7 @@ function ReviewDetailBody({
           Open full page
           <ChevronRight size={14} aria-hidden />
         </Link>
-        {needsSign && onSign ? (
+        {needsSignature(review) && onSign ? (
           <Button
             type="button"
             size="sm"
@@ -340,8 +394,6 @@ function ReviewDetailBody({
           >
             {signing ? "Signing…" : "Sign this review"}
           </Button>
-        ) : review.salesExecutiveSigned || review.signed ? (
-          <p className="srv-signed-note">You signed this review</p>
         ) : null}
       </div>
     </div>
@@ -452,10 +504,7 @@ export function SeWeeklyReviewsPanel({
   );
   const returnTo = seWorkspaceHref(profileId, "reviews");
 
-  const reviews = useMemo(
-    () => history.filter((r) => Boolean(r.commandoUserId)),
-    [history],
-  );
+  const reviews = useMemo(() => history, [history]);
 
   const loadActions = useCallback(async () => {
     if (!token) return;
@@ -484,6 +533,21 @@ export function SeWeeklyReviewsPanel({
     [reviews, weekStart],
   );
 
+  const unsignedReviews = useMemo(
+    () => reviews.filter((r) => needsSignature(r)),
+    [reviews],
+  );
+
+  const primaryToSign = thisWeekReview && needsSignature(thisWeekReview)
+    ? thisWeekReview
+    : unsignedReviews[0] ?? null;
+
+  useEffect(() => {
+    if (!sheetReview) return;
+    const fresh = reviews.find((r) => r.id === sheetReview.id);
+    if (fresh && fresh !== sheetReview) setSheetReview(fresh);
+  }, [reviews, sheetReview]);
+
   const previous = useMemo(() => {
     const list = reviews.filter(
       (r) => weekStartYmd(r.weekStartDate) !== weekStart,
@@ -504,14 +568,6 @@ export function SeWeeklyReviewsPanel({
     setPage(1);
   }, [sortOrder, previous.length]);
 
-  const latestDate = useMemo(() => {
-    if (reviews.length === 0) return null;
-    const sorted = [...reviews].sort(
-      (a, b) => reviewSortKey(b) - reviewSortKey(a),
-    );
-    return sorted[0]?.meetingDate || sorted[0]?.submittedAt || null;
-  }, [reviews]);
-
   function openReview(review: WeeklyReview) {
     setSheetReview(review);
   }
@@ -524,7 +580,7 @@ export function SeWeeklyReviewsPanel({
         </div>
         <h1 className="srv-title">Weekly Reviews</h1>
         <p className="srv-subtitle">
-          Your weekly performance reviews from Commando
+          Your weekly performance reviews from Team Lead and Commando
         </p>
       </header>
 
@@ -538,12 +594,36 @@ export function SeWeeklyReviewsPanel({
           <span className="srv-metric-value">{reviews.length}</span>
         </div>
         <div className="srv-metric">
-          <span className="srv-metric-label">Latest Review</span>
+          <span className="srv-metric-label">Waiting for you</span>
           <span className="srv-metric-value">
-            {latestDate ? formatDate(latestDate) : "—"}
+            {unsignedReviews.length === 0
+              ? "All signed"
+              : `${unsignedReviews.length} to sign`}
           </span>
         </div>
       </div>
+
+      {primaryToSign && onSign ? (
+        <section className="srv-sign-priority" aria-label="Sign weekly review">
+          <SignBanner
+            review={primaryToSign}
+            onSign={(id) => {
+              onSign(id);
+            }}
+            signing={signingReviewId === primaryToSign.id}
+          />
+          {primaryToSign.id !== thisWeekReview?.id ? (
+            <button
+              type="button"
+              className="srv-sign-priority-open"
+              onClick={() => openReview(primaryToSign)}
+            >
+              Review details
+              <ChevronRight size={14} aria-hidden />
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="srv-section" aria-labelledby="srv-this-week">
         <div className="srv-section-head">
@@ -554,7 +634,20 @@ export function SeWeeklyReviewsPanel({
         </div>
 
         {thisWeekReview ? (
-          <article className="srv-card srv-card-featured">
+          <article
+            className={`srv-card srv-card-featured${
+              needsSignature(thisWeekReview) ? " needs-sign" : ""
+            }`}
+          >
+            {needsSignature(thisWeekReview) && onSign ? (
+              <SignBanner
+                review={thisWeekReview}
+                onSign={onSign}
+                signing={signingReviewId === thisWeekReview.id}
+                compact
+              />
+            ) : null}
+
             <div className="srv-card-top">
               <div>
                 <p className="srv-card-kicker">Weekly Review</p>
@@ -623,9 +716,23 @@ export function SeWeeklyReviewsPanel({
                 className="srv-view-btn"
                 onClick={() => openReview(thisWeekReview)}
               >
-                View full review
+                {needsSignature(thisWeekReview)
+                  ? "Read & sign"
+                  : "View full review"}
                 <ChevronRight size={15} aria-hidden />
               </button>
+              {needsSignature(thisWeekReview) && onSign ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={signingReviewId === thisWeekReview.id}
+                  onClick={() => onSign(thisWeekReview.id)}
+                >
+                  {signingReviewId === thisWeekReview.id
+                    ? "Signing…"
+                    : "Sign this review"}
+                </Button>
+              ) : null}
             </div>
           </article>
         ) : (
@@ -638,7 +745,9 @@ export function SeWeeklyReviewsPanel({
               <p className="srv-awaiting-week">Week of {weekRangeLabel}</p>
               <h3 className="srv-awaiting-title">No review this week yet</h3>
               <p className="srv-awaiting-desc">
-                Your Commando has not submitted a weekly review for this week.
+                No weekly review has been submitted for this week yet. It
+                appears here as soon as your Team Lead or Commando submits it —
+                not when the week ends.
               </p>
             </div>
             <ReviewStatusBadge awaiting />
@@ -689,8 +798,8 @@ export function SeWeeklyReviewsPanel({
           <div className="srv-empty-history">
             <p className="srv-empty-title">No previous reviews</p>
             <p className="srv-empty-desc">
-              Your previous Commando weekly reviews will appear here as they are
-              completed.
+              Previous Team Lead and Commando weekly reviews will appear here as
+              they are completed.
             </p>
           </div>
         ) : (
@@ -709,7 +818,11 @@ export function SeWeeklyReviewsPanel({
                       <span className="srv-timeline-dot" />
                       {!isLast ? <span className="srv-timeline-line" /> : null}
                     </div>
-                    <article className="srv-card srv-card-compact">
+                    <article
+                      className={`srv-card srv-card-compact${
+                        needsSignature(review) ? " needs-sign" : ""
+                      }`}
+                    >
                       <div className="srv-card-top">
                         <div>
                           <p className="srv-card-kicker">
@@ -735,14 +848,30 @@ export function SeWeeklyReviewsPanel({
                           {prog.done} of {prog.total} actions completed
                         </p>
                       ) : null}
-                      <button
-                        type="button"
-                        className="srv-view-btn"
-                        onClick={() => openReview(review)}
-                      >
-                        View review
-                        <ChevronRight size={15} aria-hidden />
-                      </button>
+                      <div className="srv-card-actions">
+                        <button
+                          type="button"
+                          className="srv-view-btn"
+                          onClick={() => openReview(review)}
+                        >
+                          {needsSignature(review)
+                            ? "Read & sign"
+                            : "View review"}
+                          <ChevronRight size={15} aria-hidden />
+                        </button>
+                        {needsSignature(review) && onSign ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={signingReviewId === review.id}
+                            onClick={() => onSign(review.id)}
+                          >
+                            {signingReviewId === review.id
+                              ? "Signing…"
+                              : "Sign"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </article>
                   </li>
                 );

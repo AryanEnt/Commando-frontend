@@ -18,6 +18,8 @@ import { personName } from "@/lib/labels";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
 import { Button, ButtonLink } from "@/components/ui";
 
+type ListView = "active" | "history";
+
 type DuePreset =
   | "all"
   | "overdue"
@@ -26,6 +28,10 @@ type DuePreset =
   | "no_due"
   | "completed"
   | "custom";
+
+function isHistoryStatus(a: ActionItem) {
+  return ["COMPLETED", "EXPIRED", "REPLACED", "CANCELLED"].includes(a.status);
+}
 
 type Props = {
   profileId: string;
@@ -158,12 +164,21 @@ export function SeActionsPanel({
   const { token } = useAuth();
   const { pushToast } = useToast();
   const [preset, setPreset] = useState<DuePreset>("all");
+  const [listView, setListView] = useState<ListView>("active");
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [completingId, setCompletingId] = useState<string | null>(null);
 
+  const scoped = useMemo(
+    () =>
+      actions.filter((a) =>
+        listView === "history" ? isHistoryStatus(a) : a.status === "ACTIVE",
+      ),
+    [actions, listView],
+  );
+
   const filtered = useMemo(() => {
-    return actions
+    return scoped
       .filter((a) => {
         if (!matchesPreset(a, preset)) return false;
         if (preset === "custom") return matchesDateRange(a, dueFrom, dueTo);
@@ -179,15 +194,24 @@ export function SeActionsPanel({
         if (r !== 0) return r;
         const ad = parseDue(a.dueDate)?.getTime() ?? Number.POSITIVE_INFINITY;
         const bd = parseDue(b.dueDate)?.getTime() ?? Number.POSITIVE_INFINITY;
+        if (listView === "history") {
+          return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+        }
         return ad - bd;
       });
-  }, [actions, preset, dueFrom, dueTo]);
+  }, [scoped, preset, dueFrom, dueTo, listView]);
 
   const overdueCount = actions.filter((a) => isOverdue(a)).length;
   const openCount = actions.filter(
     (a) => a.status === "ACTIVE" && !isOverdue(a),
   ).length;
   const completedCount = actions.filter((a) => a.status === "COMPLETED").length;
+  const historyCount = actions.filter((a) => isHistoryStatus(a)).length;
+
+  const presets =
+    listView === "history"
+      ? PRESETS.filter((p) => ["all", "completed", "custom"].includes(p.key))
+      : PRESETS.filter((p) => p.key !== "completed");
 
   const hasFilters = preset !== "all" || !!dueFrom || !!dueTo;
   const metaLine = [
@@ -197,6 +221,13 @@ export function SeActionsPanel({
   ]
     .filter(Boolean)
     .join(" · ");
+
+  function selectListView(next: ListView) {
+    setListView(next);
+    setPreset("all");
+    setDueFrom("");
+    setDueTo("");
+  }
 
   function clearFilters() {
     setPreset("all");
@@ -219,6 +250,7 @@ export function SeActionsPanel({
       await api.completeActionItem(token, id);
       pushToast("Assignment completed", "success");
       await onChanged?.();
+      setListView("history");
     } catch (err) {
       pushToast(
         err instanceof Error ? err.message : "Could not complete assignment",
@@ -296,22 +328,48 @@ export function SeActionsPanel({
           </div>
           <h1 className="as-title">Assignments</h1>
           <p className="as-subtitle">
-            Ownership, due dates, and follow-ups
-            {actions.length > 0
-              ? ` · ${actions.length} item${actions.length === 1 ? "" : "s"}`
+            {listView === "history"
+              ? "Completed, expired, replaced, and cancelled items"
+              : "Ownership, due dates, and follow-ups"}
+            {scoped.length > 0
+              ? ` · ${scoped.length} item${scoped.length === 1 ? "" : "s"}`
               : ""}
           </p>
         </div>
-        {canCreate ? (
-          <ButtonLink
-            href={seCreateHref(profileId, "action")}
-            size="sm"
-            className="as-cta"
+        <div className="as-title-actions">
+          <div
+            className="as-filters"
+            role="group"
+            aria-label="Assignment view"
           >
-            <Plus size={14} aria-hidden />
-            Create assignment
-          </ButtonLink>
-        ) : null}
+            <button
+              type="button"
+              aria-pressed={listView === "active"}
+              className={`as-filter${listView === "active" ? " is-active" : ""}`}
+              onClick={() => selectListView("active")}
+            >
+              Active
+            </button>
+            <button
+              type="button"
+              aria-pressed={listView === "history"}
+              className={`as-filter${listView === "history" ? " is-active" : ""}`}
+              onClick={() => selectListView("history")}
+            >
+              History{historyCount > 0 ? ` (${historyCount})` : ""}
+            </button>
+          </div>
+          {canCreate ? (
+            <ButtonLink
+              href={seCreateHref(profileId, "action")}
+              size="sm"
+              className="as-cta"
+            >
+              <Plus size={14} aria-hidden />
+              Create assignment
+            </ButtonLink>
+          ) : null}
+        </div>
       </div>
 
       {actions.length > 0 ? (
@@ -330,8 +388,8 @@ export function SeActionsPanel({
               <span className="as-stat-label">Completed</span>
             </div>
             <div className="as-stat">
-              <span className="as-stat-value">{filtered.length}</span>
-              <span className="as-stat-label">Showing</span>
+              <span className="as-stat-value">{historyCount}</span>
+              <span className="as-stat-label">History</span>
             </div>
           </div>
 
@@ -341,7 +399,7 @@ export function SeActionsPanel({
               role="group"
               aria-label="Assignment filters"
             >
-              {PRESETS.map((p) => {
+              {presets.map((p) => {
                 const active = preset === p.key;
                 return (
                   <button
@@ -391,16 +449,22 @@ export function SeActionsPanel({
         </>
       ) : null}
 
-      {actions.length === 0 ? (
+      {scoped.length === 0 ? (
         <div className="as-empty">
           <div className="as-empty-icon" aria-hidden>
             <ListChecks size={22} strokeWidth={1.75} />
           </div>
-          <p className="as-empty-title">No assignments yet</p>
-          <p className="as-empty-desc">
-            Ownership, due dates, and status for follow-ups will appear here.
+          <p className="as-empty-title">
+            {listView === "history"
+              ? "No assignment history"
+              : "No assignments yet"}
           </p>
-          {canCreate ? (
+          <p className="as-empty-desc">
+            {listView === "history"
+              ? "Completed, expired, replaced, and cancelled assignments will appear here."
+              : "Ownership, due dates, and status for follow-ups will appear here."}
+          </p>
+          {canCreate && listView === "active" ? (
             <ButtonLink
               href={seCreateHref(profileId, "action")}
               size="sm"

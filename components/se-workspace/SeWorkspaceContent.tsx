@@ -196,14 +196,13 @@ export function SeWorkspaceContent() {
     }
     if (section === "actions" || section === "overview") {
       if (hasPermission("ACTION_ITEM_VIEW")) {
-        const actionView =
-          user?.roleCode === "SALES_EXECUTIVE" ? "active" : "all";
+        const actionView = "all";
         jobs.push(
           api
             .getActionItems(token, {
               profileId: id,
               view: actionView,
-              pageSize: 20,
+              pageSize: 100,
             })
             .then((r) => setActions(r.data.actionItems))
             .catch(() => setActions([])),
@@ -623,12 +622,10 @@ export function SeWorkspaceContent() {
           activeIntervention={Boolean(profile.currentAssignment)}
           onChanged={async () => {
             if (!token) return;
-            const actionView =
-              user?.roleCode === "SALES_EXECUTIVE" ? "active" : "all";
             const res = await api.getActionItems(token, {
               profileId: profile.id,
-              view: actionView,
-              pageSize: 20,
+              view: "all",
+              pageSize: 100,
             });
             setActions(res.data.actionItems);
           }}

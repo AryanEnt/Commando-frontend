@@ -4432,12 +4432,12 @@ body {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 18%, transparent);
 }
 
-.as-title-row {
+.as-title-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.85rem 1rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
 }
 
 .as-title-badge {
@@ -5379,10 +5379,123 @@ body {
 }
 
 .srv-card-featured {
-  border-color: color-mix(in srgb, var(--color-brand-ring) 70%, var(--color-line));
-  box-shadow:
-    var(--shadow-sm),
-    0 0 0 1px color-mix(in srgb, var(--color-brand-soft) 55%, transparent);
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.05rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--color-brand-ring) 55%, var(--color-line));
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--color-brand-soft) 55%, var(--color-surface)) 0%,
+      var(--color-surface) 58%
+    );
+  box-shadow: var(--shadow-sm);
+}
+
+.srv-card.needs-sign {
+  border-color: color-mix(in srgb, var(--status-warn) 45%, var(--color-line));
+}
+
+.srv-sign-priority {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.srv-sign-priority-open {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand-dark);
+  font-size: var(--text-label);
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0;
+}
+
+.srv-sign-priority-open:hover {
+  text-decoration: underline;
+}
+
+.srv-sign-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem 1rem;
+  padding: 0.95rem 1.05rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--status-warn) 40%, var(--color-line));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--status-warn-bg) 75%, white) 0%,
+      var(--color-surface) 70%
+    );
+}
+
+.srv-sign-banner.is-compact {
+  padding: 0.75rem 0.85rem;
+}
+
+.srv-sign-banner-copy {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.srv-sign-banner-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--status-warn);
+}
+
+.srv-sign-banner-title {
+  margin: 0.15rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+}
+
+.srv-sign-banner-desc {
+  margin: 0.2rem 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+}
+
+.srv-sign-banner .btn,
+.srv-sign-banner button[type="button"]:not(.srv-sign-priority-open) {
+  flex-shrink: 0;
+}
+
+.srv-signed-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--status-success-bg) 70%, var(--color-surface));
+  color: var(--status-success);
+  font-size: var(--text-label);
+  font-weight: 650;
+}
+
+.srv-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent);
 }
 
 .srv-card-top {
@@ -5434,12 +5547,6 @@ body {
   margin-top: 0.95rem;
   padding-top: 0.9rem;
   border-top: 1px solid color-mix(in srgb, var(--color-line) 75%, transparent);
-}
-
-.srv-card-actions {
-  margin-top: 0.85rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent);
 }
 
 .srv-card-expand {
