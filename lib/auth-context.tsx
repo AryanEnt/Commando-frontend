@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { api, type AuthUser } from "@/lib/api";
+import { api, refreshAccessToken, type AuthUser } from "@/lib/api";
 import {
   clearSession,
   getStoredAccessToken,
@@ -30,8 +30,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** Refresh before the 15m access cookie expires so the session stays live. */
-const ACCESS_REFRESH_MS = 10 * 60 * 1000;
+const KEEP_ALIVE_MS = 8 * 60 * 1000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -41,46 +40,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return subscribeSession((nextToken, nextUser) => {
       setToken(nextToken);
-      if (nextToken === null) {
+      if (!nextToken) {
         setUser(null);
-      } else if (nextUser) {
-        setUser(nextUser);
+        return;
       }
+      if (nextUser) setUser(nextUser);
     });
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    const stored = getStoredAccessToken();
 
     void (async () => {
-      if (!stored) {
-        try {
-          const refreshed = await api.refresh();
-          if (cancelled) return;
-          setToken(refreshed.data.accessToken);
-          setUser(refreshed.data.user);
-        } catch {
-          /* not signed in */
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-        return;
-      }
+      const stored = getStoredAccessToken();
       try {
-        const res = await api.me(stored);
-        if (cancelled) return;
-        setToken(stored);
-        setUser(res.data.user);
-      } catch {
-        try {
-          const refreshed = await api.refresh();
+        if (stored) {
+          const res = await api.me(stored);
           if (cancelled) return;
-          setToken(refreshed.data.accessToken);
-          setUser(refreshed.data.user);
-        } catch {
-          clearSession();
+          persistSession(stored, res.data.user);
+        } else {
+          const refreshed = await refreshAccessToken();
+          if (cancelled || !refreshed) return;
         }
+      } catch {
+        const refreshed = await refreshAccessToken();
+        if (cancelled || refreshed) return;
+        clearSession();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -94,27 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    let lastKeepAlive = 0;
-    async function keepAlive() {
-      const now = Date.now();
-      if (now - lastKeepAlive < 60_000) return;
-      lastKeepAlive = now;
-      try {
-        const refreshed = await api.refresh();
-        persistSession(refreshed.data.accessToken, refreshed.data.user);
-      } catch {
-        /* next API 401 will retry; do not log out here */
-      }
-    }
-
-    const id = window.setInterval(() => {
-      void keepAlive();
-    }, ACCESS_REFRESH_MS);
-
-    const onFocus = () => {
-      void keepAlive();
+    const keepAlive = () => {
+      void refreshAccessToken();
     };
+
+    const id = window.setInterval(keepAlive, KEEP_ALIVE_MS);
+    const onFocus = () => keepAlive();
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") keepAlive();
+    });
 
     return () => {
       window.clearInterval(id);
@@ -125,20 +99,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
     persistSession(res.data.accessToken, res.data.user);
-    setToken(res.data.accessToken);
-    setUser(res.data.user);
     return res.data;
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      await api.logout(token);
+      await api.logout(getStoredAccessToken());
     } catch {
       clearSession();
     }
-    setToken(null);
-    setUser(null);
-  }, [token]);
+  }, []);
 
   const hasPermission = useCallback(
     (code: string) => Boolean(user?.permissions.includes(code)),

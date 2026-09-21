@@ -152,6 +152,8 @@ async function request<T>(
   }
 }
 
+export { refreshSessionOnce as refreshAccessToken };
+
 export const api = {
   login(email: string, password: string) {
     return request<{ data: { user: AuthUser; accessToken: string } }>(

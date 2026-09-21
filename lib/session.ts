@@ -36,3 +36,10 @@ export function subscribeSession(listener: SessionListener) {
     listeners.delete(listener);
   };
 }
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== ACCESS_TOKEN_KEY) return;
+    listeners.forEach((fn) => fn(event.newValue, null));
+  });
+}
