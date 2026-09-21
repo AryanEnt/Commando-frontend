@@ -71,7 +71,9 @@ async function refreshSessionOnce(): Promise<string | null> {
       });
       const body = await readJson(res);
       if (!res.ok) {
-        clearSession();
+        if (res.status === 401 || res.status === 403) {
+          clearSession();
+        }
         return null;
       }
       const data = body.data as

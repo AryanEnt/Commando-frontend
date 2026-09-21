@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (stored) {
           const res = await api.me(stored);
           if (cancelled) return;
-          persistSession(stored, res.data.user);
+          persistSession(getStoredAccessToken() ?? stored, res.data.user);
         } else {
           const refreshed = await refreshAccessToken();
           if (cancelled || !refreshed) return;
@@ -85,14 +85,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const id = window.setInterval(keepAlive, KEEP_ALIVE_MS);
     const onFocus = () => keepAlive();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", () => {
+    const onVisible = () => {
       if (document.visibilityState === "visible") keepAlive();
-    });
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [token]);
 
