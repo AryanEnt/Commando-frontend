@@ -269,6 +269,7 @@ export function TeamLeadDashboard({
   const draftReviewsByProfile = useMemo(() => {
     const map = new Map<string, WeeklyReview[]>();
     for (const r of draftReviews) {
+      if (!r.salesExecutiveProfileId) continue;
       const list = map.get(r.salesExecutiveProfileId) ?? [];
       list.push(r);
       map.set(r.salesExecutiveProfileId, list);
@@ -343,11 +344,12 @@ export function TeamLeadDashboard({
       });
     }
     for (const r of draftReviews.slice(0, 4)) {
+      if (!r.salesExecutiveProfileId) continue;
       items.push({
         id: `review-${r.id}`,
         kind: "review",
         title: r.weekLabel || "Weekly review draft",
-        seName: r.profile.displayName,
+        seName: r.profile?.displayName ?? "Sales Support",
         seId: r.salesExecutiveProfileId,
         meta: "Draft — not submitted",
         href: `/profiles/${r.salesExecutiveProfileId}/reviews`,

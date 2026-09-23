@@ -108,7 +108,7 @@ export function PaginationControls({
                 aria-current={p === page ? "page" : undefined}
                 className={`inline-flex h-8 min-w-8 items-center justify-center rounded-[var(--radius-sm)] px-2 text-xs font-medium ${
                   p === page
-                    ? "bg-[var(--color-brand)] text-white"
+                    ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                     : "border border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
                 }`}
                 onClick={() => onPageChange(p)}

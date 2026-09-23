@@ -227,7 +227,12 @@ export function SupportTeamPanel({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[var(--color-ink)]">
-                        {personName(link.supportUser)}
+                        <Link
+                          href={`/support/${link.supportUser.id}`}
+                          className="hover:underline"
+                        >
+                          {personName(link.supportUser)}
+                        </Link>
                         {link.responsibilityType
                           ? ` · ${responsibilityTypeLabel(link.responsibilityType)}`
                           : ""}
@@ -240,6 +245,12 @@ export function SupportTeamPanel({
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Link
+                        href={`/support/${link.supportUser.id}`}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Workspace
+                      </Link>
                       {canCreateTask ? (
                         <Button
                           variant="secondary"
@@ -513,6 +524,9 @@ export function AssignSupportPersonDrawer({
         <div>
           <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">
             Eligible users
+          </p>
+          <p className="mb-2 text-xs text-[var(--color-ink-muted)]">
+            Sales Support members of this Sales Executive&apos;s team only.
           </p>
           {loading ? (
             <div className="space-y-2">

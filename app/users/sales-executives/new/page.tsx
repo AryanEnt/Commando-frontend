@@ -82,9 +82,9 @@ function Stepper({
               onClick={() => clickable && onJump(index)}
               className={`relative z-[1] flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition ${
                 active
-                  ? "bg-[var(--color-brand)] text-white shadow-[var(--shadow-sm)]"
+                  ? "bg-[var(--color-brand)] text-[var(--color-brand-on)] shadow-[var(--shadow-sm)]"
                   : done
-                    ? "bg-[var(--color-brand-soft)] text-[var(--color-brand)] hover:ring-2 hover:ring-[var(--status-success-ring)]"
+                    ? "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)] hover:ring-2 hover:ring-[var(--color-brand-ring)]"
                     : "bg-[var(--color-surface-2)] text-[var(--color-ink-subtle)] ring-1 ring-[var(--color-line)]"
               } ${clickable ? "cursor-pointer" : "cursor-default"}`}
               aria-current={active ? "step" : undefined}
@@ -326,7 +326,7 @@ export default function CreateSalesExecutivePage() {
             <div className="flex flex-wrap gap-2 pt-1">
               <Link
                 href={`/profiles/${success.profileId}`}
-                className="inline-flex h-10 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+                className="inline-flex h-10 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-4 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
               >
                 Open profile
               </Link>

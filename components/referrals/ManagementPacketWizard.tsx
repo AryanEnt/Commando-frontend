@@ -3,6 +3,20 @@
 import { useMemo, useState } from "react";
 import { Button, TextArea, TextInput } from "@/components/ui";
 
+export type SwotQuadrants = {
+  strength: string;
+  weakness: string;
+  opportunity: string;
+  threat: string;
+};
+
+export type AssignedSupportPerson = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
 export type ProvideForm = {
   whySalesIsDown: string;
   whatIsTheGap: string;
@@ -17,7 +31,15 @@ export type ProvideForm = {
   weakness: string;
   opportunity: string;
   threat: string;
+  supportSwots: Record<string, SwotQuadrants>;
 };
+
+const emptyQuadrants = (): SwotQuadrants => ({
+  strength: "",
+  weakness: "",
+  opportunity: "",
+  threat: "",
+});
 
 export const emptyProvideForm: ProvideForm = {
   whySalesIsDown: "",
@@ -33,6 +55,7 @@ export const emptyProvideForm: ProvideForm = {
   weakness: "",
   opportunity: "",
   threat: "",
+  supportSwots: {},
 };
 
 const STEPS = [
@@ -64,8 +87,9 @@ const STEPS = [
   },
   {
     id: "swot",
-    title: "Management SWOT",
-    description: "Team Lead assessment — separate from SE or Commando SWOT.",
+    title: "Profile SWOT",
+    description:
+      "Team Lead assessment of the sales profile/workspace, plus SWOT for each assigned Sales Support.",
     fields: ["strength", "weakness", "opportunity", "threat"] as const,
   },
   {
@@ -76,8 +100,27 @@ const STEPS = [
   },
 ] as const;
 
-function fieldFilled(form: ProvideForm, key: keyof ProvideForm) {
+function fieldFilled(form: ProvideForm, key: keyof Omit<ProvideForm, "supportSwots">) {
   return form[key].trim().length > 0;
+}
+
+function quadrantsFilled(q: SwotQuadrants | undefined) {
+  if (!q) return false;
+  return (
+    q.strength.trim().length > 0 &&
+    q.weakness.trim().length > 0 &&
+    q.opportunity.trim().length > 0 &&
+    q.threat.trim().length > 0
+  );
+}
+
+function supportSwotComplete(
+  form: ProvideForm,
+  assignedSupport: AssignedSupportPerson[],
+) {
+  return assignedSupport.every((person) =>
+    quadrantsFilled(form.supportSwots[person.userId]),
+  );
 }
 
 export function ManagementPacketWizard({
@@ -85,6 +128,7 @@ export function ManagementPacketWizard({
   setForm,
   busy,
   commandoName,
+  assignedSupport = [],
   onApprove,
   onReject,
 }: {
@@ -92,6 +136,7 @@ export function ManagementPacketWizard({
   setForm: (updater: (prev: ProvideForm) => ProvideForm) => void;
   busy: boolean;
   commandoName: string;
+  assignedSupport?: AssignedSupportPerson[];
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -100,15 +145,47 @@ export function ManagementPacketWizard({
   const isLast = step === STEPS.length - 1;
 
   const missingOnStep = useMemo(() => {
-    return current.fields.filter((key) => !fieldFilled(form, key));
-  }, [current.fields, form]);
+    const missing = current.fields.filter((key) => !fieldFilled(form, key));
+    if (current.id === "swot") {
+      for (const person of assignedSupport) {
+        const q = form.supportSwots[person.userId];
+        const name = `${person.firstName} ${person.lastName}`.trim();
+        if (!q?.strength.trim()) missing.push(`${name} strengths` as never);
+        if (!q?.weakness.trim()) missing.push(`${name} weaknesses` as never);
+        if (!q?.opportunity.trim())
+          missing.push(`${name} opportunities` as never);
+        if (!q?.threat.trim()) missing.push(`${name} threats` as never);
+      }
+    }
+    return missing;
+  }, [assignedSupport, current.fields, current.id, form]);
 
   const stepComplete = STEPS.slice(0, 4).map((s) =>
-    s.fields.every((key) => fieldFilled(form, key)),
+    s.id === "swot"
+      ? s.fields.every((key) => fieldFilled(form, key)) &&
+        supportSwotComplete(form, assignedSupport)
+      : s.fields.every((key) => fieldFilled(form, key)),
   );
 
-  function patch(key: keyof ProvideForm, value: string) {
+  function patch(key: keyof Omit<ProvideForm, "supportSwots">, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function patchSupport(
+    userId: string,
+    key: keyof SwotQuadrants,
+    value: string,
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      supportSwots: {
+        ...prev.supportSwots,
+        [userId]: {
+          ...(prev.supportSwots[userId] ?? emptyQuadrants()),
+          [key]: value,
+        },
+      },
+    }));
   }
 
   function goNext() {
@@ -138,7 +215,7 @@ export function ManagementPacketWizard({
                 }}
                 className={`rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-medium ${
                   i === step
-                    ? "bg-[var(--color-brand)] text-white"
+                    ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                     : stepComplete[i] || i < step
                       ? "bg-[var(--color-brand-soft)] text-[var(--color-brand)]"
                       : "bg-[var(--color-surface)] text-[var(--color-ink-muted)] ring-1 ring-[var(--color-line)]"
@@ -239,39 +316,54 @@ export function ManagementPacketWizard({
 
         {current.id === "swot" && (
           <>
-            <p className="text-sm font-medium text-[var(--color-ink)]">
-              Team Lead Assessment
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextArea
-                label="Strengths"
-                rows={4}
-                required
-                value={form.strength}
-                onChange={(e) => patch("strength", e.target.value)}
-              />
-              <TextArea
-                label="Weaknesses"
-                rows={4}
-                required
-                value={form.weakness}
-                onChange={(e) => patch("weakness", e.target.value)}
-              />
-              <TextArea
-                label="Opportunities"
-                rows={4}
-                required
-                value={form.opportunity}
-                onChange={(e) => patch("opportunity", e.target.value)}
-              />
-              <TextArea
-                label="Threats"
-                rows={4}
-                required
-                value={form.threat}
-                onChange={(e) => patch("threat", e.target.value)}
-              />
+            <div>
+              <p className="text-sm font-medium text-[var(--color-ink)]">
+                Profile SWOT
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                Team Lead assessment of this sales profile / workspace.
+              </p>
             </div>
+            <SwotQuadrantFields
+              value={{
+                strength: form.strength,
+                weakness: form.weakness,
+                opportunity: form.opportunity,
+                threat: form.threat,
+              }}
+              onChange={(key, value) => patch(key, value)}
+            />
+
+            {assignedSupport.length === 0 ? (
+              <p className="text-sm text-[var(--color-ink-muted)]">
+                No Sales Support is currently assigned to this profile. Profile
+                SWOT only is required.
+              </p>
+            ) : (
+              assignedSupport.map((person) => {
+                const name = `${person.firstName} ${person.lastName}`.trim();
+                const q = form.supportSwots[person.userId] ?? emptyQuadrants();
+                return (
+                  <div key={person.userId} className="space-y-3 border-t border-[var(--color-line)] pt-4">
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                        Sales Support SWOT — {name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                        Team Lead assessment of the Sales Support assigned to
+                        this intervention.
+                      </p>
+                    </div>
+                    <SwotQuadrantFields
+                      value={q}
+                      onChange={(key, value) =>
+                        patchSupport(person.userId, key, value)
+                      }
+                    />
+                  </div>
+                );
+              })
+            )}
           </>
         )}
 
@@ -282,7 +374,10 @@ export function ManagementPacketWizard({
                 ["Performance Diagnosis", stepComplete[0]],
                 ["Support & Recommendation", stepComplete[1]],
                 ["Priorities", stepComplete[2]],
-                ["SWOT", stepComplete[3]],
+                ["Profile SWOT", stepComplete[3]],
+                ...(assignedSupport.length > 0
+                  ? ([["Sales Support SWOT", supportSwotComplete(form, assignedSupport)]] as const)
+                  : []),
               ].map(([label, done]) => (
                 <li
                   key={String(label)}
@@ -356,5 +451,46 @@ export function ManagementPacketWizard({
         </div>
       </div>
     </section>
+  );
+}
+
+function SwotQuadrantFields({
+  value,
+  onChange,
+}: {
+  value: SwotQuadrants;
+  onChange: (key: keyof SwotQuadrants, value: string) => void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <TextArea
+        label="Strengths"
+        rows={4}
+        required
+        value={value.strength}
+        onChange={(e) => onChange("strength", e.target.value)}
+      />
+      <TextArea
+        label="Weaknesses"
+        rows={4}
+        required
+        value={value.weakness}
+        onChange={(e) => onChange("weakness", e.target.value)}
+      />
+      <TextArea
+        label="Opportunities"
+        rows={4}
+        required
+        value={value.opportunity}
+        onChange={(e) => onChange("opportunity", e.target.value)}
+      />
+      <TextArea
+        label="Threats"
+        rows={4}
+        required
+        value={value.threat}
+        onChange={(e) => onChange("threat", e.target.value)}
+      />
+    </div>
   );
 }

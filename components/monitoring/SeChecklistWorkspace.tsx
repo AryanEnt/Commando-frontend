@@ -18,7 +18,12 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
+import { allocationStatus } from "@/lib/monitoring-scoring";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
+import {
+  sseCreateHref,
+  sseWorkspaceHref,
+} from "@/lib/sse-workspace-nav";
 import {
   Button,
   ErrorState,
@@ -30,19 +35,28 @@ type CategoryRow = {
   category: MonitoringCategory;
   items: EffectiveMonitoringChecklistItem[];
   canCustomize: boolean;
+  weightsConfigured: boolean;
+  weightAllocation: {
+    total: number;
+    remaining: number;
+    over: number;
+    isComplete: boolean;
+  } | null;
   loading: boolean;
   error: string | null;
   loaded: boolean;
 };
 
 type Props = {
-  profileId: string;
+  profileId?: string;
+  executiveUserId?: string;
   profileName: string;
   teamName?: string;
   teamLeadName?: string | null;
   commandoName?: string | null;
   statusLabel?: string | null;
   activeIntervention?: boolean;
+  subjectLabel?: string;
 };
 
 function itemKey(item: EffectiveMonitoringChecklistItem) {
@@ -54,13 +68,28 @@ function itemKey(item: EffectiveMonitoringChecklistItem) {
  */
 export function SeChecklistWorkspace({
   profileId,
+  executiveUserId,
   profileName,
   teamName,
   teamLeadName,
   commandoName,
   statusLabel,
   activeIntervention = false,
+  subjectLabel = "Sales Executive",
 }: Props) {
+  const checklistSubject = useMemo(
+    () =>
+      executiveUserId
+        ? ({ executiveUserId } as const)
+        : ({ profileId: profileId! } as const),
+    [executiveUserId, profileId],
+  );
+  const monitoringHref = executiveUserId
+    ? sseWorkspaceHref(executiveUserId, "monitoring")
+    : seWorkspaceHref(profileId!, "monitoring");
+  const monitoringCreateHref = executiveUserId
+    ? sseCreateHref(executiveUserId, "monitoring")
+    : seCreateHref(profileId!, "monitoring");
   const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const router = useRouter();
@@ -79,6 +108,9 @@ export function SeChecklistWorkspace({
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [weightDrafts, setWeightDrafts] = useState<Record<string, string>>({});
+  const [weightsDirty, setWeightsDirty] = useState(false);
+  const [savingWeights, setSavingWeights] = useState(false);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const categoryMenuRef = useRef<HTMLDivElement | null>(null);
@@ -91,12 +123,23 @@ export function SeChecklistWorkspace({
   );
 
   const metaLine = useMemo(() => {
-    const parts: string[] = [];
+    const parts: string[] = [subjectLabel];
     if (teamName) parts.push(teamName);
     if (teamLeadName) parts.push(`Team Lead: ${teamLeadName}`);
     if (commandoName) parts.push(`Commando: ${commandoName}`);
+    else if (statusLabel) parts.push(statusLabel);
     return parts.join(" · ");
-  }, [teamName, teamLeadName, commandoName]);
+  }, [subjectLabel, teamName, teamLeadName, commandoName, statusLabel]);
+
+  const liveAllocation = useMemo(() => {
+    if (!selected?.items.length) return null;
+    const total = selected.items.reduce((sum, item) => {
+      const raw = weightDrafts[itemKey(item)];
+      const w = Number.parseInt(raw ?? String(item.weight ?? 0), 10);
+      return sum + (Number.isFinite(w) ? w : 0);
+    }, 0);
+    return allocationStatus(total);
+  }, [selected, weightDrafts]);
 
   const setCategoryInUrl = useCallback(
     (categoryId: string | null) => {
@@ -122,9 +165,15 @@ export function SeChecklistWorkspace({
       try {
         const res = await api.getEffectiveMonitoringChecklist(
           token,
-          profileId,
+          checklistSubject,
           categoryId,
         );
+        const drafts: Record<string, string> = {};
+        for (const item of res.data.items) {
+          drafts[itemKey(item)] = String(item.weight ?? 0);
+        }
+        setWeightDrafts(drafts);
+        setWeightsDirty(false);
         setRows((prev) =>
           prev.map((r) =>
             r.category.id === categoryId
@@ -132,6 +181,8 @@ export function SeChecklistWorkspace({
                   ...r,
                   items: res.data.items,
                   canCustomize: res.data.canCustomize,
+                  weightsConfigured: res.data.weightsConfigured,
+                  weightAllocation: res.data.weightAllocation,
                   loading: false,
                   loaded: true,
                   error: null,
@@ -156,7 +207,7 @@ export function SeChecklistWorkspace({
         );
       }
     },
-    [token, profileId],
+    [token, checklistSubject],
   );
 
   useEffect(() => {
@@ -172,6 +223,8 @@ export function SeChecklistWorkspace({
           category,
           items: [],
           canCustomize: false,
+          weightsConfigured: false,
+          weightAllocation: null,
           loading: true,
           error: null,
           loaded: false,
@@ -200,13 +253,15 @@ export function SeChecklistWorkspace({
             try {
               const checklist = await api.getEffectiveMonitoringChecklist(
                 token,
-                profileId,
+                checklistSubject,
                 cat.id,
               );
               return {
                 id: cat.id,
                 items: checklist.data.items,
                 canCustomize: checklist.data.canCustomize,
+                weightsConfigured: checklist.data.weightsConfigured,
+                weightAllocation: checklist.data.weightAllocation,
                 error: null as string | null,
               };
             } catch (err) {
@@ -214,6 +269,8 @@ export function SeChecklistWorkspace({
                 id: cat.id,
                 items: [] as EffectiveMonitoringChecklistItem[],
                 canCustomize: false,
+                weightsConfigured: false,
+                weightAllocation: null,
                 error:
                   err instanceof Error
                     ? err.message
@@ -223,6 +280,15 @@ export function SeChecklistWorkspace({
           }),
         );
         if (cancelled) return;
+        const first = results.find((x) => x.id === initialId) ?? results[0];
+        if (first && !first.error) {
+          const drafts: Record<string, string> = {};
+          for (const item of first.items) {
+            drafts[itemKey(item)] = String(item.weight ?? 0);
+          }
+          setWeightDrafts(drafts);
+          setWeightsDirty(false);
+        }
         setRows((prev) =>
           prev.map((r) => {
             const hit = results.find((x) => x.id === r.category.id);
@@ -231,6 +297,8 @@ export function SeChecklistWorkspace({
               ...r,
               items: hit.items,
               canCustomize: hit.canCustomize,
+              weightsConfigured: hit.weightsConfigured,
+              weightAllocation: hit.weightAllocation,
               loading: false,
               loaded: !hit.error,
               error: hit.error,
@@ -252,7 +320,7 @@ export function SeChecklistWorkspace({
     };
     // intentionally omit searchParams to avoid reload loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, profileId]);
+  }, [token, checklistSubject]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("category");
@@ -289,8 +357,86 @@ export function SeChecklistWorkspace({
     setCategoryInUrl(categoryId);
     setMobileShowItems(true);
     const row = rows.find((r) => r.category.id === categoryId);
+    if (row?.loaded) {
+      const drafts: Record<string, string> = {};
+      for (const item of row.items) {
+        drafts[itemKey(item)] = String(item.weight ?? 0);
+      }
+      setWeightDrafts(drafts);
+      setWeightsDirty(false);
+    }
     if (row && !row.loaded && !row.loading) {
       void loadCategory(categoryId);
+    }
+  }
+
+  async function saveWeights() {
+    if (!token || !selectedId || !selected) return;
+    const itemsPayload = selected.items.map((item) => {
+      const key = itemKey(item);
+      const weight = Number.parseInt(weightDrafts[key] ?? "0", 10);
+      if (item.sourceType === "TEMPLATE" && item.checklistItemId) {
+        return { checklistItemId: item.checklistItemId, weight };
+      }
+      if (item.sourceType === "CUSTOM" && item.seChecklistItemId) {
+        return { seChecklistItemId: item.seChecklistItemId, weight };
+      }
+      return null;
+    });
+    if (itemsPayload.some((p) => p == null || !Number.isFinite(p.weight))) {
+      pushToast("Each weight must be an integer from 0 to 100", "error");
+      return;
+    }
+    const total = itemsPayload.reduce((s, p) => s + (p?.weight ?? 0), 0);
+    const alloc = allocationStatus(total);
+    if (!alloc.isComplete) {
+      pushToast(
+        alloc.remaining > 0
+          ? `Weights must total 100%. ${alloc.remaining}% remaining.`
+          : `Weights must total 100%. ${alloc.over}% over allocation.`,
+        "error",
+      );
+      return;
+    }
+    setSavingWeights(true);
+    try {
+      const res = await api.saveSeMonitoringChecklistWeights(
+        token,
+        checklistSubject,
+        {
+        categoryId: selectedId,
+        items: itemsPayload.filter(
+          (p): p is NonNullable<typeof p> => p != null,
+        ),
+      },
+      );
+      setRows((prev) =>
+        prev.map((r) =>
+          r.category.id === selectedId
+            ? {
+                ...r,
+                items: res.data.items,
+                weightsConfigured: res.data.weightsConfigured,
+                weightAllocation: res.data.weightAllocation,
+                canCustomize: res.data.canCustomize,
+              }
+            : r,
+        ),
+      );
+      const drafts: Record<string, string> = {};
+      for (const item of res.data.items) {
+        drafts[itemKey(item)] = String(item.weight ?? 0);
+      }
+      setWeightDrafts(drafts);
+      setWeightsDirty(false);
+      pushToast("Checklist weights saved for this SE", "success");
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError ? err.message : "Could not save weights",
+        "error",
+      );
+    } finally {
+      setSavingWeights(false);
     }
   }
 
@@ -298,7 +444,7 @@ export function SeChecklistWorkspace({
     if (!token || !selectedId || !addLabel.trim()) return;
     setAddBusy(true);
     try {
-      await api.addSeMonitoringChecklistItem(token, profileId, {
+      await api.addSeMonitoringChecklistItem(token, checklistSubject, {
         categoryId: selectedId,
         label: addLabel.trim(),
         scope: "SE",
@@ -326,11 +472,11 @@ export function SeChecklistWorkspace({
       if (item.sourceType === "CUSTOM" && item.seChecklistItemId) {
         await api.removeSeMonitoringChecklistItem(
           token,
-          profileId,
+          checklistSubject,
           item.seChecklistItemId,
         );
       } else if (item.sourceType === "TEMPLATE" && item.checklistItemId) {
-        await api.removeMonitoringTemplateItemFromSe(token, profileId, {
+        await api.removeMonitoringTemplateItemFromSe(token, checklistSubject, {
           categoryId: selectedId,
           templateItemId: item.checklistItemId,
         });
@@ -357,7 +503,7 @@ export function SeChecklistWorkspace({
     <div className="ck-page">
       <header className="ck-header">
         <div className="ck-header-copy">
-          <h1 className="ck-page-title">Checklist</h1>
+          <h1 className="ck-page-title">Monitor Checklist</h1>
           <p className="ck-profile-name">{profileName}</p>
           {metaLine ? <p className="ck-meta">{metaLine}</p> : null}
           {statusLabel ? (
@@ -373,14 +519,14 @@ export function SeChecklistWorkspace({
         <div className="ck-header-actions">
           {canMonitor ? (
             <Link
-              href={seCreateHref(profileId, "monitoring")}
+              href={monitoringCreateHref}
               className="btn btn-primary btn-sm"
             >
               Start Monitoring
             </Link>
           ) : null}
           <Link
-            href={seWorkspaceHref(profileId, "monitoring")}
+            href={monitoringHref}
             className="ck-link-secondary"
           >
             View sessions →
@@ -499,6 +645,70 @@ export function SeChecklistWorkspace({
                       only
                     </p>
                   ) : null}
+
+                  {selected.loaded &&
+                  !selected.loading &&
+                  selected.items.length > 0 &&
+                  liveAllocation ? (
+                    <div
+                      className={`ck-weight-summary${
+                        liveAllocation.isComplete ? " is-complete" : ""
+                      }`}
+                    >
+                      <div className="ck-weight-summary-row">
+                        <p className="ck-weight-total">
+                          <span className="ck-weight-total-value">
+                            {liveAllocation.total}%
+                          </span>
+                          <span className="ck-weight-total-cap"> / 100%</span>
+                          {liveAllocation.isComplete ? (
+                            <span className="ck-weight-ok"> ✓</span>
+                          ) : null}
+                        </p>
+                        <p className="ck-weight-hint">
+                          {liveAllocation.isComplete
+                            ? "All active checklist weights are allocated"
+                            : liveAllocation.remaining > 0
+                              ? `${liveAllocation.remaining}% remaining`
+                              : `${liveAllocation.over}% over allocation`}
+                        </p>
+                      </div>
+                      <div className="ck-weight-bar" aria-hidden>
+                        <div
+                          className={`ck-weight-bar-fill${
+                            liveAllocation.over > 0
+                              ? " is-over"
+                              : liveAllocation.isComplete
+                                ? " is-ok"
+                                : ""
+                          }`}
+                          style={{
+                            width: `${Math.min(100, liveAllocation.total)}%`,
+                          }}
+                        />
+                      </div>
+                      {selected.canCustomize && weightsDirty ? (
+                        <div className="ck-weight-actions">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={
+                              savingWeights || !liveAllocation.isComplete
+                            }
+                            onClick={() => void saveWeights()}
+                          >
+                            {savingWeights ? "Saving…" : "Save weights"}
+                          </Button>
+                          {!liveAllocation.isComplete ? (
+                            <span className="ck-weight-block-hint">
+                              Total must equal 100% to save
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {selected.loaded && !selected.loading ? (
                     <p className="ck-item-count">
                       {selected.items.length} item
@@ -559,6 +769,32 @@ export function SeChecklistWorkspace({
                                 </p>
                               ) : null}
                             </div>
+                            {selected.canCustomize ? (
+                              <label className="ck-weight-input">
+                                <span className="sr-only">
+                                  Weight for {item.label}
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={weightDrafts[key] ?? String(item.weight ?? 0)}
+                                  disabled={busyItemId === key}
+                                  onChange={(e) => {
+                                    setWeightDrafts((prev) => ({
+                                      ...prev,
+                                      [key]: e.target.value,
+                                    }));
+                                    setWeightsDirty(true);
+                                  }}
+                                />
+                                <span aria-hidden>%</span>
+                              </label>
+                            ) : (
+                              <span className="ck-weight-readonly tabular-nums">
+                                {item.weight ?? 0}%
+                              </span>
+                            )}
                             {selected.canCustomize ? (
                               <div
                                 className="ck-menu"

@@ -23,6 +23,7 @@ type ListView = "active" | "history";
 type DuePreset =
   | "all"
   | "overdue"
+  | "open"
   | "today"
   | "week"
   | "no_due"
@@ -83,6 +84,8 @@ function matchesPreset(a: ActionItem, preset: DuePreset, now = new Date()) {
       return true;
     case "overdue":
       return isOverdue(a, now.getTime());
+    case "open":
+      return a.status === "ACTIVE" && !isOverdue(a, now.getTime());
     case "today":
       return (
         a.status === "ACTIVE" &&
@@ -124,12 +127,15 @@ function matchesDateRange(a: ActionItem, dueFrom: string, dueTo: string) {
 const PRESETS: Array<{ key: DuePreset; label: string }> = [
   { key: "all", label: "All" },
   { key: "overdue", label: "Overdue" },
+  { key: "open", label: "Open" },
   { key: "today", label: "Due today" },
   { key: "week", label: "This week" },
   { key: "no_due", label: "No due date" },
   { key: "completed", label: "Completed" },
   { key: "custom", label: "Custom" },
 ];
+
+type StatKey = "overdue" | "open" | "completed" | "history";
 
 function statusTone(a: ActionItem): "overdue" | "open" | "done" | "other" {
   if (isOverdue(a)) return "overdue";
@@ -241,6 +247,48 @@ export function SeActionsPanel({
       setDueFrom("");
       setDueTo("");
     }
+  }
+
+  const activeStat: StatKey | null =
+    listView === "history" && preset === "completed"
+      ? "completed"
+      : listView === "history" && preset === "all"
+        ? "history"
+        : listView === "active" && preset === "overdue"
+          ? "overdue"
+          : listView === "active" && preset === "open"
+            ? "open"
+            : null;
+
+  function selectStat(stat: StatKey) {
+    // Clicking the active stat again clears back to Active / All
+    if (activeStat === stat) {
+      setListView("active");
+      setPreset("all");
+      setDueFrom("");
+      setDueTo("");
+      return;
+    }
+    setDueFrom("");
+    setDueTo("");
+    if (stat === "overdue") {
+      setListView("active");
+      setPreset("overdue");
+    } else if (stat === "open") {
+      setListView("active");
+      setPreset("open");
+    } else if (stat === "completed") {
+      setListView("history");
+      setPreset("completed");
+    } else {
+      setListView("history");
+      setPreset("all");
+    }
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("as-assignment-list")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function completeAction(id: string) {
@@ -374,23 +422,47 @@ export function SeActionsPanel({
 
       {actions.length > 0 ? (
         <>
-          <div className="as-stats" aria-label="Assignment summary">
-            <div className={`as-stat${overdueCount > 0 ? " is-overdue" : ""}`}>
+          <div
+            className="as-stats"
+            role="group"
+            aria-label="Assignment summary — click to filter"
+          >
+            <button
+              type="button"
+              className={`as-stat${overdueCount > 0 ? " is-overdue" : ""}${activeStat === "overdue" ? " is-selected" : ""}`}
+              aria-pressed={activeStat === "overdue"}
+              onClick={() => selectStat("overdue")}
+            >
               <span className="as-stat-value">{overdueCount}</span>
               <span className="as-stat-label">Overdue</span>
-            </div>
-            <div className="as-stat is-open">
+            </button>
+            <button
+              type="button"
+              className={`as-stat is-open${activeStat === "open" ? " is-selected" : ""}`}
+              aria-pressed={activeStat === "open"}
+              onClick={() => selectStat("open")}
+            >
               <span className="as-stat-value">{openCount}</span>
               <span className="as-stat-label">Open</span>
-            </div>
-            <div className="as-stat is-done">
+            </button>
+            <button
+              type="button"
+              className={`as-stat is-done${activeStat === "completed" ? " is-selected" : ""}`}
+              aria-pressed={activeStat === "completed"}
+              onClick={() => selectStat("completed")}
+            >
               <span className="as-stat-value">{completedCount}</span>
               <span className="as-stat-label">Completed</span>
-            </div>
-            <div className="as-stat">
+            </button>
+            <button
+              type="button"
+              className={`as-stat${activeStat === "history" ? " is-selected" : ""}`}
+              aria-pressed={activeStat === "history"}
+              onClick={() => selectStat("history")}
+            >
               <span className="as-stat-value">{historyCount}</span>
               <span className="as-stat-label">History</span>
-            </div>
+            </button>
           </div>
 
           <div className="as-toolbar">
@@ -490,7 +562,7 @@ export function SeActionsPanel({
           </button>
         </div>
       ) : (
-        <div className="as-groups">
+        <div className="as-groups" id="as-assignment-list">
           {groups.map((group) => {
             const GroupIcon = group.Icon;
             return (
@@ -522,13 +594,18 @@ export function SeActionsPanel({
                     const showComplete =
                       canComplete && a.status === "ACTIVE";
                     const tone = statusTone(a);
+                    const isOpenAssignment = a.status === "ACTIVE";
                     return (
                       <li
                         key={a.id}
                         className={`as-item is-${tone}`}
                         style={{ "--as-i": index } as CSSProperties}
                       >
-                        <Link href={detailHref} className="as-item-main">
+                        <Link
+                          href={detailHref}
+                          className="as-item-main"
+                          aria-label={`Open assignment ${a.title}`}
+                        >
                           <p className="as-item-title">{a.title}</p>
                           <p className="as-item-meta">
                             <span
@@ -560,6 +637,11 @@ export function SeActionsPanel({
                           {a.description ? (
                             <p className="as-item-desc">{a.description}</p>
                           ) : null}
+                          {isOpenAssignment ? (
+                            <p className="as-item-cue">
+                              Tap to add screenshot &amp; summary
+                            </p>
+                          ) : null}
                         </Link>
                         <div className="as-item-side">
                           <span className={`as-pill is-${tone}`}>
@@ -570,16 +652,17 @@ export function SeActionsPanel({
                               variant="success"
                               size="sm"
                               disabled={completingId === a.id}
-                              onClick={() => void completeAction(a.id)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void completeAction(a.id);
+                              }}
                             >
                               {completingId === a.id
                                 ? "Completing…"
                                 : "Complete"}
                             </Button>
                           ) : null}
-                          <Link href={detailHref} className="as-view">
-                            View →
-                          </Link>
                         </div>
                       </li>
                     );

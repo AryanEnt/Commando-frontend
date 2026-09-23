@@ -8,6 +8,7 @@ import { api, ApiError, type WeeklyReview } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { formatDate } from "@/lib/dates";
+import { weeklyReviewSubjectName } from "@/lib/weekly-review-display";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
@@ -189,7 +190,8 @@ export default function WeeklyReviewDetailPage() {
     review.status === "SUBMITTED" &&
     !review.signed &&
     (review.attendees.some((a) => a.userId === user?.id) ||
-      review.profile.userId === user?.id);
+      review.profile?.userId === user?.id ||
+      review.executiveUserId === user?.id);
 
   function personName(
     p: { firstName: string; lastName: string } | null | undefined,
@@ -198,7 +200,10 @@ export default function WeeklyReviewDetailPage() {
     return `${p.firstName} ${p.lastName}`;
   }
 
-  const backHref = `/profiles/${review.salesExecutiveProfileId}/reviews`;
+  const subjectName = weeklyReviewSubjectName(review);
+  const backHref = review.executiveUserId
+    ? `/support/${review.executiveUserId}/reviews`
+    : `/profiles/${review.salesExecutiveProfileId}/reviews`;
 
   return (
     <div className="space-y-6">
@@ -208,13 +213,13 @@ export default function WeeklyReviewDetailPage() {
             href={backHref}
             className="text-sm font-medium text-[var(--color-brand)] hover:underline"
           >
-            ← Back to {review.profile.displayName}
+            ← Back to {subjectName}
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
             {review.weekLabel}
           </h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            {review.profile.displayName} · Meeting{" "}
+            {subjectName} · Meeting{" "}
             {formatDate(review.meetingDate)}
             {review.meetingTime ? ` · ${review.meetingTime}` : ""}
             {review.roomName ? ` · ${review.roomName}` : ""}
@@ -256,7 +261,7 @@ export default function WeeklyReviewDetailPage() {
           role="status"
           className="rounded-[var(--radius-md)] border border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)] px-4 py-3 text-sm text-[var(--status-warn)]"
         >
-          Waiting for {review.profile.displayName} to sign.
+          Waiting for {subjectName} to sign.
         </div>
       ) : null}
 

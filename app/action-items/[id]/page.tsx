@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type ActionItemDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -20,6 +20,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/ui";
+import { ActionItemScreenshots } from "@/components/action-items/ActionItemScreenshots";
 
 export default function ActionItemDetailPage() {
   const params = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export default function ActionItemDetailPage() {
   const [form, setForm] = useState({
     title: "",
     description: "",
+    summary: "",
     dueDate: "",
     dueTime: "",
   });
@@ -43,20 +45,40 @@ export default function ActionItemDetailPage() {
     dueDate: "",
     dueTime: "",
   });
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [summaryStatus, setSummaryStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const summaryBaseline = useRef<string>("");
+  const skipSummaryAutosave = useRef(true);
 
   const canUpdate = hasPermission("ACTION_ITEM_UPDATE");
   const canCompleteOwn =
     canUpdate ||
     (user?.roleCode === "SALES_EXECUTIVE" &&
       item?.profile.userId === user.id);
+  const canUploadScreenshot =
+    !!item?.isActive &&
+    (canUpdate ||
+      (user?.roleCode === "SALES_EXECUTIVE" &&
+        item.profile.userId === user.id));
+  const canEditSummary = canUploadScreenshot;
+  const canRemoveScreenshot = canUploadScreenshot;
 
   async function load() {
     if (!token || !params.id) return;
     const res = await api.getActionItem(token, params.id);
     setItem(res.data.actionItem);
+    const summary = res.data.actionItem.summary ?? "";
+    summaryBaseline.current = summary;
+    skipSummaryAutosave.current = true;
+    setSummaryDraft(summary);
+    setSummaryStatus("idle");
     setForm({
       title: res.data.actionItem.title,
       description: res.data.actionItem.description ?? "",
+      summary,
       dueDate: toLocalDateInput(res.data.actionItem.dueDate),
       dueTime: res.data.actionItem.dueDate
         ? toLocalTimeInput(res.data.actionItem.dueDate)
@@ -90,6 +112,44 @@ export default function ActionItemDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, params.id]);
 
+  useEffect(() => {
+    if (!token || !item?.id || !canEditSummary) return;
+    if (skipSummaryAutosave.current) {
+      skipSummaryAutosave.current = false;
+      return;
+    }
+    const next = summaryDraft.trim();
+    const prev = summaryBaseline.current.trim();
+    if (next === prev) {
+      setSummaryStatus("idle");
+      return;
+    }
+    if (summaryTimer.current) clearTimeout(summaryTimer.current);
+    setSummaryStatus("saving");
+    const actionItemId = item.id;
+    summaryTimer.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await api.updateActionItemSummary(token, actionItemId, {
+            summary: next || null,
+          });
+          summaryBaseline.current = res.data.actionItem.summary ?? "";
+          setItem(res.data.actionItem);
+          setSummaryStatus("saved");
+        } catch (err) {
+          setSummaryStatus("error");
+          pushToast(
+            err instanceof ApiError ? err.message : "Failed to save summary",
+            "error",
+          );
+        }
+      })();
+    }, 700);
+    return () => {
+      if (summaryTimer.current) clearTimeout(summaryTimer.current);
+    };
+  }, [summaryDraft, token, item?.id, canEditSummary, pushToast]);
+
   async function onSave(e: FormEvent) {
     e.preventDefault();
     if (!token || !item) return;
@@ -99,6 +159,7 @@ export default function ActionItemDetailPage() {
       await api.updateActionItem(token, item.id, {
         title: form.title,
         description: form.description.trim() || null,
+        summary: form.summary.trim() || null,
         dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
       setEditing(false);
@@ -306,6 +367,12 @@ export default function ActionItemDetailPage() {
               setForm({ ...form, description: e.target.value })
             }
           />
+          <TextArea
+            label="Summary (optional)"
+            rows={3}
+            value={form.summary}
+            onChange={(e) => setForm({ ...form, summary: e.target.value })}
+          />
           <DueDateTimePicker
             date={form.dueDate}
             time={form.dueTime}
@@ -326,6 +393,48 @@ export default function ActionItemDetailPage() {
           </p>
         </div>
       )}
+
+      {canEditSummary && !(editing && canUpdate) ? (
+        <div className="space-y-2 rounded border border-slate-200 bg-white p-4">
+          <TextArea
+            label="Summary (optional)"
+            rows={3}
+            value={summaryDraft}
+            onChange={(e) => setSummaryDraft(e.target.value)}
+            placeholder="Brief note on what was done or observed…"
+          />
+          <p className="text-xs text-slate-500">
+            {summaryStatus === "saving"
+              ? "Saving…"
+              : summaryStatus === "saved"
+                ? "Saved"
+                : summaryStatus === "error"
+                  ? "Could not save — keep typing to retry"
+                  : "Autosaves as you type"}
+          </p>
+        </div>
+      ) : !canEditSummary ? (
+        <div className="rounded border border-slate-200 bg-white p-4 text-sm">
+          <h2 className="text-xs uppercase text-slate-500">
+            Summary{" "}
+            <span className="normal-case text-slate-400">(optional)</span>
+          </h2>
+          <p className="mt-2 whitespace-pre-wrap">
+            {item.summary?.trim() ? item.summary : "—"}
+          </p>
+        </div>
+      ) : null}
+
+      {token ? (
+        <ActionItemScreenshots
+          token={token}
+          item={item}
+          canUpload={canUploadScreenshot}
+          canRemove={canRemoveScreenshot}
+          currentUserId={user?.id}
+          onItemUpdated={setItem}
+        />
+      ) : null}
 
       {replacing && item.isActive && (
         <form

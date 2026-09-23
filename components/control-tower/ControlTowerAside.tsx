@@ -106,13 +106,13 @@ export function ControlTowerAside({
       </section>
 
       {/* Dark platform pulse */}
-      <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] p-4 text-white shadow-[var(--shadow-md)]">
+      <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-sm)]">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-[14px] font-semibold tracking-tight">
+            <h2 className="text-[14px] font-semibold tracking-tight text-[var(--color-ink)]">
               Platform Pulse
             </h2>
-            <p className="mt-0.5 text-[11px] text-[var(--color-sidebar-muted)]">
+            <p className="mt-0.5 text-[11px] text-[var(--color-ink-muted)]">
               Live footprint
             </p>
           </div>
@@ -279,11 +279,11 @@ function PulseRow({
 }) {
   return (
     <li className="flex items-center justify-between gap-3 text-[13px]">
-      <span className="inline-flex items-center gap-2 text-[var(--color-sidebar-muted)]">
+      <span className="inline-flex items-center gap-2 text-[var(--color-ink-muted)]">
         <span className={`h-1.5 w-1.5 rounded-full ${tone}`} aria-hidden />
         {label}
       </span>
-      <span className="font-semibold tabular-nums text-white">{value}</span>
+      <span className="font-semibold tabular-nums text-[var(--color-ink)]">{value}</span>
     </li>
   );
 }

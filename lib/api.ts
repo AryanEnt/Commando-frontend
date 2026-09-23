@@ -691,6 +691,9 @@ export const api = {
       search?: string;
       teamId?: string;
       profileId?: string;
+      executiveUserId?: string;
+      subjectUserId?: string;
+      subjectType?: "EXECUTIVE" | "PROFILE";
       commandoUserId?: string;
       source?: string;
       page?: number;
@@ -701,6 +704,9 @@ export const api = {
     if (params?.search) sp.set("search", params.search);
     if (params?.teamId) sp.set("teamId", params.teamId);
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.executiveUserId) sp.set("executiveUserId", params.executiveUserId);
+    if (params?.subjectUserId) sp.set("subjectUserId", params.subjectUserId);
+    if (params?.subjectType) sp.set("subjectType", params.subjectType);
     if (params?.commandoUserId) sp.set("commandoUserId", params.commandoUserId);
     if (params?.source) sp.set("source", params.source);
     if (params?.page) sp.set("page", String(params.page));
@@ -710,13 +716,28 @@ export const api = {
       data: { items: SwotItem[]; total: number; page: number; pageSize: number };
     }>(`/api/swot${q}`, { token });
   },
+  getSwotSupportSubjects(token: string) {
+    return request<{
+      data: {
+        subjects: Array<{
+          id: string;
+          firstName: string;
+          lastName: string;
+          email: string;
+        }>;
+      };
+    }>("/api/swot/support-subjects", { token });
+  },
   getSwot(token: string, id: string) {
     return request<{ data: { swot: SwotItem } }>(`/api/swot/${id}`, { token });
   },
   createSwot(
     token: string,
     body: {
-      salesExecutiveProfileId: string;
+      subjectType?: "EXECUTIVE" | "PROFILE";
+      salesExecutiveProfileId?: string;
+      executiveUserId?: string;
+      subjectUserId?: string;
       strength?: string;
       weakness?: string;
       opportunity?: string;
@@ -837,6 +858,7 @@ export const api = {
     params?: {
       search?: string;
       profileId?: string;
+      executiveUserId?: string;
       status?: "DRAFT" | "SUBMITTED";
       page?: number;
       pageSize?: number;
@@ -845,6 +867,9 @@ export const api = {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.executiveUserId) {
+      sp.set("executiveUserId", params.executiveUserId);
+    }
     if (params?.status) sp.set("status", params.status);
     if (params?.page) sp.set("page", String(params.page));
     sp.set("pageSize", String(params?.pageSize ?? 20));
@@ -853,8 +878,15 @@ export const api = {
       data: { logs: DailyLog[]; total: number; page: number; pageSize: number };
     }>(`/api/daily-logs${q}`, { token });
   },
-  getDailyLogAttention(token: string, profileId: string) {
-    const sp = new URLSearchParams({ profileId });
+  getDailyLogAttention(
+    token: string,
+    subject: { profileId: string } | { executiveUserId: string },
+  ) {
+    const sp = new URLSearchParams(
+      "profileId" in subject
+        ? { profileId: subject.profileId }
+        : { executiveUserId: subject.executiveUserId },
+    );
     return request<{ data: { logs: DailyLog[] } }>(
       `/api/daily-logs/attention?${sp}`,
       { token },
@@ -865,9 +897,75 @@ export const api = {
       token,
     });
   },
+  getDailyWorkLogs(
+    token: string,
+    params?: {
+      authorUserId?: string;
+      profileId?: string;
+      date?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      search?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ) {
+    const sp = new URLSearchParams();
+    if (params?.authorUserId) sp.set("authorUserId", params.authorUserId);
+    if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.date) sp.set("date", params.date);
+    if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params?.dateTo) sp.set("dateTo", params.dateTo);
+    if (params?.search) sp.set("search", params.search);
+    if (params?.page) sp.set("page", String(params.page));
+    sp.set("pageSize", String(params?.pageSize ?? 50));
+    const q = sp.toString() ? `?${sp}` : "";
+    return request<{
+      data: {
+        logs: DailyWorkLog[];
+        total: number;
+        page: number;
+        pageSize: number;
+      };
+    }>(`/api/daily-work-logs${q}`, { token });
+  },
+  createDailyWorkLog(
+    token: string,
+    body: { activity: string; notes?: string | null; loggedAt: string },
+  ) {
+    return request<{ data: { log: DailyWorkLog } }>("/api/daily-work-logs", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+  updateDailyWorkLog(
+    token: string,
+    id: string,
+    body: {
+      activity?: string;
+      notes?: string | null;
+      loggedAt?: string;
+    },
+  ) {
+    return request<{ data: { log: DailyWorkLog } }>(
+      `/api/daily-work-logs/${id}`,
+      { method: "PATCH", token, body: JSON.stringify(body) },
+    );
+  },
+  deleteDailyWorkLog(token: string, id: string) {
+    return request<{ data: { id: string; archived: boolean } }>(
+      `/api/daily-work-logs/${id}`,
+      { method: "DELETE", token },
+    );
+  },
   ensureDailyLog(
     token: string,
-    body: { salesExecutiveProfileId: string; logDate?: string },
+    body: {
+      salesExecutiveProfileId?: string;
+      executiveUserId?: string;
+      logDate?: string;
+    },
   ) {
     return request<{ data: { log: DailyLog } }>("/api/daily-logs/ensure", {
       method: "POST",
@@ -969,6 +1067,7 @@ export const api = {
       search?: string;
       status?: "DRAFT" | "SUBMITTED";
       profileId?: string;
+      executiveUserId?: string;
       page?: number;
       pageSize?: number;
     },
@@ -977,6 +1076,7 @@ export const api = {
     if (params?.search) sp.set("search", params.search);
     if (params?.status) sp.set("status", params.status);
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.executiveUserId) sp.set("executiveUserId", params.executiveUserId);
     if (params?.page) sp.set("page", String(params.page));
     sp.set("pageSize", String(params?.pageSize ?? 20));
     const q = sp.toString() ? `?${sp}` : "";
@@ -1009,7 +1109,8 @@ export const api = {
   createWeeklyReview(
     token: string,
     body: {
-      salesExecutiveProfileId: string;
+      salesExecutiveProfileId?: string;
+      executiveUserId?: string;
       weekLabel: string;
       weekStartDate: string;
       meetingDate: string;
@@ -1081,7 +1182,7 @@ export const api = {
   presignUpload(
     token: string,
     body: {
-      purpose: "weekly-review-minutes";
+      purpose: "weekly-review-minutes" | "support-task-image" | "action-item-image";
       fileName: string;
       contentType: string;
       contentLength: number;
@@ -1099,6 +1200,55 @@ export const api = {
       token,
       body: JSON.stringify(body),
     });
+  },
+  /** Same-origin upload to API → Cloudflare R2 (avoids browser CORS on R2). */
+  async uploadObject(
+    token: string,
+    body: {
+      purpose: "weekly-review-minutes" | "support-task-image" | "action-item-image";
+      fileName: string;
+      contentType: string;
+      file: Blob | File | ArrayBuffer | Buffer;
+    },
+  ) {
+    const access = token || getStoredAccessToken();
+    const sp = new URLSearchParams({
+      purpose: body.purpose,
+      fileName: body.fileName,
+      contentType: body.contentType,
+    });
+    const timeoutMs = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 60_000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${apiBase()}/api/uploads/object?${sp}`, {
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": body.contentType,
+          ...(access ? { Authorization: `Bearer ${access}` } : {}),
+        },
+        body: body.file as BodyInit,
+      });
+      const json = (await res.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      if (!res.ok) {
+        throw errorFromBody(res, json);
+      }
+      return json as {
+        data: {
+          key: string;
+          fileName: string;
+          contentType: string;
+          size: number;
+        };
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   },
   getWeeklyReviewMinutesUrl(token: string, id: string) {
     return request<{
@@ -1189,7 +1339,12 @@ export const api = {
   createMonitoringChecklistItem(
     token: string,
     categoryId: string,
-    body: { code: string; label: string; sortOrder?: number },
+    body: {
+      code: string;
+      label: string;
+      sortOrder?: number;
+      defaultWeight?: number;
+    },
   ) {
     return request<{ data: { item: MonitoringChecklistItem } }>(
       `/api/monitoring/categories/${categoryId}/items`,
@@ -1204,6 +1359,7 @@ export const api = {
       sortOrder?: number;
       isActive?: boolean;
       archivedAt?: string | null;
+      defaultWeight?: number;
     },
   ) {
     return request<{ data: { item: MonitoringChecklistItem } }>(
@@ -1216,6 +1372,7 @@ export const api = {
     params?: {
       search?: string;
       profileId?: string;
+      executiveUserId?: string;
       categoryId?: string;
       dateFrom?: string;
       dateTo?: string;
@@ -1226,6 +1383,9 @@ export const api = {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.executiveUserId) {
+      sp.set("executiveUserId", params.executiveUserId);
+    }
     if (params?.categoryId) sp.set("categoryId", params.categoryId);
     if (params?.dateFrom) sp.set("dateFrom", params.dateFrom);
     if (params?.dateTo) sp.set("dateTo", params.dateTo);
@@ -1249,21 +1409,67 @@ export const api = {
   },
   getEffectiveMonitoringChecklist(
     token: string,
-    profileId: string,
+    subject: { profileId: string } | { executiveUserId: string },
     categoryId: string,
   ) {
     const q = `?categoryId=${encodeURIComponent(categoryId)}`;
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist`;
     return request<{
       data: {
         category: { id: string; code: string; name: string; description: string | null };
         items: EffectiveMonitoringChecklistItem[];
         canCustomize: boolean;
+        weightsConfigured: boolean;
+        weightAllocation: {
+          total: number;
+          remaining: number;
+          over: number;
+          isComplete: boolean;
+        };
       };
-    }>(`/api/monitoring/profiles/${profileId}/checklist${q}`, { token });
+    }>(`${path}${q}`, { token });
+  },
+  saveSeMonitoringChecklistWeights(
+    token: string,
+    subject: { profileId: string } | { executiveUserId: string },
+    body: {
+      categoryId: string;
+      items: Array<{
+        checklistItemId?: string;
+        seChecklistItemId?: string;
+        weight: number;
+      }>;
+    },
+  ) {
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist/weights`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist/weights`;
+    return request<{
+      data: {
+        category: { id: string; code: string; name: string; description: string | null };
+        items: EffectiveMonitoringChecklistItem[];
+        canCustomize: boolean;
+        weightsConfigured: boolean;
+        weightAllocation: {
+          total: number;
+          remaining: number;
+          over: number;
+          isComplete: boolean;
+        };
+      };
+    }>(path, {
+      method: "PUT",
+      token,
+      body: JSON.stringify(body),
+    });
   },
   addSeMonitoringChecklistItem(
     token: string,
-    profileId: string,
+    subject: { profileId: string } | { executiveUserId: string },
     body: {
       categoryId: string;
       label: string;
@@ -1272,12 +1478,16 @@ export const api = {
       scope?: "SE" | "SESSION";
     },
   ) {
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist/items`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist/items`;
     return request<{
       data: {
         item: EffectiveMonitoringChecklistItem;
         persisted: boolean;
       };
-    }>(`/api/monitoring/profiles/${profileId}/checklist/items`, {
+    }>(path, {
       method: "POST",
       token,
       body: JSON.stringify(body),
@@ -1285,38 +1495,53 @@ export const api = {
   },
   removeSeMonitoringChecklistItem(
     token: string,
-    profileId: string,
+    subject: { profileId: string } | { executiveUserId: string },
     itemId: string,
   ) {
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist/items/${itemId}`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist/items/${itemId}`;
     return request<{ data: { item: { id: string; isActive: boolean } } }>(
-      `/api/monitoring/profiles/${profileId}/checklist/items/${itemId}`,
+      path,
       { method: "DELETE", token },
     );
   },
   removeMonitoringTemplateItemFromSe(
     token: string,
-    profileId: string,
+    subject: { profileId: string } | { executiveUserId: string },
     body: { categoryId: string; templateItemId: string },
   ) {
-    return request<{ data: { item: unknown } }>(
-      `/api/monitoring/profiles/${profileId}/checklist/remove-template`,
-      { method: "POST", token, body: JSON.stringify(body) },
-    );
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist/remove-template`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist/remove-template`;
+    return request<{ data: { item: unknown } }>(path, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
   },
   restoreMonitoringTemplateItemForSe(
     token: string,
-    profileId: string,
+    subject: { profileId: string } | { executiveUserId: string },
     body: { categoryId: string; templateItemId: string },
   ) {
-    return request<{ data: { item: unknown } }>(
-      `/api/monitoring/profiles/${profileId}/checklist/restore-template`,
-      { method: "POST", token, body: JSON.stringify(body) },
-    );
+    const path =
+      "executiveUserId" in subject
+        ? `/api/monitoring/executives/${subject.executiveUserId}/checklist/restore-template`
+        : `/api/monitoring/profiles/${subject.profileId}/checklist/restore-template`;
+    return request<{ data: { item: unknown } }>(path, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
   },
   createMonitoringRecord(
     token: string,
     body: {
-      salesExecutiveProfileId: string;
+      salesExecutiveProfileId?: string;
+      executiveUserId?: string;
       categoryId: string;
       observation?: string | null;
       observedAt?: string;
@@ -1345,6 +1570,7 @@ export const api = {
     token: string,
     params?: {
       profileId?: string;
+      salesSupportUserId?: string;
       isActive?: boolean;
       page?: number;
       pageSize?: number;
@@ -1352,6 +1578,9 @@ export const api = {
   ) {
     const sp = new URLSearchParams();
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.salesSupportUserId) {
+      sp.set("salesSupportUserId", params.salesSupportUserId);
+    }
     if (params?.isActive !== undefined) {
       sp.set("isActive", String(params.isActive));
     }
@@ -1584,6 +1813,48 @@ export const api = {
       { method: "POST", token, body: JSON.stringify(body) },
     );
   },
+  addSupportTaskAttachment(
+    token: string,
+    id: string,
+    body: {
+      key: string;
+      fileName: string;
+      contentType: string;
+      size?: number;
+      caption?: string | null;
+    },
+  ) {
+    return request<{ data: { task: SupportTask } }>(
+      `/api/support-tasks/${id}/attachments`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  getSupportTaskAttachmentUrl(
+    token: string,
+    taskId: string,
+    attachmentId: string,
+  ) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(`/api/support-tasks/${taskId}/attachments/${attachmentId}/url`, {
+      token,
+    });
+  },
+  removeSupportTaskAttachment(
+    token: string,
+    taskId: string,
+    attachmentId: string,
+  ) {
+    return request<{ data: { task: SupportTask } }>(
+      `/api/support-tasks/${taskId}/attachments/${attachmentId}`,
+      { method: "DELETE", token },
+    );
+  },
   getEisenhowerTasks(
     token: string,
     params?: {
@@ -1750,11 +2021,22 @@ export const api = {
     body: {
       title?: string;
       description?: string | null;
+      summary?: string | null;
       dueDate?: string | null;
     },
   ) {
     return request<{ data: { actionItem: ActionItem } }>(
       `/api/action-items/${id}`,
+      { method: "PATCH", token, body: JSON.stringify(body) },
+    );
+  },
+  updateActionItemSummary(
+    token: string,
+    id: string,
+    body: { summary?: string | null },
+  ) {
+    return request<{ data: { actionItem: ActionItemDetail } }>(
+      `/api/action-items/${id}/summary`,
       { method: "PATCH", token, body: JSON.stringify(body) },
     );
   },
@@ -1784,11 +2066,54 @@ export const api = {
       { method: "POST", token, body: JSON.stringify(body) },
     );
   },
+  addActionItemAttachment(
+    token: string,
+    id: string,
+    body: {
+      key: string;
+      fileName: string;
+      contentType: string;
+      size?: number;
+      caption?: string | null;
+    },
+  ) {
+    return request<{ data: { actionItem: ActionItemDetail } }>(
+      `/api/action-items/${id}/attachments`,
+      { method: "POST", token, body: JSON.stringify(body) },
+    );
+  },
+  getActionItemAttachmentUrl(
+    token: string,
+    actionItemId: string,
+    attachmentId: string,
+  ) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(`/api/action-items/${actionItemId}/attachments/${attachmentId}/url`, {
+      token,
+    });
+  },
+  removeActionItemAttachment(
+    token: string,
+    actionItemId: string,
+    attachmentId: string,
+  ) {
+    return request<{ data: { actionItem: ActionItemDetail } }>(
+      `/api/action-items/${actionItemId}/attachments/${attachmentId}`,
+      { method: "DELETE", token },
+    );
+  },
   getFeedback(
     token: string,
     params?: {
       search?: string;
       profileId?: string;
+      executiveUserId?: string;
       source?: FeedbackSource;
       page?: number;
       pageSize?: number;
@@ -1797,6 +2122,9 @@ export const api = {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.profileId) sp.set("profileId", params.profileId);
+    if (params?.executiveUserId) {
+      sp.set("executiveUserId", params.executiveUserId);
+    }
     if (params?.source) sp.set("source", params.source);
     if (params?.page) sp.set("page", String(params.page));
     sp.set("pageSize", String(params?.pageSize ?? 20));
@@ -1818,13 +2146,23 @@ export const api = {
   },
   createFeedback(
     token: string,
-    body: { salesExecutiveProfileId: string; body: string },
+    body: {
+      salesExecutiveProfileId?: string;
+      executiveUserId?: string;
+      body: string;
+    },
   ) {
     return request<{ data: { feedback: FeedbackItem } }>("/api/feedback", {
       method: "POST",
       token,
       body: JSON.stringify(body),
     });
+  },
+  acknowledgeFeedback(token: string, id: string) {
+    return request<{ data: { feedback: FeedbackItem } }>(
+      `/api/feedback/${id}/acknowledge`,
+      { method: "POST", token },
+    );
   },
   getPerformanceEvaluations(
     token: string,
@@ -2159,6 +2497,20 @@ export type ProvideReferralInformationBody = {
     opportunity: string;
     threat: string;
   };
+  supportSwot?: Array<{
+    executiveUserId: string;
+    strength: string;
+    weakness: string;
+    opportunity: string;
+    threat: string;
+  }>;
+};
+
+export type ReferralAssignedSupport = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
 };
 
 export type Referral = {
@@ -2208,6 +2560,18 @@ export type Referral = {
     source: string;
     createdAt: string;
   } | null;
+  assignedSupport?: ReferralAssignedSupport[];
+  teamLeadSupportSwot?: Array<{
+    id: string;
+    executiveUserId: string;
+    supportUser: ReferralAssignedSupport;
+    strength: string;
+    weakness: string;
+    opportunity: string;
+    threat: string;
+    source: string;
+    createdAt: string;
+  }>;
   allowedActions: string[];
 };
 
@@ -2219,12 +2583,44 @@ export type SwotPoint = {
 
 export type SwotItem = {
   id: string;
-  salesExecutiveProfileId: string;
-  profile: { id: string; displayName: string; teamId: string };
-  teamId: string;
-  team: { id: string; name: string };
+  subjectType?: "EXECUTIVE" | "PROFILE";
+  salesExecutiveProfileId: string | null;
+  executiveUserId?: string | null;
+  /** @deprecated Alias of executiveUserId */
+  subjectUserId?: string | null;
+  profile: {
+    id: string;
+    displayName: string;
+    userId?: string;
+    teamId: string;
+  } | null;
+  executiveUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
+  subjectUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
+  subject?: {
+    type: "EXECUTIVE" | "PROFILE" | "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE";
+    id: string;
+    name: string;
+  };
+  teamId: string | null;
+  team: { id: string; name: string } | null;
   assignmentId: string | null;
-  source: "TEAM_LEAD" | "COMMANDO" | "SALES_EXECUTIVE";
+  source:
+    | "TEAM_LEAD"
+    | "COMMANDO"
+    | "SALES_EXECUTIVE"
+    | "SALES_SUPPORT_EXECUTIVE";
   strength: string | null;
   weakness: string | null;
   opportunity: string | null;
@@ -2290,15 +2686,47 @@ export type DailyLogEntry = {
   updatedAt: string;
 };
 
+export type DailyWorkLog = {
+  id: string;
+  authorUserId: string;
+  author: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  };
+  salesExecutiveProfileId: string | null;
+  profile: {
+    id: string;
+    displayName: string;
+    userId: string;
+    teamId: string;
+  } | null;
+  activity: string;
+  notes: string | null;
+  loggedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DailyLog = {
   id: string;
-  salesExecutiveProfileId: string;
+  salesExecutiveProfileId: string | null;
+  executiveUserId?: string | null;
   profile: {
     id: string;
     displayName: string;
     userId?: string;
     teamId?: string;
-  };
+  } | null;
+  executiveUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
   assignmentId: string | null;
   assignment: {
     id: string;
@@ -2326,12 +2754,25 @@ export type DailyLog = {
 
 export type WeeklyReview = {
   id: string;
-  salesExecutiveProfileId: string;
+  salesExecutiveProfileId: string | null;
+  executiveUserId?: string | null;
   profile: {
     id: string;
     displayName: string;
     userId: string;
     teamId: string;
+  } | null;
+  executiveUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role?: { code: string };
+  } | null;
+  subject?: {
+    type: "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE";
+    id: string;
+    name: string;
   };
   assignmentId: string | null;
   commandoUserId: string | null;
@@ -2561,6 +3002,7 @@ export type MonitoringChecklistItem = {
   code: string;
   label: string;
   sortOrder: number;
+  defaultWeight: number;
   isActive: boolean;
   archivedAt: string | null;
 };
@@ -2585,17 +3027,27 @@ export type EffectiveMonitoringChecklistItem = {
   code: string | null;
   sortOrder: number;
   sourceType: "TEMPLATE" | "CUSTOM" | "SESSION";
+  weight: number;
+  weightSource?: "TEMPLATE_DEFAULT" | "SE_OVERRIDE" | "SE_CUSTOM";
 };
 
 export type MonitoringRecord = {
   id: string;
-  salesExecutiveProfileId: string;
+  salesExecutiveProfileId: string | null;
+  executiveUserId?: string | null;
   profile: {
     id: string;
     displayName: string;
     userId: string;
     teamId: string;
-  };
+  } | null;
+  executiveUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
   assignmentId: string | null;
   assignment: {
     id: string;
@@ -2606,6 +3058,7 @@ export type MonitoringRecord = {
   categoryId: string;
   category: { id: string; code: string; name: string };
   observation: string | null;
+  scorePercent: number | null;
   createdById: string;
   createdBy: {
     id: string;
@@ -2625,6 +3078,7 @@ export type MonitoringRecord = {
     descriptionSnapshot?: string | null;
     codeSnapshot?: string | null;
     sortOrderSnapshot?: number;
+    weightSnapshot?: number;
     sourceType?: string;
     isCustom?: boolean;
     checklistItem: {
@@ -2844,6 +3298,21 @@ export type SupportTask = {
     body: string;
     createdAt: string;
     createdBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: { code: string };
+    };
+  }>;
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number | null;
+    caption: string | null;
+    createdAt: string;
+    uploadedBy: {
       id: string;
       firstName: string;
       lastName: string;
@@ -3096,6 +3565,7 @@ export type ActionItem = {
   } | null;
   title: string;
   description: string | null;
+  summary: string | null;
   status: ActionItemStatus;
   dueDate: string | null;
   completedAt: string | null;
@@ -3151,6 +3621,21 @@ export type ActionItemDetail = ActionItem & {
     completedAt: string | null;
     expiredAt: string | null;
   }>;
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number | null;
+    caption: string | null;
+    createdAt: string;
+    uploadedBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: { code: string };
+    };
+  }>;
 };
 
 export type FeedbackSource = "TEAM_LEAD" | "COMMANDO";
@@ -3158,8 +3643,16 @@ export type PerformanceSource = "TEAM_LEAD" | "COMMANDO";
 
 export type FeedbackItem = {
   id: string;
-  salesExecutiveProfileId: string;
-  profile: { id: string; displayName: string };
+  salesExecutiveProfileId: string | null;
+  executiveUserId?: string | null;
+  profile: { id: string; displayName: string } | null;
+  executiveUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
   assignmentId: string | null;
   assignment: {
     id: string;
@@ -3179,6 +3672,7 @@ export type FeedbackItem = {
   };
   createdAt: string;
   updatedAt: string;
+  acknowledgedAt: string | null;
 };
 
 export type PerformanceScore = {

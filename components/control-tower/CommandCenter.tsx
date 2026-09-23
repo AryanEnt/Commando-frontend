@@ -65,7 +65,7 @@ export function CommandCenter({
       <div
         role="tablist"
         aria-label="Control tower queues"
-        className="flex gap-1 overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-[var(--shadow-sm)]"
+        className="flex flex-nowrap gap-1 overflow-x-auto border-b border-[var(--color-line)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((item) => {
           const active = tab === item.id;
@@ -76,10 +76,10 @@ export function CommandCenter({
               role="tab"
               aria-selected={active}
               onClick={() => setTab(item.id)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-2 text-[13px] font-medium transition ${
+              className={`-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium transition ${
                 active
-                  ? "bg-[var(--color-brand)] text-white shadow-[var(--shadow-sm)]"
-                  : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)]"
+                  ? "border-[var(--color-brand)] text-[var(--color-brand-dark)]"
+                  : "border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
               }`}
             >
               {item.label}
@@ -87,8 +87,8 @@ export function CommandCenter({
                 <span
                   className={`inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
                     active
-                      ? "bg-white/20 text-white"
-                      : "bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]"
+                      ? "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)]"
+                      : "bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]"
                   }`}
                 >
                   {item.count}

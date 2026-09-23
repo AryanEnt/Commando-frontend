@@ -8,20 +8,24 @@ import { api, type FeedbackItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { personName } from "@/lib/labels";
+import { useToast } from "@/lib/toast-context";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
+  Button,
   ErrorState,
   LoadingState,
 } from "@/components/ui";
 
 export default function FeedbackDetailPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { pushToast } = useToast();
   const params = useParams();
   const searchParams = useSearchParams();
   const id = String(params.id);
   const [item, setItem] = useState<FeedbackItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [acking, setAcking] = useState(false);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -54,12 +58,42 @@ export default function FeedbackDetailPage() {
 
   const fromTl = item.source === "TEAM_LEAD";
   const authorName = personName(item.createdBy);
+  const isSe = user?.roleCode === "SALES_EXECUTIVE";
+  const canAcknowledge =
+    isSe && !item.acknowledgedAt && item.createdById !== user?.id;
+
+  async function onAcknowledge() {
+    if (!token || !item) return;
+    setAcking(true);
+    try {
+      const res = await api.acknowledgeFeedback(token, item.id);
+      setItem(res.data.feedback);
+      pushToast("Feedback acknowledged", "success");
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : "Could not acknowledge feedback",
+        "error",
+      );
+    } finally {
+      setAcking(false);
+    }
+  }
+  const subjectName =
+    item.profile?.displayName ??
+    (item.executiveUser
+      ? `${item.executiveUser.firstName} ${item.executiveUser.lastName}`
+      : "Sales Support");
   const returnTo = searchParams.get("returnTo");
   const backHref =
-    returnTo || `/profiles/${item.salesExecutiveProfileId}/feedback`;
+    returnTo ||
+    (item.salesExecutiveProfileId
+      ? `/profiles/${item.salesExecutiveProfileId}/feedback`
+      : item.executiveUserId
+        ? `/support/${item.executiveUserId}/feedback`
+        : "/feedback");
   const backLabel = returnTo
-    ? `← Back to ${item.profile.displayName}`
-    : `← Back to ${item.profile.displayName}'s feedback`;
+    ? `← Back to ${subjectName}`
+    : `← Back to ${subjectName}'s feedback`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -79,12 +113,25 @@ export default function FeedbackDetailPage() {
             </h1>
             <p className="mt-1.5 text-secondary">
               For{" "}
-              <Link
-                href={`/profiles/${item.salesExecutiveProfileId}`}
-                className="font-semibold text-[var(--color-brand-dark)] hover:underline"
-              >
-                {item.profile.displayName}
-              </Link>
+              {item.salesExecutiveProfileId ? (
+                <Link
+                  href={`/profiles/${item.salesExecutiveProfileId}`}
+                  className="font-semibold text-[var(--color-brand-dark)] hover:underline"
+                >
+                  {subjectName}
+                </Link>
+              ) : item.executiveUserId ? (
+                <Link
+                  href={`/support/${item.executiveUserId}`}
+                  className="font-semibold text-[var(--color-brand-dark)] hover:underline"
+                >
+                  {subjectName}
+                </Link>
+              ) : (
+                <span className="font-semibold text-[var(--color-brand-dark)]">
+                  {subjectName}
+                </span>
+              )}
             </p>
           </div>
           <span
@@ -157,6 +204,30 @@ export default function FeedbackDetailPage() {
           {item.body}
         </article>
       </section>
+
+      {canAcknowledge || item.acknowledgedAt ? (
+        <section className="surface flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          {item.acknowledgedAt ? (
+            <p className="text-sm font-medium text-[var(--color-brand-dark)]">
+              Acknowledged {formatDateTime(item.acknowledgedAt)}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--color-ink-muted)]">
+              Confirm you have read this coaching note.
+            </p>
+          )}
+          {canAcknowledge ? (
+            <Button
+              variant="success"
+              size="sm"
+              disabled={acking}
+              onClick={() => void onAcknowledge()}
+            >
+              {acking ? "Acknowledging…" : "Acknowledge"}
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
 
       <p className="px-1 text-meta">
         This is an append-only feedback entry — past notes stay as written and

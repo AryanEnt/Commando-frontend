@@ -96,25 +96,16 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
 
   if (isSalesExecutive) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {sectionTitle ? (
-          <nav aria-label="Breadcrumb" className="text-meta">
+          <nav aria-label="Breadcrumb" className="se-breadcrumb">
             <ol className="flex flex-wrap items-center gap-1">
               <li>
-                <Link
-                  href={`/profiles/${profile.id}`}
-                  className="transition hover:text-[var(--color-ink)]"
-                >
-                  My workspace
-                </Link>
+                <Link href={`/profiles/${profile.id}`}>My workspace</Link>
               </li>
               <li className="flex items-center gap-1">
-                <span aria-hidden className="text-[var(--color-ink-subtle)]">
-                  /
-                </span>
-                <span className="font-medium text-[var(--color-ink)]">
-                  {sectionTitle}
-                </span>
+                <span aria-hidden>/</span>
+                <span className="se-breadcrumb-current">{sectionTitle}</span>
               </li>
             </ol>
           </nav>
@@ -236,15 +227,13 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
           </div>
         ) : (
         <div className="space-y-4 px-4 py-5 sm:px-5 lg:px-6 lg:py-5">
-          <nav aria-label="Breadcrumb" className="text-meta">
+          <nav aria-label="Breadcrumb" className="se-breadcrumb">
             <ol className="flex flex-wrap items-center gap-1">
               <li>
                 <Link
                   href={`/profiles/${profile.id}`}
                   className={
-                    section === "overview"
-                      ? "font-medium text-[var(--color-ink)]"
-                      : "transition hover:text-[var(--color-ink)]"
+                    section === "overview" ? "se-breadcrumb-current" : undefined
                   }
                 >
                   {profile.displayName}
@@ -252,12 +241,8 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
               </li>
               {sectionTitle ? (
                 <li className="flex items-center gap-1">
-                  <span aria-hidden className="text-[var(--color-ink-subtle)]">
-                    /
-                  </span>
-                  <span className="font-medium text-[var(--color-ink)]">
-                    {sectionTitle}
-                  </span>
+                  <span aria-hidden>/</span>
+                  <span className="se-breadcrumb-current">{sectionTitle}</span>
                 </li>
               ) : null}
             </ol>
@@ -278,10 +263,11 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
 
-          {/* Checklist, Feedback & Assignments own their headers. */}
+          {/* Checklist, Feedback, Assignments & Work Log own their headers. */}
           {section !== "checklist" &&
           section !== "feedback" &&
-          section !== "actions" ? (
+          section !== "actions" &&
+          section !== "work-log" ? (
             <div className="flex flex-wrap items-start gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2.5">

@@ -748,6 +748,11 @@ export function SeAccountabilityOverview({
               <p className="mt-2 text-[11px] text-[var(--color-ink-subtle)]">
                 {personName(feedback[0].createdBy)} ·{" "}
                 {formatDate(feedback[0].createdAt)}
+                {feedback[0].acknowledgedAt
+                  ? " · Acknowledged"
+                  : isSe
+                    ? " · Needs acknowledgement"
+                    : ""}
               </p>
             </div>
           ) : (

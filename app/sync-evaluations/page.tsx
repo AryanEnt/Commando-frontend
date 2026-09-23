@@ -72,7 +72,7 @@ export default function SyncEvaluationsPage() {
           canCreate ? (
             <Link
               href="/sync-evaluations/new"
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
               New evaluation
             </Link>

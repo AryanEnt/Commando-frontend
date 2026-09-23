@@ -169,7 +169,13 @@ export function DailyLogWorkspace({
         `Daily Log submitted · ${res.data.prioritizedCount} prioritized for Eisenhower`,
         "success",
       );
-      router.push(`/profiles/${log.salesExecutiveProfileId}/eisenhower`);
+      router.push(
+        log.salesExecutiveProfileId
+          ? `/profiles/${log.salesExecutiveProfileId}/eisenhower`
+          : log.executiveUserId
+            ? `/support/${log.executiveUserId}/coaching`
+            : "/daily-logs",
+      );
     } catch (err) {
       pushToast(
         err instanceof ApiError ? err.message : "Failed to submit",
@@ -216,7 +222,10 @@ export function DailyLogWorkspace({
             {formatDate(log.logDate)}
           </p>
           <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            {log.profile.displayName}
+            {log.profile?.displayName ??
+              (log.executiveUser
+                ? `${log.executiveUser.firstName} ${log.executiveUser.lastName}`
+                : "Sales Support")}
             {log.assignment?.commando
               ? ` · Commando ${personName(log.assignment.commando)}`
               : ""}

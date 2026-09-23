@@ -53,7 +53,7 @@ export function SwotPointsEditor({
                       update(index, { visible: e.target.checked })
                     }
                   />
-                  Show to SE
+                  Show to subject
                 </label>
               ) : null}
               {points.length > 1 ? (

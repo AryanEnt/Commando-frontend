@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
-import { MessageSquareText, Plus } from "lucide-react";
+import { MessageSquareText, Plus, CheckCircle2 } from "lucide-react";
 import {
   api,
   ApiError,
@@ -23,12 +23,14 @@ type FilterPreset =
   | "all"
   | "TEAM_LEAD"
   | "COMMANDO"
+  | "pending"
   | "week"
   | "month"
   | "custom";
 
 type Props = {
-  profileId: string;
+  profileId?: string;
+  executiveUserId?: string;
   profileName: string;
   feedback: FeedbackItem[];
   canCreate: boolean;
@@ -38,6 +40,8 @@ type Props = {
   statusLabel?: string | null;
   activeIntervention?: boolean;
   onFeedbackChanged?: () => void;
+  /** Base return path for feedback detail links */
+  returnBaseHref?: string;
 };
 
 function startOfLocalDay(d = new Date()) {
@@ -74,6 +78,8 @@ function matchesPreset(
       return f.source === "TEAM_LEAD";
     case "COMMANDO":
       return f.source === "COMMANDO";
+    case "pending":
+      return !f.acknowledgedAt;
     case "week":
       return !!created && created.getTime() >= weekStart.getTime();
     case "month":
@@ -102,6 +108,7 @@ const PRESETS: Array<{ key: FilterPreset; label: string }> = [
   { key: "all", label: "All" },
   { key: "TEAM_LEAD", label: "Team Lead" },
   { key: "COMMANDO", label: "Commando" },
+  { key: "pending", label: "Needs ack" },
   { key: "week", label: "This week" },
   { key: "month", label: "This month" },
   { key: "custom", label: "Custom" },
@@ -137,6 +144,7 @@ function FeedbackBody({ body }: { body: string }) {
 
 export function SeFeedbackPanel({
   profileId,
+  executiveUserId,
   profileName,
   feedback,
   canCreate,
@@ -146,9 +154,18 @@ export function SeFeedbackPanel({
   statusLabel,
   activeIntervention = false,
   onFeedbackChanged,
+  returnBaseHref,
 }: Props) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { pushToast } = useToast();
+  const isSe = user?.roleCode === "SALES_EXECUTIVE";
+  const feedbackBase =
+    returnBaseHref ??
+    (profileId
+      ? `/profiles/${profileId}/feedback`
+      : executiveUserId
+        ? `/support/${executiveUserId}/feedback`
+        : "/feedback");
 
   const [preset, setPreset] = useState<FilterPreset>("all");
   const [from, setFrom] = useState("");
@@ -156,6 +173,7 @@ export function SeFeedbackPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [ackingId, setAckingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return feedback
@@ -173,6 +191,7 @@ export function SeFeedbackPanel({
 
   const teamLeadCount = feedback.filter((f) => f.source === "TEAM_LEAD").length;
   const commandoCount = feedback.filter((f) => f.source === "COMMANDO").length;
+  const pendingCount = feedback.filter((f) => !f.acknowledgedAt).length;
   const monthCount = feedback.filter((f) => matchesPreset(f, "month")).length;
 
   const hasFilters = preset !== "all" || !!from || !!to;
@@ -201,7 +220,9 @@ export function SeFeedbackPanel({
     setSubmitting(true);
     try {
       await api.createFeedback(token, {
-        salesExecutiveProfileId: profileId,
+        ...(executiveUserId
+          ? { executiveUserId }
+          : { salesExecutiveProfileId: profileId! }),
         body: draft.trim(),
       });
       pushToast("Feedback added", "success");
@@ -215,6 +236,25 @@ export function SeFeedbackPanel({
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function acknowledge(id: string) {
+    if (!token || !isSe) return;
+    setAckingId(id);
+    try {
+      await api.acknowledgeFeedback(token, id);
+      pushToast("Feedback acknowledged", "success");
+      onFeedbackChanged?.();
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError
+          ? err.message
+          : "Could not acknowledge feedback",
+        "error",
+      );
+    } finally {
+      setAckingId(null);
     }
   }
 
@@ -243,7 +283,7 @@ export function SeFeedbackPanel({
           </div>
           <h1 className="fb-title">Feedback</h1>
           <p className="fb-subtitle">
-            Coaching input from the Team Lead and Commando
+            Coaching notes from your Team Lead and Commando. Acknowledge each one once you have read it.
             {feedback.length > 0
               ? ` · ${feedback.length} entr${feedback.length === 1 ? "y" : "ies"}`
               : ""}
@@ -275,6 +315,10 @@ export function SeFeedbackPanel({
             <div className="fb-stat is-co">
               <span className="fb-stat-value">{commandoCount}</span>
               <span className="fb-stat-label">Commando</span>
+            </div>
+            <div className={`fb-stat${pendingCount > 0 ? " is-pending" : ""}`}>
+              <span className="fb-stat-value">{pendingCount}</span>
+              <span className="fb-stat-label">Needs ack</span>
             </div>
             <div className="fb-stat">
               <span className="fb-stat-value">{monthCount}</span>
@@ -345,7 +389,7 @@ export function SeFeedbackPanel({
           </div>
           <p className="fb-empty-title">No feedback yet</p>
           <p className="fb-empty-desc">
-            Feedback from the Team Lead and Commando will appear here.
+            Feedback from the Team Lead and Commando will appear here. Acknowledge each note after you read it.
           </p>
           {canCreate ? (
             <button
@@ -386,12 +430,12 @@ export function SeFeedbackPanel({
             {filtered.map((f, index) => {
               const fromTl = f.source === "TEAM_LEAD";
               const roleLabel = fromTl ? "Team Lead" : "Commando";
-              const detailHref = `/feedback/${f.id}?returnTo=${encodeURIComponent(`/profiles/${profileId}/feedback`)}`;
+              const detailHref = `/feedback/${f.id}?returnTo=${encodeURIComponent(feedbackBase)}`;
               const author = personName(f.createdBy);
               return (
                 <li
                   key={f.id}
-                  className={`fb-entry${fromTl ? " is-tl" : " is-co"}`}
+                  className={`fb-entry${fromTl ? " is-tl" : " is-co"}${!f.acknowledgedAt ? " is-pending" : ""}`}
                   style={{ "--fb-i": index } as CSSProperties}
                 >
                   <div className="fb-entry-rail" aria-hidden>
@@ -428,6 +472,23 @@ export function SeFeedbackPanel({
                     </div>
                     <FeedbackBody body={f.body} />
                     <div className="fb-entry-actions">
+                      {f.acknowledgedAt ? (
+                        <span className="fb-ack-badge">
+                          <CheckCircle2 size={13} strokeWidth={2.2} aria-hidden />
+                          Acknowledged {formatDate(f.acknowledgedAt)}
+                        </span>
+                      ) : isSe ? (
+                        <Button
+                          variant="success"
+                          size="sm"
+                          disabled={ackingId === f.id}
+                          onClick={() => void acknowledge(f.id)}
+                        >
+                          {ackingId === f.id ? "Acknowledging…" : "Acknowledge"}
+                        </Button>
+                      ) : (
+                        <span className="fb-ack-wait">Awaiting acknowledgement</span>
+                      )}
                       <Link href={detailHref} className="fb-action-link">
                         View details →
                       </Link>

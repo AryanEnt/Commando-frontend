@@ -3,6 +3,7 @@ import type { RoleCode } from "@/lib/navigation";
 export type SeSection =
   | "overview"
   | "coaching"
+  | "work-log"
   | "reviews"
   | "eisenhower"
   | "actions"
@@ -81,6 +82,12 @@ const ALL_ITEMS: SeNavItem[] = [
     label: "Daily Logs",
     href: (id) => `/profiles/${id}/coaching`,
     icon: "reviews",
+  },
+  {
+    section: "work-log",
+    label: "Work Log",
+    href: (id) => `/profiles/${id}/work-log`,
+    icon: "calendar",
   },
   {
     section: "checklist",
@@ -164,6 +171,7 @@ const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
     "verdict",
     "swot",
     "coaching",
+    "work-log",
     "checklist",
     "monitoring",
     "reviews",
@@ -184,6 +192,7 @@ const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
     "overview",
     "swot",
     "coaching",
+    "work-log",
     "reviews",
     "eisenhower",
     "support",
@@ -192,6 +201,7 @@ const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
   ],
   SALES_EXECUTIVE: [
     "overview",
+    "work-log",
     "timeline",
     "reviews",
     "actions",
@@ -212,6 +222,7 @@ const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
     "overview",
     "swot",
     "coaching",
+    "work-log",
     "reviews",
     "eisenhower",
     "support",
@@ -241,6 +252,7 @@ export function seGroupedNavForRole(roleCode: string): SeNavGroup[] {
         items: [
           item("timeline"),
           item("coaching"),
+          item("work-log"),
           item("checklist"),
           item("monitoring"),
         ],
@@ -281,7 +293,7 @@ export function seGroupedNavForRole(roleCode: string): SeNavGroup[] {
     {
       id: "activity",
       label: "Activity",
-      items: [item("timeline"), item("coaching")],
+      items: [item("timeline"), item("coaching"), item("work-log")],
     },
     {
       id: "management",
@@ -314,6 +326,13 @@ export function seNavForRole(roleCode: string): SeNavItem[] {
           return {
             ...navItem,
             label: "My workspace",
+            sectionGroup: "My performance",
+          };
+        }
+        if (navItem.section === "work-log") {
+          return {
+            ...navItem,
+            label: "Daily Work Log",
             sectionGroup: "My performance",
           };
         }
@@ -371,6 +390,7 @@ export function seNavForRole(roleCode: string): SeNavItem[] {
 
 const PATH_SECTIONS: SeSection[] = [
   "coaching",
+  "work-log",
   "checklist",
   "monitoring",
   "reviews",

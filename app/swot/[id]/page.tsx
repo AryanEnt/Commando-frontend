@@ -7,6 +7,11 @@ import { api, type SwotItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { personName, roleLabel } from "@/lib/labels";
+import {
+  swotSourceLabel,
+  swotSubjectName,
+  swotSubjectRoleLabel,
+} from "@/lib/swot-display";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   SwotQuadrantBoard,
@@ -36,6 +41,10 @@ export default function SwotDetailPage() {
     Boolean(swot) &&
     ((user!.roleCode === "TEAM_LEAD" && swot!.source === "TEAM_LEAD") ||
       (user!.roleCode === "COMMANDO_EXECUTIVE" && swot!.source === "COMMANDO"));
+
+  const isSubjectExecutive =
+    user?.roleCode === "SALES_EXECUTIVE" ||
+    user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
 
   useEffect(() => {
     let cancelled = false;
@@ -86,21 +95,34 @@ export default function SwotDetailPage() {
   if (error) return <ErrorState message={error} />;
   if (!swot) return <LoadingState label="Loading SWOT…" />;
 
+  const subjectName = swotSubjectName(swot);
+  const subjectRole = swotSubjectRoleLabel(swot);
   const sourceLabel =
     swot.source === "TEAM_LEAD"
       ? "Team Lead assessment"
       : swot.source === "COMMANDO"
         ? "Commando assessment"
-        : "Sales Executive self-assessment";
+        : swot.source === "SALES_SUPPORT_EXECUTIVE"
+          ? "Sales Support self-assessment"
+          : "Sales Executive self-assessment";
+
+  const backHref = swot.salesExecutiveProfileId
+    ? `/profiles/${swot.salesExecutiveProfileId}/swot`
+    : "/swot";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`SWOT · ${swot.profile.displayName}`}
-        description={`${swot.team.name} · ${sourceLabel}${
+        title={`SWOT · ${subjectName}`}
+        description={`${subjectRole}${swot.team?.name ? ` · ${swot.team.name}` : ""} · ${sourceLabel}${
           swot.versionNumber ? ` · Version ${swot.versionNumber}` : ""
         }`}
-        actions={<StatusBadge status={swot.source} />}
+        actions={
+          <StatusBadge
+            status={swot.source}
+            label={swotSourceLabel(swot.source)}
+          />
+        }
       />
       <p className="text-sm text-[var(--color-ink-muted)]">
         Authored by {personName(swot.createdBy)} (
@@ -110,13 +132,13 @@ export default function SwotDetailPage() {
       <p className="text-xs text-[var(--color-ink-muted)]">
         This version is read-only. Updating SWOT creates a new version and keeps
         this one in history. Team Lead and Commando can always see every point.
-        The Sales Executive only sees checked points.
+        The subject executive only sees checked points.
       </p>
 
       <SwotQuadrantBoard
         swot={swot}
         canShare={canToggleVisibility}
-        isSe={user?.roleCode === "SALES_EXECUTIVE"}
+        isSe={isSubjectExecutive}
         busyFlag={busyFlag}
         onTogglePoint={(quadrant, pointId, next) => {
           const q = SWOT_QUADRANTS.find((item) => item.key === quadrant);
@@ -124,8 +146,8 @@ export default function SwotDetailPage() {
             { point: { quadrant, id: pointId, visible: next } },
             pointId,
             next
-              ? `${q?.title ?? "Point"} shared with the Sales Executive`
-              : `${q?.title ?? "Point"} held back from the Sales Executive`,
+              ? `${q?.title ?? "Point"} shared with the subject executive`
+              : `${q?.title ?? "Point"} held back from the subject executive`,
           );
         }}
         onShareAll={(share) => {
@@ -133,15 +155,15 @@ export default function SwotDetailPage() {
             { visibleToSalesExecutive: share },
             "all",
             share
-              ? "All points shared with the Sales Executive"
-              : "SWOT held back from the Sales Executive",
+              ? "All points shared with the subject executive"
+              : "SWOT held back from the subject executive",
           );
         }}
       />
 
       <p>
         <Link
-          href={`/profiles/${swot.salesExecutiveProfileId}/swot`}
+          href={backHref}
           className="text-sm font-medium text-[var(--color-brand)] hover:underline"
         >
           ← Back to SWOT

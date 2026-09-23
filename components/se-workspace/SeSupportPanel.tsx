@@ -48,8 +48,9 @@ export function SeSupportPanel({
   supportTasks,
   onChanged,
 }: Props) {
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
+  const canViewWorkLog = hasPermission("DAILY_WORK_LOG_VIEW");
   const [assignOpen, setAssignOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskLinkId, setTaskLinkId] = useState<string | null>(null);
@@ -174,7 +175,12 @@ export function SeSupportPanel({
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--color-ink)]">
-                    {personName(link.supportUser)}
+                    <Link
+                      href={`/support/${link.supportUser.id}`}
+                      className="hover:text-[var(--color-brand-dark)] hover:underline"
+                    >
+                      {personName(link.supportUser)}
+                    </Link>
                   </p>
                   <p className="mt-0.5 text-meta">
                     {link.responsibilityType
@@ -185,6 +191,28 @@ export function SeSupportPanel({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/support/${link.supportUser.id}`}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Workspace
+                  </Link>
+                  {hasPermission("SWOT_CREATE") ? (
+                    <Link
+                      href={`/swot/new?subjectUserId=${encodeURIComponent(link.supportUser.id)}&returnTo=${encodeURIComponent(`/support/${link.supportUser.id}/swot`)}`}
+                      className="btn btn-ghost btn-sm"
+                    >
+                      SWOT
+                    </Link>
+                  ) : null}
+                  {canViewWorkLog ? (
+                    <Link
+                      href={`/support/${link.supportUser.id}/work-log`}
+                      className="btn btn-ghost btn-sm"
+                    >
+                      Work log
+                    </Link>
+                  ) : null}
                   {canCreateTask ? (
                     <Button
                       size="sm"
@@ -255,7 +283,7 @@ export function SeSupportPanel({
                 onClick={() => setTaskFilter(f.key)}
                 className={`rounded-[var(--radius-btn)] px-2.5 py-1 text-[12px] font-semibold transition ${
                   taskFilter === f.key
-                    ? "bg-[var(--color-brand)] text-white"
+                    ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                     : "bg-[var(--color-mint)] text-[var(--color-brand-dark)] ring-1 ring-inset ring-[var(--color-brand-ring)]"
                 }`}
               >

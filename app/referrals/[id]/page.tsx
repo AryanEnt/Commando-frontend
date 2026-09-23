@@ -126,6 +126,16 @@ export default function ReferralDetailPage() {
           opportunity: provideForm.opportunity,
           threat: provideForm.threat,
         },
+        supportSwot: (referral?.assignedSupport ?? []).map((person) => {
+          const q = provideForm.supportSwots[person.userId];
+          return {
+            executiveUserId: person.userId,
+            strength: q?.strength ?? "",
+            weakness: q?.weakness ?? "",
+            opportunity: q?.opportunity ?? "",
+            threat: q?.threat ?? "",
+          };
+        }),
       });
       setReferral(res.data.referral);
       setConfirmApprove(false);
@@ -374,6 +384,7 @@ export default function ReferralDetailPage() {
           setForm={setProvideForm}
           busy={busy}
           commandoName={personName(referral.commando)}
+          assignedSupport={referral.assignedSupport ?? []}
           onApprove={() => setConfirmApprove(true)}
           onReject={() => setShowReject(true)}
         />
@@ -443,7 +454,7 @@ export default function ReferralDetailPage() {
             {referral.status === "IN_PROGRESS" && hasActiveAssignment && (
               <Link
                 href={profileHref}
-                className="inline-flex h-10 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-4 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+                className="inline-flex h-10 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-4 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
               >
                 Open Sales Executive workspace
               </Link>

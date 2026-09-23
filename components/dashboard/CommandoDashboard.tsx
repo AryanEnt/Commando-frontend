@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { formatDate, formatWhen } from "@/lib/dates";
 import { personName } from "@/lib/labels";
+import { weeklyReviewSubjectName } from "@/lib/weekly-review-display";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
@@ -277,6 +278,7 @@ export function CommandoDashboard({
   const draftByProfile = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of draftReviews) {
+      if (!r.salesExecutiveProfileId) continue;
       map.set(
         r.salesExecutiveProfileId,
         (map.get(r.salesExecutiveProfileId) ?? 0) + 1,
@@ -359,11 +361,12 @@ export function CommandoDashboard({
     }
 
     for (const r of draftReviews) {
+      if (!r.salesExecutiveProfileId) continue;
       items.push({
         id: `review-${r.id}`,
         bucket: "upcoming",
         title: r.weekLabel || "Weekly review draft",
-        seName: r.profile.displayName,
+        seName: weeklyReviewSubjectName(r),
         seId: r.salesExecutiveProfileId,
         meta: "Review · Draft not submitted",
         href: `/profiles/${r.salesExecutiveProfileId}/reviews`,
@@ -481,7 +484,7 @@ export function CommandoDashboard({
       items.push({
         id: `mon-${m.id}`,
         label: `Monitoring · ${m.category.name}`,
-        meta: m.profile.displayName,
+        meta: m.profile?.displayName ?? "—",
         when: m.observedAt || m.createdAt,
         href: `/profiles/${m.salesExecutiveProfileId}/monitoring`,
       });
@@ -491,9 +494,17 @@ export function CommandoDashboard({
       items.push({
         id: `log-${log.id}`,
         label: `Daily Log · ${first?.sessionTitle ?? `${log.entryCount} activities`}`,
-        meta: log.profile.displayName,
+        meta:
+          log.profile?.displayName ??
+          (log.executiveUser
+            ? `${log.executiveUser.firstName} ${log.executiveUser.lastName}`
+            : "—"),
         when: log.updatedAt || log.createdAt,
-        href: `/profiles/${log.salesExecutiveProfileId}/daily-logs/${log.id}`,
+        href: log.salesExecutiveProfileId
+          ? `/profiles/${log.salesExecutiveProfileId}/daily-logs/${log.id}`
+          : log.executiveUserId
+            ? `/support/${log.executiveUserId}/daily-logs/${log.id}`
+            : `/daily-logs/${log.id}`,
       });
     }
     return items

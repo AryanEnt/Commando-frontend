@@ -16,6 +16,7 @@ import {
   LoadingState,
   TextArea,
 } from "@/components/ui";
+import { SupportTaskScreenshots } from "@/components/support-tasks/SupportTaskScreenshots";
 
 function personName(u: { firstName: string; lastName: string } | null) {
   if (!u) return "—";
@@ -47,6 +48,7 @@ function MyTaskDetail() {
 
   const canStatus = hasPermission("SALES_SUPPORT_TASK_STATUS_UPDATE");
   const isSupport = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
+  const isSe = user?.roleCode === "SALES_EXECUTIVE";
 
   async function load() {
     if (!token || !params.id) return;
@@ -152,7 +154,12 @@ function MyTaskDetail() {
   if (!task) return <LoadingState label="Loading task…" />;
 
   const ownTask = isSupport && task.salesSupportUserId === user?.id;
+  const ownSeTask = isSe && task.profile.userId === user?.id;
   const canExecute = canStatus && (ownTask || !isSupport);
+  const canUploadScreenshot =
+    task.status !== "COMPLETED" && (ownTask || ownSeTask);
+  const canAddProgress =
+    task.status !== "COMPLETED" && (ownTask || ownSeTask);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -355,6 +362,14 @@ function MyTaskDetail() {
         </section>
       ) : null}
 
+      <SupportTaskScreenshots
+        token={token!}
+        task={task}
+        canUpload={canUploadScreenshot}
+        currentUserId={user?.id}
+        onTaskUpdated={setTask}
+      />
+
       <section className="surface p-4">
         <h2 className="text-sm font-semibold">Progress</h2>
         {(task.progressNotes?.length ?? 0) === 0 ? (
@@ -373,7 +388,7 @@ function MyTaskDetail() {
             ))}
           </ul>
         )}
-        {ownTask && task.status !== "COMPLETED" ? (
+        {canAddProgress ? (
           <form onSubmit={onAddProgress} className="mt-4 space-y-2">
             <TextArea
               label="Add progress update"

@@ -122,7 +122,9 @@ export function SwotQuadrantBoard({
     0,
   );
   const allOn = total > 0 && shared === total;
-  const own = swot.source === "SALES_EXECUTIVE";
+  const own =
+    swot.source === "SALES_EXECUTIVE" ||
+    swot.source === "SALES_SUPPORT_EXECUTIVE";
 
   return (
     <div className="swot-board">
@@ -131,7 +133,7 @@ export function SwotQuadrantBoard({
           <div className="swot-share-copy">
             <p className="swot-share-kicker">
               <Sparkles size={14} aria-hidden />
-              What the Sales Executive sees
+              What the subject executive sees
             </p>
             <p className="swot-share-title">
               {shared === 0
@@ -140,7 +142,7 @@ export function SwotQuadrantBoard({
             </p>
             <p className="swot-share-hint">
               {canShare
-                ? "Tick the points the Sales Executive should see. Team Lead and Commando always see every point."
+                ? "Tick the points the subject executive should see. Team Lead and Commando always see every point."
                 : "Only the author of this assessment can change sharing. You can still see every point."}
             </p>
           </div>

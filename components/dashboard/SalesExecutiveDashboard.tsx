@@ -927,6 +927,11 @@ export function SalesExecutiveDashboard({
                     }
                   : null,
                 {
+                  href: seWorkspaceHref(profile.id, "work-log"),
+                  label: "Add work log",
+                  icon: Plus,
+                },
+                {
                   href: seWorkspaceHref(profile.id, "history"),
                   label: "View history",
                   icon: History,

@@ -38,7 +38,7 @@ type PendingToggle =
 type PendingDelete = MonitoringCategory | null;
 
 type CategoryDraft = { code: string; name: string; description: string };
-type ItemDraft = { code: string; label: string };
+type ItemDraft = { code: string; label: string; defaultWeight: string };
 
 export default function MonitoringChecklistsPage() {
   const { token, hasPermission } = useAuth();
@@ -63,13 +63,18 @@ export default function MonitoringChecklistsPage() {
     name: "",
     description: "",
   });
-  const [itemDraft, setItemDraft] = useState<ItemDraft>({ code: "", label: "" });
+  const [itemDraft, setItemDraft] = useState<ItemDraft>({
+    code: "",
+    label: "",
+    defaultWeight: "0",
+  });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<PendingToggle>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [weightSavingId, setWeightSavingId] = useState<string | null>(null);
 
   async function load(overrides?: { page?: number }) {
     if (!token) return;
@@ -114,6 +119,14 @@ export default function MonitoringChecklistsPage() {
       (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
     );
   }, [selected]);
+
+  const activeWeightTotal = useMemo(() => {
+    return sortedItems
+      .filter((i) => i.isActive)
+      .reduce((sum, i) => sum + (i.defaultWeight ?? 0), 0);
+  }, [sortedItems]);
+
+  const weightComplete = activeWeightTotal === 100;
 
   function openCreateCategory() {
     setEditingCategory(null);
@@ -190,12 +203,14 @@ export default function MonitoringChecklistsPage() {
 
     setSaving(true);
     try {
+      const weight = Number.parseInt(itemDraft.defaultWeight, 10);
       await api.createMonitoringChecklistItem(token, selected.id, {
         code: itemDraft.code.trim().toUpperCase(),
         label: itemDraft.label.trim(),
         sortOrder: selected.checklistItems.length + 1,
+        defaultWeight: Number.isFinite(weight) ? Math.min(100, Math.max(0, weight)) : 0,
       });
-      setItemDraft({ code: "", label: "" });
+      setItemDraft({ code: "", label: "", defaultWeight: "0" });
       setItemDrawerOpen(false);
       pushToast("Checklist item added", "success");
       await load();
@@ -206,6 +221,31 @@ export default function MonitoringChecklistsPage() {
       setError(msg);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveItemWeight(item: MonitoringChecklistItem, raw: string) {
+    if (!token) return;
+    const weight = Number.parseInt(raw, 10);
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) {
+      pushToast("Weight must be an integer from 0 to 100", "error");
+      return;
+    }
+    if (weight === item.defaultWeight) return;
+    setWeightSavingId(item.id);
+    try {
+      await api.updateMonitoringChecklistItem(token, item.id, {
+        defaultWeight: weight,
+      });
+      pushToast("Default weight updated", "success");
+      await load();
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError ? err.message : "Could not update weight",
+        "error",
+      );
+    } finally {
+      setWeightSavingId(null);
     }
   }
 
@@ -513,14 +553,18 @@ export default function MonitoringChecklistsPage() {
                     <div>
                       <h3 className="text-sm font-semibold">Checklist items</h3>
                       <p className="text-xs text-[var(--color-ink-muted)]">
-                        Observation prompts shown during live monitoring.
+                        Default weights apply when customizing an SE checklist.
                       </p>
                     </div>
                     {selected.isActive ? (
                       <Button
                         size="sm"
                         onClick={() => {
-                          setItemDraft({ code: "", label: "" });
+                          setItemDraft({
+                            code: "",
+                            label: "",
+                            defaultWeight: "0",
+                          });
                           setFieldErrors({});
                           setItemDrawerOpen(true);
                         }}
@@ -529,6 +573,55 @@ export default function MonitoringChecklistsPage() {
                       </Button>
                     ) : null}
                   </div>
+
+                  {sortedItems.some((i) => i.isActive) ? (
+                    <div
+                      className={`rounded-[var(--radius-sm)] px-3 py-2.5 ${
+                        weightComplete
+                          ? "bg-[var(--color-surface-2)]"
+                          : "bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)]"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="text-sm font-semibold tabular-nums">
+                          {activeWeightTotal}%
+                          <span className="ml-1.5 text-xs font-normal text-[var(--color-ink-muted)]">
+                            / 100% default allocation
+                          </span>
+                          {weightComplete ? (
+                            <span className="ml-2 text-xs font-medium text-[var(--status-success)]">
+                              ✓
+                            </span>
+                          ) : null}
+                        </p>
+                        {!weightComplete ? (
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {activeWeightTotal < 100
+                              ? `${100 - activeWeightTotal}% remaining`
+                              : `${activeWeightTotal - 100}% over allocation`}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            Active item defaults total 100%
+                          </p>
+                        )}
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-line)]">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            weightComplete
+                              ? "bg-[var(--color-brand)]"
+                              : activeWeightTotal > 100
+                                ? "bg-[var(--status-danger)]"
+                                : "bg-[var(--status-warning)]"
+                          }`}
+                          style={{
+                            width: `${Math.min(100, activeWeightTotal)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   {!selected.isActive ? (
                     <p className="rounded-[var(--radius-sm)] border border-dashed border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink-muted)]">
@@ -545,7 +638,11 @@ export default function MonitoringChecklistsPage() {
                           <div className="mt-4">
                             <Button
                               onClick={() => {
-                                setItemDraft({ code: "", label: "" });
+                                setItemDraft({
+                                  code: "",
+                                  label: "",
+                                  defaultWeight: "0",
+                                });
                                 setFieldErrors({});
                                 setItemDrawerOpen(true);
                               }}
@@ -580,6 +677,31 @@ export default function MonitoringChecklistsPage() {
                               {item.code}
                             </p>
                           </div>
+                          <label className="flex items-center gap-1.5">
+                            <span className="sr-only">Default weight</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              defaultValue={item.defaultWeight ?? 0}
+                              key={`${item.id}-${item.defaultWeight}`}
+                              disabled={
+                                !item.isActive || weightSavingId === item.id
+                              }
+                              onBlur={(e) =>
+                                void saveItemWeight(item, e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="w-14 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-[var(--color-brand)] disabled:opacity-50"
+                            />
+                            <span className="text-xs text-[var(--color-ink-muted)]">
+                              %
+                            </span>
+                          </label>
                           <StatusBadge
                             status={item.isActive ? "ACTIVE" : "INACTIVE"}
                             label={item.isActive ? "Active" : "Inactive"}
@@ -733,6 +855,16 @@ export default function MonitoringChecklistsPage() {
             }
             error={fieldErrors.label}
             placeholder="Used proper greeting"
+          />
+          <TextInput
+            label="Default weight (%)"
+            hint="Starts at 0 — redistribute so active items total 100%"
+            type="number"
+            value={itemDraft.defaultWeight}
+            onChange={(e) =>
+              setItemDraft({ ...itemDraft, defaultWeight: e.target.value })
+            }
+            placeholder="0"
           />
         </form>
       </Drawer>

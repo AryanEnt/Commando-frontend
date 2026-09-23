@@ -15,6 +15,7 @@ import {
   Activity,
   BarChart3,
   BriefcaseBusiness,
+  CalendarDays,
   ClipboardCheck,
   History,
   LayoutDashboard,
@@ -85,6 +86,7 @@ const NAV_ICONS: Record<
   reviews: ClipboardCheck,
   sync: RefreshCw,
   roles: Users,
+  calendar: CalendarDays,
 };
 
 function readCollapsedPreference() {
@@ -378,11 +380,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)}
             title="COMMANDO"
           >
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--color-brand)] text-xs font-bold tracking-tight text-white shadow-[var(--shadow-glow)]">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--color-brand)] text-xs font-bold tracking-tight text-[var(--color-brand-on)]">
               C
             </span>
             <span className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
-              <span className="block truncate text-[13px] font-semibold tracking-tight text-white">
+              <span className="block truncate text-[13px] font-semibold tracking-tight text-[var(--color-ink)]">
                 COMMANDO
               </span>
               <span className="block truncate text-[10px] text-[var(--color-sidebar-subtle)]">
@@ -392,7 +394,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             type="button"
-            className="hidden h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white lg:inline-flex"
+            className="hidden h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-sidebar-active-fg)] lg:inline-flex"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={toggleCollapsed}
@@ -445,29 +447,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         ? `${item.label}, ${alertCount} new`
                         : item.label
                     }
-                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-[13px] transition duration-150 ${
+                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] transition duration-150 ${
                       collapsed
                         ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
                         : ""
                     } ${
                       active
-                        ? "bg-[var(--color-sidebar-active)] font-semibold text-white shadow-[var(--shadow-glow)]"
-                        : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+                        ? "bg-[var(--color-sidebar-active)] font-semibold text-[var(--color-sidebar-active-fg)]"
+                        : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-ink)]"
                     }`}
                   >
+                    {active ? (
+                      <span
+                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-brand)]"
+                        aria-hidden
+                      />
+                    ) : null}
                     {Icon ? (
                       <span className="relative shrink-0">
                         <Icon
                           size={16}
                           className={
                             active
-                              ? "text-white"
-                              : "text-[var(--color-sidebar-subtle)] group-hover:text-[#6ee7b7]"
+                              ? "text-[var(--color-sidebar-active-fg)]"
+                              : "text-[var(--color-sidebar-subtle)] group-hover:text-[var(--color-brand-dark)]"
                           }
                         />
                         {alertCount > 0 && collapsed ? (
                           <span
-                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[#34d399] ring-2 ring-[var(--color-sidebar)] lg:block"
+                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[var(--color-brand)] ring-2 ring-[var(--color-sidebar)] lg:block"
                             aria-hidden
                           />
                         ) : null}
@@ -478,7 +486,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </span>
                     {alertCount > 0 ? (
                       <span
-                        className={`ml-auto inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-[#34d399] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#062016] ${
+                        className={`ml-auto inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-[var(--color-brand-soft)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[var(--color-brand-dark)] ${
                           collapsed ? "lg:hidden" : ""
                         }`}
                       >
@@ -505,7 +513,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Avatar name={displayName} size="sm" />
             <div className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>
-              <p className="truncate text-xs font-medium text-white">
+              <p className="truncate text-xs font-medium text-[var(--color-ink)]">
                 {displayName}
               </p>
               <p className="truncate text-[10px] text-[var(--color-sidebar-subtle)]">
@@ -517,7 +525,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               title="Log out"
               aria-label="Log out"
               onClick={() => logout().then(() => router.push("/login"))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-white"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-ink)]"
             >
               <LogOut size={14} />
             </button>

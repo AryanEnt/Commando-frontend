@@ -37,6 +37,7 @@ import { SeSupportPanel } from "@/components/se-workspace/SeSupportPanel";
 import { SalesExecutiveDashboard } from "@/components/dashboard/SalesExecutiveDashboard";
 import { SeEisenhowerPanel } from "@/components/se-workspace/SeEisenhowerPanel";
 import { CoachingDailyLogsSection } from "@/components/daily-logs/CoachingDailyLogsSection";
+import { DailyWorkLogPanel } from "@/components/daily-work-logs/DailyWorkLogPanel";
 import { WeeklyReviewHub } from "@/components/weekly-reviews/WeeklyReviewHub";
 import { SeWeeklyReviewsPanel } from "@/components/se-workspace/SeWeeklyReviewsPanel";
 import { SeChecklistWorkspace } from "@/components/monitoring/SeChecklistWorkspace";
@@ -139,7 +140,7 @@ export function SeWorkspaceContent() {
           api
             .getFeedback(token, {
               profileId: id,
-              pageSize: section === "feedback" ? 50 : 8,
+              pageSize: section === "feedback" ? 100 : 12,
             })
             .then((r) => setFeedback(r.data.feedback))
             .catch(() => setFeedback([])),
@@ -479,6 +480,14 @@ export function SeWorkspaceContent() {
           profileName={profile.displayName}
           logs={logs}
           canCreate={canCreate("DAILY_LOG_CREATE")}
+        />
+      )}
+
+      {section === "work-log" && (
+        <DailyWorkLogPanel
+          profileId={profile.id}
+          mode={user?.id === profile.user?.id ? "author" : "review"}
+          title="Daily Work Log"
         />
       )}
 
@@ -842,7 +851,7 @@ export function SeWorkspaceContent() {
           onFeedbackChanged={() => {
             if (!token || !hasPermission("FEEDBACK_VIEW")) return;
             void api
-              .getFeedback(token, { profileId: profile.id, pageSize: 50 })
+              .getFeedback(token, { profileId: profile.id, pageSize: 100 })
               .then((r) => setFeedback(r.data.feedback))
               .catch(() => setFeedback([]));
           }}
@@ -944,7 +953,16 @@ export function SeWorkspaceContent() {
               ) : null}
             </section>
 
-            <div className="grid gap-4 lg:grid-cols-3" id="swot">
+            <div className="space-y-4" id="swot">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--color-ink)]">
+                  Executive SWOT
+                </h2>
+                <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                  About the individual — independent of the sales profile.
+                </p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3">
               {(
                 [
                   {
@@ -953,7 +971,7 @@ export function SeWorkspaceContent() {
                   },
                   {
                     source: "SALES_EXECUTIVE" as const,
-                    title: "Self assessment",
+                    title: "My Executive SWOT",
                   },
                   {
                     source: "COMMANDO" as const,
@@ -962,7 +980,11 @@ export function SeWorkspaceContent() {
                 ] as const
               ).map(({ source, title }) => {
                 const versions = swots
-                  .filter((s) => s.source === source)
+                  .filter(
+                    (s) =>
+                      s.source === source &&
+                      (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
+                  )
                   .slice()
                   .sort((a, b) => {
                     const av = a.versionNumber ?? 0;
@@ -1041,6 +1063,105 @@ export function SeWorkspaceContent() {
                   </section>
                 );
               })}
+              </div>
+
+              <div className="pt-2">
+                <h2 className="text-sm font-semibold text-[var(--color-ink)]">
+                  Profile SWOT
+                </h2>
+                <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                  About this sales profile/workspace — used in Commando intervention packets.
+                </p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {(
+                  [
+                    {
+                      source: "TEAM_LEAD" as const,
+                      title: "Team Lead Profile SWOT",
+                    },
+                    {
+                      source: "COMMANDO" as const,
+                      title: "Commando Profile SWOT",
+                    },
+                  ] as const
+                ).map(({ source, title }) => {
+                  const versions = swots
+                    .filter(
+                      (s) => s.source === source && s.subjectType === "PROFILE",
+                    )
+                    .slice()
+                    .sort((a, b) => {
+                      const av = a.versionNumber ?? 0;
+                      const bv = b.versionNumber ?? 0;
+                      if (bv !== av) return bv - av;
+                      return (
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime()
+                      );
+                    });
+                  const item = versions[0] ?? null;
+                  return (
+                    <section key={`profile-${source}`} className="surface p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
+                          {title}
+                        </h2>
+                        {item ? (
+                          <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-brand-dark)]">
+                            Current · v{item.versionNumber ?? versions.length}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item ? (
+                        <div className="mt-3 space-y-2 text-sm">
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {formatDate(item.createdAt)}
+                          </p>
+                          <Field
+                            label="Strengths"
+                            value={formatSwotField(
+                              item.strengthPoints,
+                              item.strength,
+                            )}
+                          />
+                          <Field
+                            label="Weaknesses"
+                            value={formatSwotField(
+                              item.weaknessPoints,
+                              item.weakness,
+                            )}
+                          />
+                          <Field
+                            label="Opportunities"
+                            value={formatSwotField(
+                              item.opportunityPoints,
+                              item.opportunity,
+                            )}
+                          />
+                          <Field
+                            label="Threats"
+                            value={formatSwotField(
+                              item.threatPoints,
+                              item.threat,
+                            )}
+                          />
+                          <Link
+                            href={`/swot/${item.id}`}
+                            className="inline-block text-sm text-[var(--color-brand)] hover:underline"
+                          >
+                            Open SWOT
+                          </Link>
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+                          No profile SWOT from this source yet.
+                        </p>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
 
             <section className="surface p-4">
@@ -1187,7 +1308,7 @@ export function SeWorkspaceContent() {
       {section === "swot" && (
         <SectionFrame
           title="SWOT"
-          description={`Current assessments and immutable version history for ${profile.displayName}. Updating always creates a new version.`}
+          description={`Executive SWOT (person) and Profile SWOT (workspace) for ${profile.displayName}. Updating always creates a new version in that stream.`}
           primary={
             hasPermission("SWOT_CREATE") &&
             user?.roleCode !== "SUPER_ADMIN" &&
@@ -1196,7 +1317,7 @@ export function SeWorkspaceContent() {
                 href={seCreateHref(profile.id, "swot")}
                 className="action-chip"
               >
-                {isSe ? "Add SWOT version" : "Update SWOT"}
+                {isSe ? "Add Executive SWOT" : "Update Executive SWOT"}
               </Link>
             ) : null
           }
@@ -1211,7 +1332,7 @@ export function SeWorkspaceContent() {
                   },
                   {
                     source: "SALES_EXECUTIVE" as const,
-                    title: "Self assessment",
+                    title: "My Executive SWOT",
                   },
                   {
                     source: "COMMANDO" as const,
@@ -1220,7 +1341,11 @@ export function SeWorkspaceContent() {
                 ] as const
               ).map(({ source, title }) => {
                 const versions = swots
-                  .filter((s) => s.source === source)
+                  .filter(
+                    (s) =>
+                      s.source === source &&
+                      (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
+                  )
                   .slice()
                   .sort((a, b) => {
                     const av = a.versionNumber ?? 0;
@@ -1237,7 +1362,7 @@ export function SeWorkspaceContent() {
                   !item &&
                   isSe;
                 return (
-                  <section key={source} className="surface p-4">
+                  <section key={`exec-${source}`} className="surface p-4">
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
                         {title}
@@ -1336,8 +1461,13 @@ export function SeWorkspaceContent() {
                       );
                     })
                     .map((s) => {
+                      const subject = s.subjectType ?? "EXECUTIVE";
                       const latestForSource = swots
-                        .filter((x) => x.source === s.source)
+                        .filter(
+                          (x) =>
+                            x.source === s.source &&
+                            (x.subjectType ?? "EXECUTIVE") === subject,
+                        )
                         .sort((a, b) => {
                           const av = a.versionNumber ?? 0;
                           const bv = b.versionNumber ?? 0;
@@ -1364,7 +1494,8 @@ export function SeWorkspaceContent() {
                                 ) : null}
                               </p>
                               <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
-                                {s.source.replaceAll("_", " ")} ·{" "}
+                                {subject === "PROFILE" ? "Profile" : "Executive"}{" "}
+                                · {s.source.replaceAll("_", " ")} ·{" "}
                                 {formatDate(s.createdAt)} ·{" "}
                                 {personName(s.createdBy)}
                                 {!isSe && s.source !== "SALES_EXECUTIVE"

@@ -97,7 +97,7 @@ export default function MonitoringPage() {
           canCreate ? (
             <Link
               href="/monitoring/new"
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
               New session
             </Link>
@@ -206,7 +206,10 @@ export default function MonitoringPage() {
                       <DateTimeCell value={record.observedAt} />
                     </td>
                     <td className="px-3 py-2 font-medium">
-                      {record.profile.displayName}
+                      {record.profile?.displayName ??
+                        (record.executiveUser
+                          ? `${record.executiveUser.firstName} ${record.executiveUser.lastName}`.trim()
+                          : "—")}
                     </td>
                     <td className="px-3 py-2">{record.category.name}</td>
                     <td className="px-3 py-2">

@@ -69,24 +69,26 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[22rem_1fr]">
-      <aside className="hidden flex-col justify-between bg-[var(--color-sidebar)] px-8 py-10 text-zinc-300 lg:flex">
+      <aside className="hidden flex-col justify-between border-r border-[var(--color-line)] bg-[var(--color-brand-soft)] px-8 py-10 text-[var(--color-ink)] lg:flex">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.18em] text-zinc-500">
+          <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--color-brand-dark)]">
             COMMANDO
           </p>
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-white">
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
             Sales performance intervention
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-muted)]">
             Identify struggling executives, intervene early, coach
             systematically, and keep a complete history.
           </p>
         </div>
-        <p className="text-xs text-zinc-500">Graphite · Emerald · Trust</p>
+        <p className="text-xs text-[var(--color-ink-subtle)]">
+          Soft Precision · Sales Performance
+        </p>
       </aside>
       <div className="flex items-center justify-center bg-[var(--color-canvas)] px-4">
         <form onSubmit={onSubmit} className="w-full max-w-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)] lg:hidden">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-brand-dark)] lg:hidden">
             Commando
           </p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight">Sign in</h2>
@@ -99,7 +101,7 @@ export default function LoginPage() {
           </label>
           <input
             id="email"
-            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)]"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -112,7 +114,7 @@ export default function LoginPage() {
           </label>
           <input
             id="password"
-            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)]"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -129,7 +131,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-6 h-10 w-full rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-sm font-medium text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-60"
+            className="mt-6 h-10 w-full rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)] disabled:opacity-60"
           >
             {submitting ? "Signing in…" : "Sign in"}
           </button>

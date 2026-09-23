@@ -69,7 +69,7 @@ export default function DailyLogsPage() {
           canCreate ? (
             <Link
               href="/daily-logs/new"
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
               Continue today&apos;s log
             </Link>
@@ -135,7 +135,10 @@ export default function DailyLogsPage() {
                     {formatDate(log.logDate)}
                   </td>
                   <td className="px-4 py-3 font-medium">
-                    {log.profile.displayName}
+                    {log.profile?.displayName ??
+                      (log.executiveUser
+                        ? `${log.executiveUser.firstName} ${log.executiveUser.lastName}`
+                        : "—")}
                   </td>
                   <td className="px-4 py-3 tabular-nums">{log.entryCount}</td>
                   <td className="px-4 py-3">

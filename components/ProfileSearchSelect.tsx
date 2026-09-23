@@ -47,10 +47,10 @@ export function ProfileSearchSelect({
 
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-slate-800">
+      <label className="block text-sm font-medium text-[var(--color-ink)]">
         {label}
         <input
-          className={inputClass}
+          className={`${inputClass} h-10`}
           placeholder="Search by name, email, or code…"
           value={open ? search : selected?.displayName ?? search}
           onChange={(e) => {
@@ -61,18 +61,18 @@ export function ProfileSearchSelect({
         />
       </label>
       {open && (
-        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded border border-slate-200 bg-white shadow-sm">
+        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-md)]">
           {loading && (
-            <div className="px-3 py-2 text-xs text-slate-500">Searching…</div>
+            <div className="px-3 py-2 text-xs text-[var(--color-ink-muted)]">Searching…</div>
           )}
           {!loading && profiles.length === 0 && (
-            <div className="px-3 py-2 text-xs text-slate-500">No profiles</div>
+            <div className="px-3 py-2 text-xs text-[var(--color-ink-muted)]">No profiles</div>
           )}
           {profiles.map((p) => (
             <button
               key={p.id}
               type="button"
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-brand-soft)]"
               onClick={() => {
                 onChange(p.id, p);
                 setSearch(p.displayName);
@@ -80,7 +80,7 @@ export function ProfileSearchSelect({
               }}
             >
               <div className="font-medium">{p.displayName}</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-[var(--color-ink-muted)]">
                 {p.team.name} · {p.user.email}
               </div>
             </button>

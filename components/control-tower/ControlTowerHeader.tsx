@@ -23,7 +23,7 @@ export function ControlTowerHeader({
     <header className="page-hero">
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-brand)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-brand-dark)]">
             Super Admin
           </p>
           <h1 className="mt-1.5 text-[1.625rem] font-semibold tracking-[-0.03em] text-[var(--color-ink)] sm:text-[1.75rem]">

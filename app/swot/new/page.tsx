@@ -6,7 +6,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { personName } from "@/lib/labels";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { SwotPointsEditor } from "@/components/swot/SwotPointsEditor";
 import {
   emptySwotPoints,
@@ -19,8 +21,11 @@ import {
   LoadingState,
 } from "@/components/ui";
 
+type SubjectKind = "SE" | "SSE";
+
 type FormState = {
   salesExecutiveProfileId: string;
+  subjectUserId: string;
   strength: SwotPointDraft[];
   weakness: SwotPointDraft[];
   opportunity: SwotPointDraft[];
@@ -31,6 +36,7 @@ const SWOT_CREATOR_ROLES = new Set([
   "TEAM_LEAD",
   "COMMANDO_EXECUTIVE",
   "SALES_EXECUTIVE",
+  "SALES_SUPPORT_EXECUTIVE",
 ]);
 
 export default function NewSwotPage() {
@@ -55,10 +61,23 @@ function NewSwotForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lockedProfileId = searchParams.get("profileId") ?? "";
+  const lockedSubjectUserId =
+    searchParams.get("subjectUserId") ??
+    searchParams.get("executiveUserId") ??
+    "";
   const returnTo = searchParams.get("returnTo");
 
+  const isSse = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
+  const isSe = user?.roleCode === "SALES_EXECUTIVE";
+  const isManager =
+    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "COMMANDO_EXECUTIVE";
+
+  const [subjectKind, setSubjectKind] = useState<SubjectKind>(
+    lockedSubjectUserId ? "SSE" : "SE",
+  );
   const [form, setForm] = useState<FormState>({
     salesExecutiveProfileId: lockedProfileId,
+    subjectUserId: lockedSubjectUserId,
     strength: emptySwotPoints(),
     weakness: emptySwotPoints(),
     opportunity: emptySwotPoints(),
@@ -68,6 +87,9 @@ function NewSwotForm() {
     null,
   );
   const [ownProfileName, setOwnProfileName] = useState<string | null>(null);
+  const [sseSubjects, setSseSubjects] = useState<
+    Array<{ id: string; firstName: string; lastName: string; email: string }>
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -75,17 +97,29 @@ function NewSwotForm() {
     Boolean(user) &&
     hasPermission("SWOT_CREATE") &&
     SWOT_CREATOR_ROLES.has(user!.roleCode);
-  const showVisibility =
-    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "COMMANDO_EXECUTIVE";
+  const showVisibility = isManager;
 
   useEffect(() => {
     if (lockedProfileId) {
+      setSubjectKind("SE");
       setForm((prev) => ({
         ...prev,
         salesExecutiveProfileId: lockedProfileId,
+        subjectUserId: "",
       }));
     }
   }, [lockedProfileId]);
+
+  useEffect(() => {
+    if (lockedSubjectUserId) {
+      setSubjectKind("SSE");
+      setForm((prev) => ({
+        ...prev,
+        subjectUserId: lockedSubjectUserId,
+        salesExecutiveProfileId: "",
+      }));
+    }
+  }, [lockedSubjectUserId]);
 
   useEffect(() => {
     if (!token || !lockedProfileId) return;
@@ -96,7 +130,18 @@ function NewSwotForm() {
   }, [token, lockedProfileId]);
 
   useEffect(() => {
-    if (!token || !form.salesExecutiveProfileId || !user) return;
+    if (!token || !isManager) return;
+    void api
+      .getSwotSupportSubjects(token)
+      .then((res) => setSseSubjects(res.data.subjects))
+      .catch(() => setSseSubjects([]));
+  }, [token, isManager]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    if (isSse) return;
+    if (subjectKind !== "SE" || !form.salesExecutiveProfileId) return;
+
     const source =
       user.roleCode === "TEAM_LEAD"
         ? "TEAM_LEAD"
@@ -117,32 +162,70 @@ function NewSwotForm() {
         if (!latest) return;
         setForm((prev) => ({
           ...prev,
-          strength:
-            prev.strength.some((p) => p.text.trim())
-              ? prev.strength
-              : pointsFromSwotField(latest.strengthPoints, latest.strength),
-          weakness:
-            prev.weakness.some((p) => p.text.trim())
-              ? prev.weakness
-              : pointsFromSwotField(latest.weaknessPoints, latest.weakness),
-          opportunity:
-            prev.opportunity.some((p) => p.text.trim())
-              ? prev.opportunity
-              : pointsFromSwotField(
-                  latest.opportunityPoints,
-                  latest.opportunity,
-                ),
-          threat:
-            prev.threat.some((p) => p.text.trim())
-              ? prev.threat
-              : pointsFromSwotField(latest.threatPoints, latest.threat),
+          strength: prev.strength.some((p) => p.text.trim())
+            ? prev.strength
+            : pointsFromSwotField(latest.strengthPoints, latest.strength),
+          weakness: prev.weakness.some((p) => p.text.trim())
+            ? prev.weakness
+            : pointsFromSwotField(latest.weaknessPoints, latest.weakness),
+          opportunity: prev.opportunity.some((p) => p.text.trim())
+            ? prev.opportunity
+            : pointsFromSwotField(
+                latest.opportunityPoints,
+                latest.opportunity,
+              ),
+          threat: prev.threat.some((p) => p.text.trim())
+            ? prev.threat
+            : pointsFromSwotField(latest.threatPoints, latest.threat),
         }));
       })
       .catch(() => undefined);
-  }, [token, form.salesExecutiveProfileId, user]);
+  }, [token, form.salesExecutiveProfileId, user, subjectKind, isSse]);
 
   useEffect(() => {
-    if (!token || user?.roleCode !== "SALES_EXECUTIVE") return;
+    if (!token || !isManager || subjectKind !== "SSE" || !form.subjectUserId) {
+      return;
+    }
+    const source =
+      user?.roleCode === "TEAM_LEAD"
+        ? "TEAM_LEAD"
+        : user?.roleCode === "COMMANDO_EXECUTIVE"
+          ? "COMMANDO"
+          : null;
+    if (!source) return;
+    void api
+      .getSwotList(token, {
+        subjectUserId: form.subjectUserId,
+        source,
+        pageSize: 5,
+      })
+      .then((res) => {
+        const latest = res.data.items[0];
+        if (!latest) return;
+        setForm((prev) => ({
+          ...prev,
+          strength: prev.strength.some((p) => p.text.trim())
+            ? prev.strength
+            : pointsFromSwotField(latest.strengthPoints, latest.strength),
+          weakness: prev.weakness.some((p) => p.text.trim())
+            ? prev.weakness
+            : pointsFromSwotField(latest.weaknessPoints, latest.weakness),
+          opportunity: prev.opportunity.some((p) => p.text.trim())
+            ? prev.opportunity
+            : pointsFromSwotField(
+                latest.opportunityPoints,
+                latest.opportunity,
+              ),
+          threat: prev.threat.some((p) => p.text.trim())
+            ? prev.threat
+            : pointsFromSwotField(latest.threatPoints, latest.threat),
+        }));
+      })
+      .catch(() => undefined);
+  }, [token, form.subjectUserId, user, subjectKind, isManager]);
+
+  useEffect(() => {
+    if (!token || !isSe) return;
     void api.getProfiles(token).then((res) => {
       const own = res.data.profiles[0];
       if (own) {
@@ -150,16 +233,55 @@ function NewSwotForm() {
         setOwnProfileName(own.displayName);
       }
     });
-  }, [token, user?.roleCode]);
+  }, [token, isSe]);
+
+  useEffect(() => {
+    if (!token || !isSse) return;
+    void api
+      .getSwotList(token, { source: "SALES_SUPPORT_EXECUTIVE", pageSize: 5 })
+      .then((res) => {
+        const latest = res.data.items[0];
+        if (!latest) return;
+        setForm((prev) => ({
+          ...prev,
+          strength: prev.strength.some((p) => p.text.trim())
+            ? prev.strength
+            : pointsFromSwotField(latest.strengthPoints, latest.strength),
+          weakness: prev.weakness.some((p) => p.text.trim())
+            ? prev.weakness
+            : pointsFromSwotField(latest.weaknessPoints, latest.weakness),
+          opportunity: prev.opportunity.some((p) => p.text.trim())
+            ? prev.opportunity
+            : pointsFromSwotField(
+                latest.opportunityPoints,
+                latest.opportunity,
+              ),
+          threat: prev.threat.some((p) => p.text.trim())
+            ? prev.threat
+            : pointsFromSwotField(latest.threatPoints, latest.threat),
+        }));
+      })
+      .catch(() => undefined);
+  }, [token, isSse]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
-    if (!form.salesExecutiveProfileId) {
+
+    if (isManager && subjectKind === "SE" && !form.salesExecutiveProfileId) {
       setError("Select a Sales Executive profile");
       return;
     }
-    const forceVisible = user?.roleCode === "SALES_EXECUTIVE";
+    if (isManager && subjectKind === "SSE" && !form.subjectUserId) {
+      setError("Select a Sales Support Executive");
+      return;
+    }
+    if (isSe && !form.salesExecutiveProfileId) {
+      setError("Could not resolve your Sales Executive profile");
+      return;
+    }
+
+    const forceVisible = isSe || isSse;
     const strengthPoints = toPayload(form.strength, Boolean(forceVisible));
     const weaknessPoints = toPayload(form.weakness, Boolean(forceVisible));
     const opportunityPoints = toPayload(
@@ -179,20 +301,42 @@ function NewSwotForm() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createSwot(token, {
-        salesExecutiveProfileId: form.salesExecutiveProfileId,
-        strengthPoints,
-        weaknessPoints,
-        opportunityPoints,
-        threatPoints,
-      });
-      router.push(
-        returnTo
-          ? returnTo
-          : form.salesExecutiveProfileId
-            ? `/profiles/${form.salesExecutiveProfileId}/swot`
-            : `/swot/${res.data.swot.id}`,
-      );
+      const body =
+        isSse || (isManager && subjectKind === "SSE")
+          ? {
+              ...(isSse
+                ? { subjectType: "EXECUTIVE" as const }
+                : {
+                    subjectType: "EXECUTIVE" as const,
+                    executiveUserId: form.subjectUserId,
+                    subjectUserId: form.subjectUserId,
+                  }),
+              strengthPoints,
+              weaknessPoints,
+              opportunityPoints,
+              threatPoints,
+            }
+          : {
+              subjectType: "PROFILE" as const,
+              salesExecutiveProfileId: form.salesExecutiveProfileId,
+              strengthPoints,
+              weaknessPoints,
+              opportunityPoints,
+              threatPoints,
+            };
+
+      const res = await api.createSwot(token, body);
+      if (returnTo) {
+        router.push(returnTo);
+      } else if (isSse) {
+        router.push("/swot");
+      } else if (isManager && subjectKind === "SSE" && form.subjectUserId) {
+        router.push(`/support/${form.subjectUserId}/swot`);
+      } else if (form.salesExecutiveProfileId) {
+        router.push(`/profiles/${form.salesExecutiveProfileId}/swot`);
+      } else {
+        router.push(`/swot/${res.data.swot.id}`);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to create");
     } finally {
@@ -206,7 +350,7 @@ function NewSwotForm() {
 
   if (user?.roleCode === "SUPER_ADMIN") {
     return (
-      <ErrorState message="Super Admin is governance-only and cannot create SWOT analyses. Sign in as Commando, Team Lead, or Sales Executive." />
+      <ErrorState message="Super Admin is governance-only and cannot create SWOT analyses. Sign in as Commando, Team Lead, Sales Executive, or Sales Support." />
     );
   }
 
@@ -221,7 +365,9 @@ function NewSwotForm() {
       ? "TEAM_LEAD"
       : user?.roleCode === "COMMANDO_EXECUTIVE"
         ? "COMMANDO"
-        : "SALES_EXECUTIVE";
+        : user?.roleCode === "SALES_SUPPORT_EXECUTIVE"
+          ? "SALES_SUPPORT_EXECUTIVE"
+          : "SALES_EXECUTIVE";
 
   const backHref =
     returnTo ||
@@ -239,7 +385,7 @@ function NewSwotForm() {
           ← Back
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-          Update SWOT
+          {isSse ? "Add my SWOT" : "Update SWOT"}
         </h1>
         <p className="text-sm text-slate-600">
           Source will be recorded as <strong>{sourceHint}</strong>. Saving
@@ -248,67 +394,148 @@ function NewSwotForm() {
         </p>
         {showVisibility ? (
           <p className="mt-2 text-sm text-slate-600">
-            Add numbered points. Check <strong>Show to SE</strong> only on the
-            points the Sales Executive should see. Team Lead and Commando always
-            see the full list.
+            Use the eye icon on each point to share it with the subject
+            executive.
           </p>
         ) : null}
       </div>
 
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 rounded border border-slate-200 bg-white p-4"
-      >
-        {user?.roleCode === "SALES_EXECUTIVE" ? (
-          <p className="text-sm text-slate-600">
-            Profile: {ownProfileName ?? "Loading…"}
+      <form onSubmit={onSubmit} className="space-y-5">
+        {isManager && !lockedProfileId && !lockedSubjectUserId ? (
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-[var(--color-ink)]">
+              SWOT for
+            </legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="subjectKind"
+                  checked={subjectKind === "SE"}
+                  onChange={() => {
+                    setSubjectKind("SE");
+                    setForm((p) => ({ ...p, subjectUserId: "" }));
+                  }}
+                />
+                Sales Executive
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="subjectKind"
+                  checked={subjectKind === "SSE"}
+                  onChange={() => {
+                    setSubjectKind("SSE");
+                    setForm((p) => ({ ...p, salesExecutiveProfileId: "" }));
+                  }}
+                />
+                Sales Support Executive
+              </label>
+            </div>
+          </fieldset>
+        ) : null}
+
+        {isSse ? (
+          <p className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink-muted)]">
+            Self SWOT for your Sales Support account
           </p>
-        ) : lockedProfileId ? (
-          <p className="text-sm text-[var(--color-ink-muted)]">
-            Sales Executive:{" "}
-            <span className="font-medium text-[var(--color-ink)]">
-              {lockedProfileName ?? "Loading…"}
-            </span>
-          </p>
-        ) : (
-          <ProfileSearchSelect
-            value={form.salesExecutiveProfileId}
-            onChange={(id) =>
-              setForm({ ...form, salesExecutiveProfileId: id })
-            }
+        ) : null}
+
+        {isSe || (isManager && subjectKind === "SE") ? (
+          lockedProfileId ? (
+            <p className="text-sm text-slate-700">
+              Sales Executive:{" "}
+              <strong>{lockedProfileName ?? lockedProfileId}</strong>
+            </p>
+          ) : isSe ? (
+            <p className="text-sm text-slate-700">
+              Sales Executive: <strong>{ownProfileName ?? "Your profile"}</strong>
+            </p>
+          ) : (
+            <ProfileSearchSelect
+              label="Sales Executive"
+              value={form.salesExecutiveProfileId}
+              onChange={(id) =>
+                setForm((prev) => ({ ...prev, salesExecutiveProfileId: id }))
+              }
+            />
+          )
+        ) : null}
+
+        {isManager && subjectKind === "SSE" ? (
+          lockedSubjectUserId ? (
+            <p className="text-sm text-slate-700">
+              Sales Support:{" "}
+              <strong>
+                {personName(
+                  sseSubjects.find((s) => s.id === lockedSubjectUserId) ?? {
+                    firstName: "Support",
+                    lastName: "Executive",
+                  },
+                )}
+              </strong>
+            </p>
+          ) : (
+            <SearchableSelect
+              label="Sales Support Executive"
+              value={form.subjectUserId}
+              onChange={(id) =>
+                setForm((prev) => ({ ...prev, subjectUserId: id }))
+              }
+              placeholder="Select Sales Support…"
+              allowClear={false}
+              options={sseSubjects.map((s) => ({
+                value: s.id,
+                label: personName(s),
+              }))}
+            />
+          )
+        ) : null}
+
+        <div className="space-y-4">
+          <SwotPointsEditor
+            label="Strengths"
+            points={form.strength}
+            onChange={(strength) => setForm((prev) => ({ ...prev, strength }))}
+            showVisibility={showVisibility}
           />
-        )}
+          <SwotPointsEditor
+            label="Weaknesses"
+            points={form.weakness}
+            onChange={(weakness) => setForm((prev) => ({ ...prev, weakness }))}
+            showVisibility={showVisibility}
+          />
+          <SwotPointsEditor
+            label="Opportunities"
+            points={form.opportunity}
+            onChange={(opportunity) =>
+              setForm((prev) => ({ ...prev, opportunity }))
+            }
+            showVisibility={showVisibility}
+          />
+          <SwotPointsEditor
+            label="Threats"
+            points={form.threat}
+            onChange={(threat) => setForm((prev) => ({ ...prev, threat }))}
+            showVisibility={showVisibility}
+          />
+        </div>
 
-        <SwotPointsEditor
-          label="Strengths"
-          showVisibility={showVisibility}
-          points={form.strength}
-          onChange={(strength) => setForm({ ...form, strength })}
-        />
-        <SwotPointsEditor
-          label="Weaknesses"
-          showVisibility={showVisibility}
-          points={form.weakness}
-          onChange={(weakness) => setForm({ ...form, weakness })}
-        />
-        <SwotPointsEditor
-          label="Opportunities"
-          showVisibility={showVisibility}
-          points={form.opportunity}
-          onChange={(opportunity) => setForm({ ...form, opportunity })}
-        />
-        <SwotPointsEditor
-          label="Threats"
-          showVisibility={showVisibility}
-          points={form.threat}
-          onChange={(threat) => setForm({ ...form, threat })}
-        />
+        {error ? <ErrorState message={error} /> : null}
 
-        {error && <ErrorState message={error} />}
-
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : "Save SWOT"}
-        </Button>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={submitting}
+            onClick={() => router.push(backHref)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Saving…" : "Save SWOT"}
+          </Button>
+        </div>
       </form>
     </div>
   );

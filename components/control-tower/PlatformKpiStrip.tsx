@@ -69,7 +69,7 @@ function buildKpis(metrics: ControlTowerData["metrics"]): Kpi[] {
       icon: BriefcaseBusiness,
       tone: "brand",
       iconClass:
-        "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
+        "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)] ring-[var(--color-brand-ring)]",
     },
     {
       key: "interventions",
@@ -80,7 +80,7 @@ function buildKpis(metrics: ControlTowerData["metrics"]): Kpi[] {
       icon: Flag,
       tone: "brand",
       iconClass:
-        "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
+        "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)] ring-[var(--color-brand-ring)]",
     },
     {
       key: "referrals",

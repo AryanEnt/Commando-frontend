@@ -12,7 +12,7 @@ import {
 import { Icons } from "@/components/icons";
 
 const inputClass =
-  "mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 text-[var(--text-body)] leading-snug text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
+  "mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-[var(--text-body)] leading-snug text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
 
 const labelClass = "block text-[var(--text-label)] font-medium text-[var(--color-ink)]";
 
@@ -210,7 +210,7 @@ export function TextInput({
 }) {
   return (
     <Field label={label} hint={hint} error={error} required={required}>
-      <input className={`${inputClass} ${className}`} required={required} {...props} />
+      <input className={`${inputClass} h-10 ${className}`} required={required} {...props} />
     </Field>
   );
 }
@@ -231,7 +231,7 @@ export function TextArea({
   return (
     <Field label={label} hint={hint} error={error} required={required}>
       <textarea
-        className={`${inputClass} resize-y ${className}`}
+        className={`${inputClass} min-h-[6rem] py-2.5 resize-y ${className}`}
         rows={rows}
         required={required}
         {...props}
@@ -256,7 +256,7 @@ export function SelectField({
 }) {
   return (
     <Field label={label} hint={hint} error={error} required={required}>
-      <select className={`${inputClass} ${className}`} required={required} {...props}>
+      <select className={`${inputClass} h-10 ${className}`} required={required} {...props}>
         {children}
       </select>
     </Field>
@@ -297,7 +297,7 @@ export function SegmentedControl<T extends string>({
             aria-pressed={active}
             className={`rounded-[var(--radius-sm)] px-3 py-1.5 transition ${
               active
-                ? "bg-[var(--color-brand)] text-white"
+                ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                 : "text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
             }`}
             onClick={() => onChange(opt.value)}
@@ -740,7 +740,7 @@ export function DateTimeFields({
             disabled={disabled}
             value={date}
             onChange={(e) => onDateChange(e.target.value)}
-            className={`${inputClass} !mt-0`}
+            className={`${inputClass} h-10 !mt-0`}
           />
         </div>
         <div className="min-w-0">
@@ -754,7 +754,7 @@ export function DateTimeFields({
             disabled={disabled}
             value={time}
             onChange={(e) => onTimeChange(e.target.value)}
-            className={`${inputClass} !mt-0`}
+            className={`${inputClass} h-10 !mt-0`}
           />
         </div>
       </div>
@@ -853,7 +853,7 @@ export function ConfirmDialog({
         if (e.target === e.currentTarget && !busy) onCancel();
       }}
     >
-      <div className="dialog-panel w-full max-w-md rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-md)]">
+      <div className="dialog-panel w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-md)]">
         <h2
           id="confirm-title"
           className="text-base font-semibold text-[var(--color-ink)]"
@@ -895,7 +895,7 @@ export function Avatar({
       : name.slice(0, 2).toUpperCase();
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] font-semibold text-white ${sizes[size]}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand-dark)] ${sizes[size]}`}
       aria-hidden
     >
       {letters || "?"}
@@ -949,7 +949,7 @@ export function Tabs<T extends string>({
             aria-selected={active}
             className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition ${
               active
-                ? "border-[var(--color-brand)] font-medium text-[var(--color-ink)]"
+                ? "border-[var(--color-brand)] font-medium text-[var(--color-brand-dark)]"
                 : "border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
             }`}
             onClick={() => onChange(opt.value)}
@@ -997,7 +997,7 @@ export function LifecycleStepper({
               <span
                 className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition duration-200 ${
                   done
-                    ? "border-[var(--color-brand)] bg-[var(--color-brand)] text-white"
+                    ? "border-[var(--color-brand)] bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                     : active
                       ? "border-[var(--color-brand)] bg-[var(--color-surface)] text-[var(--color-brand)] shadow-[0_0_0_3px_var(--color-brand-soft)]"
                       : "border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[var(--color-ink-subtle)]"

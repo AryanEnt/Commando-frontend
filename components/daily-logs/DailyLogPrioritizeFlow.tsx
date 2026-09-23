@@ -166,8 +166,12 @@ export function DailyLogPrioritizeFlow({
             Ready to submit?
           </h2>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            {formatDate(log.logDate)} · {log.profile.displayName} ·{" "}
-            {log.entryCount}{" "}
+            {formatDate(log.logDate)} ·{" "}
+            {log.profile?.displayName ??
+              (log.executiveUser
+                ? `${log.executiveUser.firstName} ${log.executiveUser.lastName}`
+                : "—")}{" "}
+            · {log.entryCount}{" "}
             {log.entryCount === 1 ? "activity" : "activities"}
           </p>
           <p className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] px-3 py-2 text-[13px] text-[var(--color-ink-muted)]">

@@ -161,6 +161,7 @@ async function loadRoleInboxItems(opts: {
 
   for (const row of reviews) {
     if (row.createdById === userId) continue;
+    if (!row.profile) continue;
     const at = parseAt(row.submittedAt) || parseAt(row.createdAt);
     if (!at) continue;
     const pending =

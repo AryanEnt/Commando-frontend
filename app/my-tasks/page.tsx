@@ -127,7 +127,7 @@ export default function MyTasksPage() {
           canCreate ? (
             <Link
               href="/my-tasks/new"
-              className="rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+              className="rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
               New support task
             </Link>

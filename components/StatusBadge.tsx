@@ -7,7 +7,7 @@ import { statusLabel } from "@/lib/labels";
 const TONE: Record<string, string> = {
   /* Success / active */
   ACTIVE:
-    "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success-ring)]",
+    "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)] ring-[var(--color-brand-ring)]",
   IN_PROGRESS:
     "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success-ring)]",
   OPEN:

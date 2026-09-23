@@ -7,6 +7,7 @@ import { api, type MonitoringRecord } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime } from "@/lib/dates";
 import { responsibilityTypeLabel } from "@/lib/labels";
+import { computeWeightedScore } from "@/lib/monitoring-scoring";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
@@ -49,11 +50,21 @@ export default function MonitoringDetailPage() {
   const summary = useMemo(() => {
     if (!record) return null;
     const values = record.responses.map((r) => r.value);
+    const scored =
+      record.scorePercent != null
+        ? { scorePercent: record.scorePercent }
+        : computeWeightedScore(
+            record.responses.map((r) => ({
+              value: r.value,
+              weight: r.weightSnapshot ?? 0,
+            })),
+          );
     return {
       total: values.length,
       yes: values.filter((v) => v === "YES").length,
       no: values.filter((v) => v === "NO").length,
       na: values.filter((v) => v === "NA").length,
+      scorePercent: scored.scorePercent,
     };
   }, [record]);
 
@@ -78,21 +89,35 @@ export default function MonitoringDetailPage() {
     );
   }
 
-  const backHref = `/profiles/${record.salesExecutiveProfileId}/monitoring`;
+  const subjectName = record.profile
+    ? record.profile.displayName
+    : record.executiveUser
+      ? `${record.executiveUser.firstName} ${record.executiveUser.lastName}`.trim()
+      : "Subject";
+  const backHref = record.executiveUserId
+    ? `/support/${record.executiveUserId}/monitoring`
+    : `/profiles/${record.salesExecutiveProfileId}/monitoring`;
+  const subjectHref = record.executiveUserId
+    ? `/support/${record.executiveUserId}`
+    : `/profiles/${record.salesExecutiveProfileId}`;
+  const subjectNavLabel = record.executiveUserId
+    ? "Sales Support"
+    : "Sales Executives";
+  const subjectListHref = record.executiveUserId ? "/support" : "/profiles";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="space-y-4">
         <nav className="text-xs text-[var(--color-ink-muted)]">
-          <Link href="/profiles" className="hover:text-[var(--color-ink)]">
-            Sales Executives
+          <Link href={subjectListHref} className="hover:text-[var(--color-ink)]">
+            {subjectNavLabel}
           </Link>
           <span className="mx-1.5">/</span>
           <Link
-            href={`/profiles/${record.salesExecutiveProfileId}`}
+            href={subjectHref}
             className="hover:text-[var(--color-ink)]"
           >
-            {record.profile.displayName}
+            {subjectName}
           </Link>
           <span className="mx-1.5">/</span>
           <Link href={backHref} className="hover:text-[var(--color-ink)]">
@@ -106,18 +131,18 @@ export default function MonitoringDetailPage() {
           href={backHref}
           className="inline-flex text-sm font-medium text-[var(--color-brand)] hover:underline"
         >
-          ← Back to {record.profile.displayName}
+          ← Back to {subjectName}
         </Link>
 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <Avatar name={record.profile.displayName} size="lg" />
+            <Avatar name={subjectName} size="lg" />
             <div>
               <h1 className="text-[1.75rem] font-semibold tracking-tight text-[var(--color-ink)]">
                 {record.category.name}
               </h1>
               <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
-                {record.profile.displayName} ·{" "}
+                {subjectName} ·{" "}
                 {formatDateTime(record.observedAt)}
               </p>
               <div className="mt-2">
@@ -131,6 +156,14 @@ export default function MonitoringDetailPage() {
       <ReadOnlyPanel title="Checklist">
         {summary ? (
           <p className="mb-3 text-sm text-[var(--color-ink-muted)]">
+            {summary.scorePercent != null ? (
+              <>
+                <span className="font-semibold text-[var(--color-ink)]">
+                  Score {summary.scorePercent}%
+                </span>
+                {" · "}
+              </>
+            ) : null}
             {summary.yes} yes · {summary.no} needs attention · {summary.na} N/A
             · {summary.total} items
           </p>
@@ -154,6 +187,11 @@ export default function MonitoringDetailPage() {
                     <span className="text-sm font-medium text-[var(--color-ink)]">
                       {label}
                     </span>
+                    {typeof r.weightSnapshot === "number" ? (
+                      <span className="text-[11px] font-semibold tabular-nums text-[var(--color-ink-muted)]">
+                        {r.weightSnapshot}%
+                      </span>
+                    ) : null}
                     {isCustom ? (
                       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-ink-muted)] ring-1 ring-[var(--color-line)]">
                         Custom

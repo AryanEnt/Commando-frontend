@@ -32,7 +32,14 @@ function RedirectInner() {
         const res = await api.getDailyLog(token, params.id);
         if (cancelled) return;
         router.replace(
-          seDailyLogHref(res.data.log.salesExecutiveProfileId, res.data.log.id),
+          res.data.log.salesExecutiveProfileId
+            ? seDailyLogHref(
+                res.data.log.salesExecutiveProfileId,
+                res.data.log.id,
+              )
+            : res.data.log.executiveUserId
+              ? `/support/${res.data.log.executiveUserId}/daily-logs/${res.data.log.id}`
+              : `/daily-logs/${res.data.log.id}`,
         );
       } catch (err) {
         if (!cancelled) {

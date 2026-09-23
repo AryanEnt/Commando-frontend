@@ -35,25 +35,16 @@ export async function uploadMeetingMinutes(
   file: File,
 ): Promise<MeetingMinutesPayload> {
   const contentType = file.type || "application/octet-stream";
-  const presign = await api.presignUpload(token, {
+  // Upload through the API → R2 (same-origin). Direct browser PUT to R2
+  // fails when the bucket CORS policy is missing or incomplete.
+  const res = await api.uploadObject(token, {
     purpose: "weekly-review-minutes",
     fileName: file.name,
     contentType,
-    contentLength: file.size,
+    file,
   });
-  const put = await fetch(presign.data.uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type":
-        presign.data.headers["Content-Type"] ?? contentType,
-    },
-    body: file,
-  });
-  if (!put.ok) {
-    throw new Error("Failed to upload meeting minutes to storage");
-  }
   return {
-    key: presign.data.key,
+    key: res.data.key,
     fileName: file.name,
     contentType,
     size: file.size,

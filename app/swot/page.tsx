@@ -9,6 +9,11 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
+  swotSourceLabel,
+  swotSubjectName,
+  swotSubjectRoleLabel,
+} from "@/lib/swot-display";
+import {
   Button,
   DateTimeCell,
   EmptyState,
@@ -22,7 +27,13 @@ import {
   TextInput,
 } from "@/components/ui";
 
-const SOURCES = ["", "TEAM_LEAD", "COMMANDO", "SALES_EXECUTIVE"] as const;
+const SOURCES = [
+  "",
+  "TEAM_LEAD",
+  "COMMANDO",
+  "SALES_EXECUTIVE",
+  "SALES_SUPPORT_EXECUTIVE",
+] as const;
 
 export default function SwotListPage() {
   return (
@@ -53,8 +64,11 @@ function SwotListContent() {
   const [error, setError] = useState<string | null>(null);
   const pageSize = 10;
   const isAdmin = user?.roleCode === "SUPER_ADMIN";
+  const isSse = user?.roleCode === "SALES_SUPPORT_EXECUTIVE";
   const canCreate =
     hasPermission("SWOT_CREATE") && user?.roleCode !== "SUPER_ADMIN";
+  const createHref = isSse ? "/swot/new" : "/swot/new";
+  const createLabel = isSse ? "Add my SWOT" : "New SWOT";
 
   useEffect(() => {
     if (!token || !isAdmin) return;
@@ -112,17 +126,19 @@ function SwotListContent() {
       <PageHeader
         title="SWOT Analysis"
         description={
-          isAdmin
-            ? "Read-only Super Admin reporting. Filter by team, Commando, Sales Executive, and SWOT source."
-            : "Source-aware historical SWOT records. New entries never overwrite prior ones."
+          isSse
+            ? "Your Self, Team Lead, and Commando SWOT streams — kept separate by source."
+            : isAdmin
+              ? "Read-only Super Admin reporting. Filter by team, Commando, Sales Executive, and SWOT source."
+              : "Source-aware historical SWOT records. New entries never overwrite prior ones."
         }
         actions={
           canCreate ? (
             <Link
-              href="/swot/new"
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              href={createHref}
+              className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
-              New SWOT
+              {createLabel}
             </Link>
           ) : null
         }
@@ -149,9 +165,14 @@ function SwotListContent() {
           }}
         >
           <option value="">All sources</option>
-          {SOURCES.filter(Boolean).map((s) => (
+          {SOURCES.filter((s): s is Exclude<(typeof SOURCES)[number], ""> =>
+            Boolean(s),
+          ).map((s) => (
             <option key={s} value={s}>
-              {s}
+              {swotSourceLabel(s)}
+              {s === "SALES_EXECUTIVE" || s === "SALES_SUPPORT_EXECUTIVE"
+                ? ` (${s === "SALES_SUPPORT_EXECUTIVE" ? "SSE" : "SE"})`
+                : ""}
             </option>
           ))}
         </SelectField>
@@ -204,21 +225,18 @@ function SwotListContent() {
         <EmptyState
           title="No SWOT records visible"
           description="Try adjusting filters or create a new SWOT entry."
-          actionHref={canCreate ? "/swot/new" : undefined}
-          actionLabel={canCreate ? "New SWOT" : undefined}
+          actionHref={canCreate ? createHref : undefined}
+          actionLabel={canCreate ? createLabel : undefined}
         />
       )}
 
       {!loading && items.length > 0 && (
-        <Panel
-          title={`SWOT history · ${total}`}
-          tone="history"
-        >
+        <Panel title={`SWOT history · ${total}`} tone="history">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-white text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">Profile</th>
+                  <th className="px-3 py-2">Subject</th>
                   <th className="px-3 py-2">Team</th>
                   <th className="px-3 py-2">Source</th>
                   <th className="px-3 py-2">Creator</th>
@@ -229,12 +247,18 @@ function SwotListContent() {
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-medium">
-                      {item.profile.displayName}
-                    </td>
-                    <td className="px-3 py-2">{item.team.name}</td>
                     <td className="px-3 py-2">
-                      <StatusBadge status={item.source} />
+                      <p className="font-medium">{swotSubjectName(item)}</p>
+                      <p className="text-xs text-slate-500">
+                        {swotSubjectRoleLabel(item)}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2">{item.team?.name ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      <StatusBadge
+                        status={item.source}
+                        label={swotSourceLabel(item.source)}
+                      />
                     </td>
                     <td className="px-3 py-2">
                       {item.createdBy.firstName} {item.createdBy.lastName}

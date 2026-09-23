@@ -14,6 +14,7 @@ import {
   PageHeader,
   SegmentedControl,
   SelectField,
+  TextArea,
   TextInput,
 } from "@/components/ui";
 
@@ -37,6 +38,7 @@ const ALL_ROLE_OPTIONS = [
 ] as const;
 
 type RoleCode = (typeof ALL_ROLE_OPTIONS)[number]["code"];
+type TeamChoice = "existing" | "new" | "none";
 
 function passwordChecks(password: string) {
   return {
@@ -44,6 +46,16 @@ function passwordChecks(password: string) {
     letter: /[A-Za-z]/.test(password),
     number: /\d/.test(password),
   };
+}
+
+function defaultTeamChoice(
+  roleCode: RoleCode,
+  teamCount: number,
+): TeamChoice {
+  if (roleCode === "TEAM_LEAD") {
+    return teamCount === 0 ? "new" : "existing";
+  }
+  return teamCount === 0 ? "new" : "none";
 }
 
 export default function CreateUserPage() {
@@ -84,7 +96,11 @@ export default function CreateUserPage() {
       : "TEAM_LEAD") as RoleCode,
     isActive: "true" as "true" | "false",
     teamId: "",
+    teamChoice: "new" as TeamChoice,
+    newTeamName: "",
+    newTeamDescription: "",
   });
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
 
   const checks = useMemo(() => passwordChecks(form.password), [form.password]);
   const selectedTeam = useMemo(
@@ -94,16 +110,32 @@ export default function CreateUserPage() {
   const selectedRole = roleOptions.find((r) => r.code === form.roleCode);
   const exitHref = canCreateAny ? "/users" : "/teams";
   const exitLabel = canCreateAny ? "Users" : "Teams";
+  const isTeamLeadRole = form.roleCode === "TEAM_LEAD";
 
   useEffect(() => {
     if (!token) return;
     void api.getTeams(token).then((res) => {
-      setTeams(res.data.teams);
-      if (supportOnly && res.data.teams[0]) {
-        setForm((prev) =>
-          prev.teamId ? prev : { ...prev, teamId: res.data.teams[0]!.id },
-        );
-      }
+      const loaded = res.data.teams;
+      setTeams(loaded);
+      setTeamsLoaded(true);
+      setForm((prev) => {
+        const next = { ...prev };
+        if (supportOnly && loaded[0] && !prev.teamId) {
+          next.teamId = loaded[0].id;
+        }
+        if (!supportOnly) {
+          next.teamChoice = defaultTeamChoice(prev.roleCode, loaded.length);
+          if (
+            next.teamChoice === "existing" &&
+            !prev.teamId &&
+            loaded.length === 1 &&
+            loaded[0]
+          ) {
+            next.teamId = loaded[0].id;
+          }
+        }
+        return next;
+      });
     });
   }, [token, supportOnly]);
 
@@ -116,14 +148,52 @@ export default function CreateUserPage() {
     );
   }, [supportOnly]);
 
-  function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function clearFieldError(key: string) {
     setFieldErrors((prev) => {
       if (!prev[key]) return prev;
       const next = { ...prev };
       delete next[key];
       return next;
     });
+  }
+
+  function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "roleCode" && teamsLoaded && !supportOnly) {
+        next.teamChoice = defaultTeamChoice(
+          value as RoleCode,
+          teams.length,
+        );
+        if (
+          next.teamChoice === "existing" &&
+          !prev.teamId &&
+          teams.length === 1 &&
+          teams[0]
+        ) {
+          next.teamId = teams[0].id;
+        }
+      }
+      return next;
+    });
+    clearFieldError(String(key));
+  }
+
+  function setTeamChoice(choice: TeamChoice) {
+    setForm((prev) => {
+      const next = { ...prev, teamChoice: choice };
+      if (
+        choice === "existing" &&
+        !prev.teamId &&
+        teams.length === 1 &&
+        teams[0]
+      ) {
+        next.teamId = teams[0].id;
+      }
+      return next;
+    });
+    clearFieldError("teamId");
+    clearFieldError("newTeamName");
   }
 
   function validate(): boolean {
@@ -143,6 +213,14 @@ export default function CreateUserPage() {
     if (supportOnly && !form.teamId && teams.length === 0) {
       next.teamId = "You must lead a team to create Sales Support";
     }
+    if (!supportOnly) {
+      if (form.teamChoice === "existing" && !form.teamId) {
+        next.teamId = "Select a team, or create a new one";
+      }
+      if (form.teamChoice === "new" && !form.newTeamName.trim()) {
+        next.newTeamName = "Team name is required";
+      }
+    }
     setFieldErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -150,11 +228,27 @@ export default function CreateUserPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token || !validate()) return;
-    const resolvedTeamId =
-      form.teamId || (supportOnly ? teams[0]?.id : undefined) || null;
     setSubmitting(true);
     setError(null);
     try {
+      let resolvedTeamId: string | null =
+        form.teamId || (supportOnly ? teams[0]?.id : undefined) || null;
+
+      if (!supportOnly) {
+        if (form.teamChoice === "new") {
+          const teamRes = await api.createTeam(token, {
+            name: form.newTeamName.trim(),
+            description: form.newTeamDescription.trim() || undefined,
+          });
+          resolvedTeamId = teamRes.data.team.id;
+          setTeams((prev) => [...prev, teamRes.data.team]);
+        } else if (form.teamChoice === "existing") {
+          resolvedTeamId = form.teamId || null;
+        } else {
+          resolvedTeamId = null;
+        }
+      }
+
       const res = await api.createUser(token, {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
@@ -165,7 +259,11 @@ export default function CreateUserPage() {
         teamId: resolvedTeamId,
       });
       pushToast(
-        supportOnly ? "Sales Support Executive created" : "User created",
+        supportOnly
+          ? "Sales Support Executive created"
+          : form.teamChoice === "new"
+            ? "User and team created"
+            : "User created",
         "success",
       );
       if (canCreateAny) {
@@ -197,7 +295,7 @@ export default function CreateUserPage() {
         description={
           supportOnly
             ? "Create a Sales Support Executive account for your team."
-            : "Add a login account, assign a system role, and optionally place them on a team."
+            : "Add a login account, assign a system role, and place them on a team — create one here if needed."
         }
         actions={
           <Button
@@ -423,32 +521,93 @@ export default function CreateUserPage() {
                 Organization
               </h2>
               <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-                Optional. Membership uses a team role matching the system role
-                selected above.
+                {isTeamLeadRole
+                  ? "Team Leads need a team. Create one here or pick an existing team."
+                  : "Place them on a team now, create one here, or skip and assign later."}
               </p>
             </div>
-            <SelectField
-              label="Team"
-              value={form.teamId}
-              onChange={(e) => setField("teamId", e.target.value)}
-              error={fieldErrors.teamId}
-              hint={
-                selectedTeam
-                  ? `Will join ${selectedTeam.name}${
-                      selectedRole
-                        ? ` as ${roleLabel(selectedRole.code)}`
-                        : ""
-                    }.`
-                  : "You can assign a team later from the user or team page."
-              }
-            >
-              <option value="">No team yet</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </SelectField>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-[var(--color-ink)]">
+                Team
+              </p>
+              <SegmentedControl
+                ariaLabel="Team assignment"
+                value={form.teamChoice}
+                onChange={setTeamChoice}
+                options={[
+                  ...(teams.length > 0
+                    ? [{ value: "existing" as const, label: "Existing" }]
+                    : []),
+                  { value: "new", label: "Create new" },
+                  { value: "none", label: "Skip" },
+                ]}
+              />
+            </div>
+
+            {form.teamChoice === "existing" ? (
+              <SelectField
+                label="Select team"
+                value={form.teamId}
+                onChange={(e) => setField("teamId", e.target.value)}
+                error={fieldErrors.teamId}
+                hint={
+                  selectedTeam
+                    ? `Will join ${selectedTeam.name}${
+                        selectedRole
+                          ? ` as ${roleLabel(selectedRole.code)}`
+                          : ""
+                      }.`
+                    : "Choose which team they join."
+                }
+              >
+                <option value="">Select a team…</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </SelectField>
+            ) : null}
+
+            {form.teamChoice === "new" ? (
+              <div className="space-y-4">
+                <TextInput
+                  label="Team name"
+                  required
+                  value={form.newTeamName}
+                  onChange={(e) => setField("newTeamName", e.target.value)}
+                  error={fieldErrors.newTeamName}
+                  placeholder={
+                    isTeamLeadRole && form.firstName.trim()
+                      ? `${form.firstName.trim()}'s team`
+                      : "Alpha Sales Team"
+                  }
+                  hint={
+                    selectedRole
+                      ? `Creates the team and adds this person as ${roleLabel(selectedRole.code)}.`
+                      : "Creates the team and adds this person as a member."
+                  }
+                />
+                <TextArea
+                  label="Description"
+                  rows={2}
+                  value={form.newTeamDescription}
+                  onChange={(e) =>
+                    setField("newTeamDescription", e.target.value)
+                  }
+                  placeholder="Optional context for this team"
+                />
+              </div>
+            ) : null}
+
+            {form.teamChoice === "none" ? (
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                {isTeamLeadRole
+                  ? "You can create or assign their team later from the Teams page."
+                  : "You can assign a team later from the user or team page."}
+              </p>
+            ) : null}
           </section>
         ) : null}
 
@@ -474,10 +633,14 @@ export default function CreateUserPage() {
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting
-                ? "Creating…"
+                ? form.teamChoice === "new" && !supportOnly
+                  ? "Creating user & team…"
+                  : "Creating…"
                 : supportOnly
                   ? "Create Sales Support"
-                  : "Create user"}
+                  : form.teamChoice === "new"
+                    ? "Create user & team"
+                    : "Create user"}
             </Button>
           </div>
         </div>

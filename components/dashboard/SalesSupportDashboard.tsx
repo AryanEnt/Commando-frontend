@@ -7,6 +7,7 @@ import {
   api,
   type SalesSupportLink,
   type SupportTask,
+  type SwotItem,
 } from "@/lib/api";
 import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
@@ -111,6 +112,7 @@ export function SalesSupportDashboard({
   const [activeTasks, setActiveTasks] = useState<SupportTask[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<SupportTask[]>([]);
   const [blockedTasks, setBlockedTasks] = useState<SupportTask[]>([]);
+  const [selfSwot, setSelfSwot] = useState<SwotItem | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -125,19 +127,27 @@ export function SalesSupportDashboard({
     setState("loading");
     setError(null);
     try {
-      const [linksRes, activeRes, overdueRes, blockedRes] = await Promise.all([
-        api.getSalesSupportLinks(token, { isActive: true, pageSize: 100 }),
-        api.getSupportTasks(token, { view: "active", pageSize: 100 }),
-        api.getSupportTasks(token, { filter: "overdue", pageSize: 50 }),
-        api.getSupportTasks(token, {
-          filter: "blocked",
-          pageSize: 50,
-        }),
-      ]);
+      const [linksRes, activeRes, overdueRes, blockedRes, swotRes] =
+        await Promise.all([
+          api.getSalesSupportLinks(token, { isActive: true, pageSize: 100 }),
+          api.getSupportTasks(token, { view: "active", pageSize: 100 }),
+          api.getSupportTasks(token, { filter: "overdue", pageSize: 50 }),
+          api.getSupportTasks(token, {
+            filter: "blocked",
+            pageSize: 50,
+          }),
+          api
+            .getSwotList(token, {
+              source: "SALES_SUPPORT_EXECUTIVE",
+              pageSize: 1,
+            })
+            .catch(() => null),
+        ]);
       setLinks(linksRes.data.links);
       setActiveTasks(activeRes.data.tasks);
       setOverdueTasks(overdueRes.data.tasks);
       setBlockedTasks(blockedRes.data.tasks);
+      setSelfSwot(swotRes?.data.items[0] ?? null);
       setState("ready");
     } catch (err) {
       setError(
@@ -344,7 +354,19 @@ export function SalesSupportDashboard({
         description={`Here's your support workload and what needs attention today${firstName ? ` · ${firstName}` : ""}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href="/my-tasks" variant="secondary" size="sm">
+            {selfSwot ? (
+              <ButtonLink href={`/swot/${selfSwot.id}`} size="sm">
+                View My SWOT
+              </ButtonLink>
+            ) : (
+              <ButtonLink href="/swot/new" size="sm">
+                Add My SWOT
+              </ButtonLink>
+            )}
+            <ButtonLink href="/work-log" variant="secondary" size="sm">
+              + Add Work Log
+            </ButtonLink>
+            <ButtonLink href="/my-tasks" variant="ghost" size="sm">
               All my tasks
             </ButtonLink>
             <ButtonLink href="/sync-evaluations" variant="ghost" size="sm">

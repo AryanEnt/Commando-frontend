@@ -245,7 +245,7 @@ function ProfilesPageInner() {
               {canOnboardSe ? (
                 <Link
                   href="/users/sales-executives/new"
-                  className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-white hover:bg-[var(--color-brand-hover)]"
+                  className="inline-flex h-9 items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3.5 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
                 >
                   Add Sales Executive
                 </Link>

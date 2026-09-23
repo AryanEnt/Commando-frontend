@@ -87,7 +87,7 @@ function FeedbackContent() {
           canCreate ? (
             <Link
               href="/feedback/new"
-              className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-3 py-2 text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)]"
             >
               New feedback
             </Link>
@@ -170,7 +170,12 @@ function FeedbackContent() {
                     <td className="px-3 py-2">
                       <DateTimeCell value={item.createdAt} />
                     </td>
-                    <td className="px-3 py-2">{item.profile.displayName}</td>
+                    <td className="px-3 py-2">
+                      {item.profile?.displayName ??
+                        (item.executiveUser
+                          ? `${item.executiveUser.firstName} ${item.executiveUser.lastName}`
+                          : "—")}
+                    </td>
                     <td className="px-3 py-2">
                       <StatusBadge status={item.source} />
                     </td>

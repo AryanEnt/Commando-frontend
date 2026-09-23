@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
 import { useToast } from "@/lib/toast-context";
 import { seWorkspaceHref } from "@/lib/se-workspace-nav";
+import { sseWorkspaceHref } from "@/lib/sse-workspace-nav";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   Button,
@@ -22,6 +23,10 @@ import {
   TextArea,
 } from "@/components/ui";
 import { Settings2 } from "lucide-react";
+import {
+  allocationStatus,
+  computeWeightedScore,
+} from "@/lib/monitoring-scoring";
 
 const RESPONSE_VALUES = [
   { value: "YES", label: "Done" },
@@ -34,7 +39,8 @@ type ChecklistRow = EffectiveMonitoringChecklistItem & {
 };
 
 type Props = {
-  profileId: string;
+  profileId?: string;
+  executiveUserId?: string;
   profileName: string;
   submitting: boolean;
   setSubmitting: (v: boolean) => void;
@@ -58,6 +64,7 @@ function itemKey(item: EffectiveMonitoringChecklistItem) {
  */
 export function MonitoringSessionForm({
   profileId,
+  executiveUserId,
   profileName,
   submitting,
   setSubmitting,
@@ -65,6 +72,17 @@ export function MonitoringSessionForm({
   onSuccess,
   activeSupport: activeSupportProp = null,
 }: Props) {
+  const checklistSubject = useMemo(
+    () =>
+      executiveUserId
+        ? ({ executiveUserId } as const)
+        : ({ profileId: profileId! } as const),
+    [executiveUserId, profileId],
+  );
+  const checklistHref = executiveUserId
+    ? sseWorkspaceHref(executiveUserId, "checklist")
+    : seWorkspaceHref(profileId!, "checklist");
+  const isSupportSubject = Boolean(executiveUserId);
   const { token, hasPermission } = useAuth();
   const { pushToast } = useToast();
   const [categories, setCategories] = useState<MonitoringCategory[]>([]);
@@ -80,7 +98,7 @@ export function MonitoringSessionForm({
   const [selectedSupportIds, setSelectedSupportIds] = useState<string[]>([]);
 
   const activeSupport = activeSupportProp ?? fetchedSupport;
-  const showSupportSection = activeSupport.length > 0;
+  const showSupportSection = !isSupportSubject && activeSupport.length > 0;
   const activeSupportKey = activeSupport.map((l) => l.id).join(",");
 
   useEffect(() => {
@@ -95,7 +113,12 @@ export function MonitoringSessionForm({
       setFetchedSupport([]);
       return;
     }
-    if (!token || !profileId || !hasPermission("SALES_SUPPORT_LINK_VIEW")) {
+    if (
+      isSupportSubject ||
+      !token ||
+      !profileId ||
+      !hasPermission("SALES_SUPPORT_LINK_VIEW")
+    ) {
       setFetchedSupport([]);
       return;
     }
@@ -111,15 +134,15 @@ export function MonitoringSessionForm({
     return () => {
       cancelled = true;
     };
-  }, [token, profileId, activeSupportProp, hasPermission]);
+  }, [token, profileId, isSupportSubject, activeSupportProp, hasPermission]);
 
   useEffect(() => {
     setSupportNone(false);
     setSelectedSupportIds([]);
-  }, [profileId, activeSupportKey]);
+  }, [profileId, executiveUserId, activeSupportKey]);
 
   useEffect(() => {
-    if (!token || !categoryId || !profileId) {
+    if (!token || !categoryId) {
       setItems([]);
       return;
     }
@@ -127,7 +150,7 @@ export function MonitoringSessionForm({
     setChecklistLoading(true);
     setChecklistError(null);
     void api
-      .getEffectiveMonitoringChecklist(token, profileId, categoryId)
+      .getEffectiveMonitoringChecklist(token, checklistSubject, categoryId)
       .then((res) => {
         if (cancelled) return;
         const next = res.data.items.map((item) => ({
@@ -158,7 +181,7 @@ export function MonitoringSessionForm({
     return () => {
       cancelled = true;
     };
-  }, [token, profileId, categoryId]);
+  }, [token, checklistSubject, categoryId]);
 
   const selectedCategory = useMemo(
     () => categories.find((c) => c.id === categoryId) ?? null,
@@ -167,10 +190,32 @@ export function MonitoringSessionForm({
 
   const unanswered = items.filter((i) => !responses[i.clientKey]).length;
   const yesCount = items.filter((i) => responses[i.clientKey] === "YES").length;
+  const weightAlloc = useMemo(
+    () => allocationStatus(items.reduce((s, i) => s + (i.weight ?? 0), 0)),
+    [items],
+  );
+  const liveScore = useMemo(() => {
+    if (unanswered > 0) return null;
+    return computeWeightedScore(
+      items.map((i) => ({
+        value: responses[i.clientKey] ?? "NA",
+        weight: i.weight ?? 0,
+      })),
+    );
+  }, [items, responses, unanswered]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token || !selectedCategory || items.length === 0) return;
+    if (!weightAlloc.isComplete) {
+      pushToast(
+        weightAlloc.remaining > 0
+          ? `Checklist weights must total 100% before monitoring (${weightAlloc.remaining}% remaining). Customize the checklist first.`
+          : `Checklist weights must total 100% before monitoring (${weightAlloc.over}% over). Customize the checklist first.`,
+        "error",
+      );
+      return;
+    }
     if (unanswered > 0) {
       pushToast("Mark every checklist item before saving", "error");
       return;
@@ -179,7 +224,9 @@ export function MonitoringSessionForm({
     setError(null);
     try {
       const res = await api.createMonitoringRecord(token, {
-        salesExecutiveProfileId: profileId,
+        ...(executiveUserId
+          ? { executiveUserId }
+          : { salesExecutiveProfileId: profileId! }),
         categoryId,
         observation: observation.trim() || null,
         responses: items.map((item) => {
@@ -239,7 +286,7 @@ export function MonitoringSessionForm({
           </p>
         </div>
         <Link
-          href={seWorkspaceHref(profileId, "checklist")}
+          href={checklistHref}
           className="ck-entry-link"
         >
           <Settings2 size={14} strokeWidth={2} aria-hidden />
@@ -286,7 +333,7 @@ export function MonitoringSessionForm({
             Customize the checklist first, then come back to monitor.
           </p>
           <Link
-            href={seWorkspaceHref(profileId, "checklist")}
+            href={checklistHref}
             className="mt-3 inline-block text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
           >
             Open Checklist →
@@ -299,9 +346,24 @@ export function MonitoringSessionForm({
               {selectedCategory?.name ?? "Checklist"}
             </h2>
             <p className="text-[12px] tabular-nums text-[var(--color-ink-subtle)]">
+              {liveScore?.scorePercent != null
+                ? `Score ${liveScore.scorePercent}% · `
+                : ""}
               {yesCount} / {items.length} done
             </p>
           </div>
+          {!weightAlloc.isComplete ? (
+            <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--status-warning)] bg-[color-mix(in_srgb,var(--status-warning)_10%,transparent)] px-3 py-2 text-sm text-[var(--color-ink)]">
+              Weights total {weightAlloc.total}% — must equal 100% before
+              saving.{" "}
+              <Link
+                href={checklistHref}
+                className="font-semibold text-[var(--color-brand)] hover:underline"
+              >
+                Fix weights
+              </Link>
+            </div>
+          ) : null}
           <ul className="space-y-2">
             {items.map((item) => {
               const value = responses[item.clientKey] ?? "";
@@ -310,9 +372,14 @@ export function MonitoringSessionForm({
                   key={item.clientKey}
                   className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-3"
                 >
-                  <p className="text-sm font-medium text-[var(--color-ink)]">
-                    {item.label}
-                  </p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-[var(--color-ink)]">
+                      {item.label}
+                    </p>
+                    <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--color-ink-muted)]">
+                      {item.weight ?? 0}%
+                    </span>
+                  </div>
                   <div
                     className="mt-2 flex flex-wrap gap-1.5"
                     role="radiogroup"
@@ -335,7 +402,7 @@ export function MonitoringSessionForm({
                           className={`rounded-full px-3 py-1 text-[12px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand)] ${
                             selected
                               ? opt.value === "YES"
-                                ? "bg-[var(--color-brand)] text-white"
+                                ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                                 : opt.value === "NO"
                                   ? "bg-[var(--status-danger)] text-white"
                                   : "bg-[var(--color-ink-subtle)] text-white"

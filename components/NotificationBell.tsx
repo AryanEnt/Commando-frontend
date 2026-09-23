@@ -51,7 +51,7 @@ export function NotificationBell({
       >
         <Bell size={18} strokeWidth={1.85} />
         {count > 0 ? (
-          <span className="absolute right-1 top-1 inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-[#059669] px-1 py-px text-[9px] font-bold leading-none text-white ring-2 ring-[var(--color-surface)]">
+          <span className="absolute right-1 top-1 inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-[var(--color-brand)] px-1 py-px text-[9px] font-bold leading-none text-[var(--color-brand-on)] ring-2 ring-[var(--color-surface)]">
             {label}
           </span>
         ) : null}

@@ -75,28 +75,60 @@ export function ManagementPacketReadonly({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-semibold">Team Lead Assessment</h3>
+          <h3 className="text-sm font-semibold">Profile SWOT</h3>
           <p className="text-xs text-[var(--color-ink-muted)]">
-            SWOT provided by Team Lead · Read-only
+            Profile SWOT provided by Team Lead · Read-only
           </p>
         </div>
         {swot ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SwotBlock title="Strengths" value={swot.strength} tone="strength" />
-            <SwotBlock title="Weaknesses" value={swot.weakness} tone="weakness" />
-            <SwotBlock
-              title="Opportunities"
-              value={swot.opportunity}
-              tone="opportunity"
-            />
-            <SwotBlock title="Threats" value={swot.threat} tone="threat" />
-          </div>
+          <SwotGrid
+            strength={swot.strength}
+            weakness={swot.weakness}
+            opportunity={swot.opportunity}
+            threat={swot.threat}
+          />
         ) : (
           <div className="surface border-dashed p-5 text-sm text-[var(--color-ink-muted)]">
-            No Team Lead SWOT is attached to this intervention.
+            No Profile SWOT is attached to this intervention.
           </div>
         )}
       </section>
+
+      {(referral.teamLeadSupportSwot?.length ?? 0) > 0 ||
+      (referral.assignedSupport?.length ?? 0) > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold">Sales Support SWOT</h3>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              Team Lead assessment of Sales Support assigned to this profile ·
+              Read-only
+            </p>
+          </div>
+          {(referral.teamLeadSupportSwot ?? []).length > 0 ? (
+            (referral.teamLeadSupportSwot ?? []).map((item) => {
+              const name =
+                `${item.supportUser.firstName} ${item.supportUser.lastName}`.trim();
+              return (
+                <div key={item.id} className="space-y-3">
+                  <p className="text-sm font-medium text-[var(--color-ink)]">
+                    {name}
+                  </p>
+                  <SwotGrid
+                    strength={item.strength}
+                    weakness={item.weakness}
+                    opportunity={item.opportunity}
+                    threat={item.threat}
+                  />
+                </div>
+              );
+            })
+          ) : (
+            <div className="surface border-dashed p-5 text-sm text-[var(--color-ink-muted)]">
+              No Sales Support SWOT is attached to this intervention.
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -118,6 +150,27 @@ function ReadonlyBlock({
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-ink)]">
         {value || "—"}
       </p>
+    </div>
+  );
+}
+
+function SwotGrid({
+  strength,
+  weakness,
+  opportunity,
+  threat,
+}: {
+  strength: string;
+  weakness: string;
+  opportunity: string;
+  threat: string;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <SwotBlock title="Strengths" value={strength} tone="strength" />
+      <SwotBlock title="Weaknesses" value={weakness} tone="weakness" />
+      <SwotBlock title="Opportunities" value={opportunity} tone="opportunity" />
+      <SwotBlock title="Threats" value={threat} tone="threat" />
     </div>
   );
 }

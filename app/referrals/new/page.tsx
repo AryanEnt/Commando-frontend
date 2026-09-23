@@ -224,7 +224,7 @@ function NewReferralForm() {
             key={label}
             className={`rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-medium ${
               index === step
-                ? "bg-[var(--color-brand)] text-white"
+                ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
                 : index < step
                   ? "bg-[var(--color-brand-soft)] text-[var(--color-brand)]"
                   : "bg-[var(--color-surface-2)] text-[var(--color-ink-muted)]"

@@ -198,20 +198,20 @@ export default function CommandoPerformanceReportPage() {
 
       {!loading && rows.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <div className="table-frame overflow-x-auto">
+            <table className="data-table min-w-full">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2">Commando Name</th>
-                  <th className="px-3 py-2">Profile</th>
-                  <th className="px-3 py-2">Assigned</th>
-                  <th className="px-3 py-2">Avg. Score</th>
-                  <th className="px-3 py-2">TL Verdict</th>
-                  <th className="px-3 py-2">SWOT</th>
-                  <th className="px-3 py-2">Eisenhower</th>
-                  <th className="px-3 py-2">Rating</th>
-                  <th className="px-3 py-2">Star rating</th>
-                  <th className="px-3 py-2" />
+                  <th>Commando Name</th>
+                  <th>Profile</th>
+                  <th>Assigned</th>
+                  <th>Avg. Score</th>
+                  <th>TL Verdict</th>
+                  <th>SWOT</th>
+                  <th>Eisenhower</th>
+                  <th>Rating</th>
+                  <th>Star rating</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>

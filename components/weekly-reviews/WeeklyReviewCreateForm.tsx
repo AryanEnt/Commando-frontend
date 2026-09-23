@@ -62,7 +62,7 @@ function defaultMeetingTime() {
 }
 
 type Props = {
-  profileId: string;
+  profileId?: string;
   submitting: boolean;
   /** YYYY-MM-DD Monday (or any day in week) from hub. */
   initialWeekStart?: string;
@@ -95,7 +95,11 @@ export function WeeklyReviewCreateForm({
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    if (!token || !profileId) return;
+    if (!token || !profileId) {
+      setLoadingFollowUps(false);
+      setFollowUps([]);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       setLoadingFollowUps(true);

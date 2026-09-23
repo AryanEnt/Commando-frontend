@@ -19,7 +19,8 @@ export type NavIcon =
   | "tasks"
   | "reviews"
   | "sync"
-  | "roles";
+  | "roles"
+  | "calendar";
 
 export type NavItem = {
   href: string;
@@ -53,6 +54,13 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       permission: "PROFILE_VIEW",
       section: MY_TEAM,
       icon: "profiles",
+    },
+    {
+      href: "/support",
+      label: "Sales Support",
+      permission: "SALES_SUPPORT_LINK_VIEW",
+      section: MY_TEAM,
+      icon: "users",
     },
     {
       href: "/teams",
@@ -100,6 +108,13 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       icon: "profiles",
     },
     {
+      href: "/support",
+      label: "Sales Support",
+      permission: "SALES_SUPPORT_LINK_VIEW",
+      section: INTERVENTIONS,
+      icon: "users",
+    },
+    {
       href: "/referrals",
       label: "Requests & Interventions",
       permission: "REFERRAL_VIEW",
@@ -139,6 +154,20 @@ export const ROLE_NAV: Record<RoleCode, NavItem[]> = {
       permission: "DASHBOARD_VIEW",
       section: MY_WORK,
       icon: "dashboard",
+    },
+    {
+      href: "/work-log",
+      label: "Daily Work Log",
+      permission: "DAILY_WORK_LOG_VIEW",
+      section: MY_WORK,
+      icon: "calendar",
+    },
+    {
+      href: "/swot",
+      label: "SWOT",
+      permission: "SWOT_VIEW",
+      section: MY_WORK,
+      icon: "reviews",
     },
     {
       href: "/my-tasks",
@@ -257,6 +286,7 @@ export function isWideContentPath(pathname: string): boolean {
     pathname.startsWith("/reports") ||
     pathname.startsWith("/organization") ||
     pathname.startsWith("/profiles/") ||
+    pathname.startsWith("/support") ||
     pathname === "/dashboard"
   );
 }

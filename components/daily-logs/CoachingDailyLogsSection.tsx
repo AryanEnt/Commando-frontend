@@ -20,26 +20,48 @@ function logDateKey(logDate: string) {
 
 export function CoachingDailyLogsSection({
   profileId,
+  executiveUserId,
   profileName,
   logs,
   canCreate,
+  createHref: createHrefProp,
+  logHref: logHrefProp,
 }: {
-  profileId: string;
+  /** SE workspace subject */
+  profileId?: string;
+  /** Support workspace subject */
+  executiveUserId?: string;
   profileName: string;
   logs: DailyLog[];
   canCreate: boolean;
+  createHref?: string;
+  logHref?: (logId: string) => string;
 }) {
   const { token } = useAuth();
   const [attention, setAttention] = useState<DailyLog[]>([]);
   const today = todayKey();
 
+  const createHref =
+    createHrefProp ??
+    (profileId ? seCreateHref(profileId, "daily-log") : "#");
+  const logHref =
+    logHrefProp ??
+    ((logId: string) =>
+      profileId ? seDailyLogHref(profileId, logId) : `#${logId}`);
+
   useEffect(() => {
     if (!token) return;
+    const subject = executiveUserId
+      ? { executiveUserId }
+      : profileId
+        ? { profileId }
+        : null;
+    if (!subject) return;
     void api
-      .getDailyLogAttention(token, profileId)
+      .getDailyLogAttention(token, subject)
       .then((r) => setAttention(r.data.logs))
       .catch(() => setAttention([]));
-  }, [token, profileId]);
+  }, [token, profileId, executiveUserId]);
 
   const todayLog = useMemo(
     () => logs.find((l) => logDateKey(l.logDate) === today) ?? null,
@@ -59,10 +81,7 @@ export function CoachingDailyLogsSection({
           </p>
         </div>
         {canCreate && !todayLog ? (
-          <Link
-            href={seCreateHref(profileId, "daily-log")}
-            className="action-chip"
-          >
+          <Link href={createHref} className="action-chip">
             Open today&apos;s log
           </Link>
         ) : null}
@@ -95,13 +114,13 @@ export function CoachingDailyLogsSection({
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <Link
-                    href={seDailyLogHref(profileId, log.id)}
+                    href={logHref(log.id)}
                     className="text-[13px] font-semibold text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
                   >
                     Continue
                   </Link>
                   <Link
-                    href={seDailyLogHref(profileId, log.id)}
+                    href={logHref(log.id)}
                     className="text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
                   >
                     Review & Submit
@@ -131,10 +150,7 @@ export function CoachingDailyLogsSection({
                 </span>
               </div>
             </div>
-            <Link
-              href={seDailyLogHref(profileId, todayLog.id)}
-              className="btn btn-secondary btn-sm"
-            >
+            <Link href={logHref(todayLog.id)} className="btn btn-secondary btn-sm">
               {todayLog.status === "DRAFT" ? "Continue" : "View"}
             </Link>
           </div>
@@ -172,7 +188,7 @@ export function CoachingDailyLogsSection({
                   </td>
                   <td className="text-right">
                     <Link
-                      href={seDailyLogHref(profileId, log.id)}
+                      href={logHref(log.id)}
                       className="text-sm font-medium text-[var(--color-brand)] hover:underline"
                     >
                       {log.status === "DRAFT" ? "Continue" : "View"}
