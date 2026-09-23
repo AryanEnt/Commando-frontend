@@ -120,22 +120,6 @@ export default function ReferralDetailPage() {
         priority1: provideForm.priority1,
         priority2: provideForm.priority2,
         priority3: provideForm.priority3,
-        swot: {
-          strength: provideForm.strength,
-          weakness: provideForm.weakness,
-          opportunity: provideForm.opportunity,
-          threat: provideForm.threat,
-        },
-        supportSwot: (referral?.assignedSupport ?? []).map((person) => {
-          const q = provideForm.supportSwots[person.userId];
-          return {
-            executiveUserId: person.userId,
-            strength: q?.strength ?? "",
-            weakness: q?.weakness ?? "",
-            opportunity: q?.opportunity ?? "",
-            threat: q?.threat ?? "",
-          };
-        }),
       });
       setReferral(res.data.referral);
       setConfirmApprove(false);

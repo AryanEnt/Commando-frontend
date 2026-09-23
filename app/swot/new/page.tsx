@@ -125,7 +125,14 @@ function NewSwotForm() {
     if (!token || !lockedProfileId) return;
     void api
       .getProfile(token, lockedProfileId)
-      .then((res) => setLockedProfileName(res.data.profile.displayName))
+      .then((res) => {
+        setLockedProfileName(res.data.profile.displayName);
+        setForm((prev) => ({
+          ...prev,
+          salesExecutiveProfileId: lockedProfileId,
+          subjectUserId: res.data.profile.user.id,
+        }));
+      })
       .catch(() => setLockedProfileName(null));
   }, [token, lockedProfileId]);
 
@@ -154,6 +161,7 @@ function NewSwotForm() {
     void api
       .getSwotList(token, {
         profileId: form.salesExecutiveProfileId,
+        subjectType: "EXECUTIVE",
         source,
         pageSize: 5,
       })
@@ -268,7 +276,7 @@ function NewSwotForm() {
     e.preventDefault();
     if (!token) return;
 
-    if (isManager && subjectKind === "SE" && !form.salesExecutiveProfileId) {
+    if (isManager && subjectKind === "SE" && !form.subjectUserId) {
       setError("Select a Sales Executive profile");
       return;
     }
@@ -316,14 +324,24 @@ function NewSwotForm() {
               opportunityPoints,
               threatPoints,
             }
-          : {
-              subjectType: "PROFILE" as const,
-              salesExecutiveProfileId: form.salesExecutiveProfileId,
-              strengthPoints,
-              weaknessPoints,
-              opportunityPoints,
-              threatPoints,
-            };
+          : isManager && subjectKind === "SE"
+            ? {
+                subjectType: "EXECUTIVE" as const,
+                executiveUserId: form.subjectUserId,
+                subjectUserId: form.subjectUserId,
+                strengthPoints,
+                weaknessPoints,
+                opportunityPoints,
+                threatPoints,
+              }
+            : {
+                subjectType: "EXECUTIVE" as const,
+                salesExecutiveProfileId: form.salesExecutiveProfileId,
+                strengthPoints,
+                weaknessPoints,
+                opportunityPoints,
+                threatPoints,
+              };
 
       const res = await api.createSwot(token, body);
       if (returnTo) {
@@ -455,8 +473,12 @@ function NewSwotForm() {
             <ProfileSearchSelect
               label="Sales Executive"
               value={form.salesExecutiveProfileId}
-              onChange={(id) =>
-                setForm((prev) => ({ ...prev, salesExecutiveProfileId: id }))
+              onChange={(id, profile) =>
+                setForm((prev) => ({
+                  ...prev,
+                  salesExecutiveProfileId: id,
+                  subjectUserId: profile?.user.id ?? "",
+                }))
               }
             />
           )

@@ -2491,19 +2491,6 @@ export type ProvideReferralInformationBody = {
   priority1: string;
   priority2: string;
   priority3: string;
-  swot: {
-    strength: string;
-    weakness: string;
-    opportunity: string;
-    threat: string;
-  };
-  supportSwot?: Array<{
-    executiveUserId: string;
-    strength: string;
-    weakness: string;
-    opportunity: string;
-    threat: string;
-  }>;
 };
 
 export type ReferralAssignedSupport = {
