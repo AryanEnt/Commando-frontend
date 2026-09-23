@@ -77,7 +77,7 @@ function GroupNav({
                 <span
                   className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${
                     active || primary
-                      ? "bg-[var(--color-brand-soft)] text-[var(--color-brand)]"
+                      ? "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)]"
                       : "bg-[var(--color-surface-2)] text-[var(--color-ink-subtle)]"
                   }`}
                 >

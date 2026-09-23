@@ -447,19 +447,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         ? `${item.label}, ${alertCount} new`
                         : item.label
                     }
-                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] transition duration-150 ${
+                    className={`shell-nav-item group relative mb-0.5 flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] transition duration-150 ${
                       collapsed
                         ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
                         : ""
-                    } ${
-                      active
-                        ? "bg-[var(--color-sidebar-active)] font-semibold text-[var(--color-sidebar-active-fg)]"
-                        : "text-[var(--color-sidebar-muted)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-ink)]"
-                    }`}
+                    } ${active ? "is-active" : ""}`}
                   >
                     {active ? (
                       <span
-                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-brand)]"
+                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-brand-dark)]"
                         aria-hidden
                       />
                     ) : null}
@@ -467,21 +463,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <span className="relative shrink-0">
                         <Icon
                           size={16}
-                          className={
-                            active
-                              ? "text-[var(--color-sidebar-active-fg)]"
-                              : "text-[var(--color-sidebar-subtle)] group-hover:text-[var(--color-brand-dark)]"
-                          }
+                          className="shell-nav-icon"
+                          aria-hidden
                         />
                         {alertCount > 0 && collapsed ? (
                           <span
-                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[var(--color-brand)] ring-2 ring-[var(--color-sidebar)] lg:block"
+                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[var(--color-brand-dark)] ring-2 ring-[var(--color-sidebar)] lg:block"
                             aria-hidden
                           />
                         ) : null}
                       </span>
                     ) : null}
-                    <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
+                    <span
+                      className={`shell-nav-label truncate ${collapsed ? "lg:hidden" : ""}`}
+                    >
                       {item.label}
                     </span>
                     {alertCount > 0 ? (

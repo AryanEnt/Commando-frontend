@@ -57,6 +57,7 @@
   --color-sidebar-subtle: #9a93a3;
   --color-sidebar-hover: #f3eeff;
   --color-sidebar-active: #f3eeff;
+  /* Deep purple — must stay readable on soft lavender (not primary #C5AEF8) */
   --color-sidebar-active-fg: #8e70d4;
   --color-sidebar-border: #e9e3f0;
 
@@ -502,6 +503,31 @@ body {
 
 .nav-row:hover {
   background: var(--color-brand-soft);
+}
+
+/* App shell primary nav — explicit colors so active text never washes out */
+.shell-nav-item {
+  color: var(--color-sidebar-muted);
+  background: transparent;
+}
+.shell-nav-item:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-ink);
+}
+.shell-nav-item .shell-nav-icon {
+  color: var(--color-sidebar-subtle);
+}
+.shell-nav-item:hover .shell-nav-icon {
+  color: var(--color-brand-dark);
+}
+.shell-nav-item.is-active {
+  background: var(--color-sidebar-active);
+  color: var(--color-sidebar-active-fg);
+  font-weight: 600;
+}
+.shell-nav-item.is-active .shell-nav-icon,
+.shell-nav-item.is-active .shell-nav-label {
+  color: var(--color-sidebar-active-fg);
 }
 
 .status-dot {
