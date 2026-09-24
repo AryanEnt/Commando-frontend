@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -28,12 +27,13 @@ const ALL_ROLE_OPTIONS = [
     description: "Coaches assigned Sales Executives through active interventions.",
   },
   {
-    code: "SALES_SUPPORT_EXECUTIVE",
-    description: "Supports Commando work with tasks and sync evaluations.",
+    code: "SALES_EXECUTIVE",
+    description:
+      "Salesperson under Commando intervention — creates login account and sales profile together.",
   },
   {
-    code: "SUPER_ADMIN",
-    description: "Full governance access — users, teams, reports, and audit.",
+    code: "SALES_SUPPORT_EXECUTIVE",
+    description: "Supports Commando work with tasks and sync evaluations.",
   },
 ] as const;
 
@@ -52,7 +52,7 @@ function defaultTeamChoice(
   roleCode: RoleCode,
   teamCount: number,
 ): TeamChoice {
-  if (roleCode === "TEAM_LEAD") {
+  if (roleCode === "TEAM_LEAD" || roleCode === "SALES_EXECUTIVE") {
     return teamCount === 0 ? "new" : "existing";
   }
   return teamCount === 0 ? "new" : "none";
@@ -78,13 +78,14 @@ export default function CreateUserPage() {
     user?.roleCode === "SUPER_ADMIN";
   const supportOnly = !canCreateAny && canCreateSupport;
 
-  const roleOptions = useMemo(
-    () =>
-      supportOnly
-        ? ALL_ROLE_OPTIONS.filter((r) => r.code === "SALES_SUPPORT_EXECUTIVE")
-        : ALL_ROLE_OPTIONS,
-    [supportOnly],
-  );
+  const roleOptions = useMemo(() => {
+    if (supportOnly) {
+      return ALL_ROLE_OPTIONS.filter((r) => r.code === "SALES_SUPPORT_EXECUTIVE");
+    }
+    return ALL_ROLE_OPTIONS.filter(
+      (r) => r.code !== "SALES_EXECUTIVE" || canCreateSe,
+    );
+  }, [supportOnly, canCreateSe]);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -99,6 +100,8 @@ export default function CreateUserPage() {
     teamChoice: "new" as TeamChoice,
     newTeamName: "",
     newTeamDescription: "",
+    displayName: "",
+    employeeCode: "",
   });
   const [teamsLoaded, setTeamsLoaded] = useState(false);
 
@@ -111,6 +114,8 @@ export default function CreateUserPage() {
   const exitHref = canCreateAny ? "/users" : "/teams";
   const exitLabel = canCreateAny ? "Users" : "Teams";
   const isTeamLeadRole = form.roleCode === "TEAM_LEAD";
+  const isSalesExecutiveRole = form.roleCode === "SALES_EXECUTIVE";
+  const teamRequired = isTeamLeadRole || isSalesExecutiveRole;
 
   useEffect(() => {
     if (!token) return;
@@ -214,11 +219,25 @@ export default function CreateUserPage() {
       next.teamId = "You must lead a team to create Sales Support";
     }
     if (!supportOnly) {
+      if (form.teamChoice === "none" && teamRequired) {
+        next.teamId =
+          form.roleCode === "SALES_EXECUTIVE"
+            ? "Sales Executives must be placed on a team"
+            : "Team Leads need a team";
+      }
       if (form.teamChoice === "existing" && !form.teamId) {
         next.teamId = "Select a team, or create a new one";
       }
       if (form.teamChoice === "new" && !form.newTeamName.trim()) {
         next.newTeamName = "Team name is required";
+      }
+    }
+    if (form.roleCode === "SALES_EXECUTIVE") {
+      const display =
+        form.displayName.trim() ||
+        `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+      if (!display) {
+        next.displayName = "Display name is required";
       }
     }
     setFieldErrors(next);
@@ -247,6 +266,39 @@ export default function CreateUserPage() {
         } else {
           resolvedTeamId = null;
         }
+      }
+
+      if (form.roleCode === "SALES_EXECUTIVE") {
+        if (!resolvedTeamId) {
+          setError("Sales Executives must be placed on a team");
+          setSubmitting(false);
+          return;
+        }
+        const displayName =
+          form.displayName.trim() ||
+          `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+        const res = await api.createSalesExecutive(token, {
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          isActive: form.isActive === "true",
+          teamId: resolvedTeamId,
+          displayName,
+          employeeCode: form.employeeCode.trim() || null,
+        });
+        pushToast(
+          form.teamChoice === "new"
+            ? "Sales Executive and team created"
+            : "Sales Executive created",
+          "success",
+        );
+        if (canCreateAny) {
+          router.push(`/users/${res.data.user.id}`);
+        } else {
+          router.push(`/profiles/${res.data.profile.id}`);
+        }
+        return;
       }
 
       const res = await api.createUser(token, {
@@ -307,26 +359,6 @@ export default function CreateUserPage() {
           </Button>
         }
       />
-
-      {canCreateSe ? (
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-[var(--color-ink)]">
-              Onboarding a Sales Executive?
-            </p>
-            <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
-              Use the dedicated flow to create the account, team link, and sales
-              profile together.
-            </p>
-          </div>
-          <Link
-            href="/users/sales-executives/new"
-            className="inline-flex h-9 shrink-0 items-center rounded-[var(--radius-sm)] border border-[var(--color-line)] px-3.5 text-sm font-medium text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
-          >
-            Sales Executive wizard
-          </Link>
-        </div>
-      ) : null}
 
       {error && <ErrorState message={error} />}
       {supportOnly && fieldErrors.teamId ? (
@@ -521,9 +553,11 @@ export default function CreateUserPage() {
                 Organization
               </h2>
               <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-                {isTeamLeadRole
-                  ? "Team Leads need a team. Create one here or pick an existing team."
-                  : "Place them on a team now, create one here, or skip and assign later."}
+                {isSalesExecutiveRole
+                  ? "Sales Executives need a team. Their sales profile is created with the account."
+                  : isTeamLeadRole
+                    ? "Team Leads need a team. Create one here or pick an existing team."
+                    : "Place them on a team now, create one here, or skip and assign later."}
               </p>
             </div>
 
@@ -533,14 +567,16 @@ export default function CreateUserPage() {
               </p>
               <SegmentedControl
                 ariaLabel="Team assignment"
-                value={form.teamChoice}
+                value={form.teamChoice === "none" && teamRequired ? "existing" : form.teamChoice}
                 onChange={setTeamChoice}
                 options={[
                   ...(teams.length > 0
                     ? [{ value: "existing" as const, label: "Existing" }]
                     : []),
                   { value: "new", label: "Create new" },
-                  { value: "none", label: "Skip" },
+                  ...(!teamRequired
+                    ? [{ value: "none" as const, label: "Skip" }]
+                    : []),
                 ]}
               />
             </div>
@@ -611,6 +647,38 @@ export default function CreateUserPage() {
           </section>
         ) : null}
 
+        {isSalesExecutiveRole && !supportOnly ? (
+          <section className="space-y-4 border-b border-[var(--color-line)] p-5">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--color-ink)]">
+                Sales profile
+              </h2>
+              <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
+                How this person appears on intervention and coaching records.
+              </p>
+            </div>
+            <TextInput
+              label="Display name"
+              value={form.displayName}
+              onChange={(e) => setField("displayName", e.target.value)}
+              error={fieldErrors.displayName}
+              placeholder={
+                form.firstName.trim() || form.lastName.trim()
+                  ? `${form.firstName.trim()} ${form.lastName.trim()}`.trim()
+                  : "As shown on the sales profile"
+              }
+              hint="Defaults to first and last name if left blank."
+            />
+            <TextInput
+              label="Employee code"
+              value={form.employeeCode}
+              onChange={(e) => setField("employeeCode", e.target.value)}
+              placeholder="Optional"
+              hint="Optional HR or payroll identifier."
+            />
+          </section>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface-2)] px-5 py-4">
           <p className="text-xs text-[var(--color-ink-muted)]">
             {user?.roleCode === "TEAM_LEAD" ? (
@@ -634,13 +702,21 @@ export default function CreateUserPage() {
             <Button type="submit" disabled={submitting}>
               {submitting
                 ? form.teamChoice === "new" && !supportOnly
-                  ? "Creating user & team…"
-                  : "Creating…"
+                  ? isSalesExecutiveRole
+                    ? "Creating Sales Executive & team…"
+                    : "Creating user & team…"
+                  : isSalesExecutiveRole
+                    ? "Creating Sales Executive…"
+                    : "Creating…"
                 : supportOnly
                   ? "Create Sales Support"
-                  : form.teamChoice === "new"
-                    ? "Create user & team"
-                    : "Create user"}
+                  : isSalesExecutiveRole
+                    ? form.teamChoice === "new"
+                      ? "Create Sales Executive & team"
+                      : "Create Sales Executive"
+                    : form.teamChoice === "new"
+                      ? "Create user & team"
+                      : "Create user"}
             </Button>
           </div>
         </div>

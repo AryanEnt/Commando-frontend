@@ -578,12 +578,24 @@ export default function MonitoringChecklistsPage() {
                     <div
                       className={`rounded-[var(--radius-sm)] px-3 py-2.5 ${
                         weightComplete
-                          ? "bg-[var(--color-surface-2)]"
-                          : "bg-[color-mix(in_srgb,var(--status-warning)_12%,transparent)]"
+                          ? "bg-[color-mix(in_srgb,var(--status-success)_8%,var(--color-surface-2))]"
+                          : activeWeightTotal > 100
+                            ? "bg-[color-mix(in_srgb,var(--status-danger)_10%,var(--color-surface-2))]"
+                            : "bg-[var(--color-surface-2)]"
                       }`}
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="text-sm font-semibold tabular-nums">
+                        <p
+                          className={`text-sm font-semibold tabular-nums ${
+                            weightComplete
+                              ? "text-[var(--status-success)]"
+                              : activeWeightTotal > 100
+                                ? "text-[var(--status-danger)]"
+                                : activeWeightTotal >= 50
+                                  ? "text-[var(--status-warn)]"
+                                  : "text-[var(--color-ink-subtle)]"
+                          }`}
+                        >
                           {activeWeightTotal}%
                           <span className="ml-1.5 text-xs font-normal text-[var(--color-ink-muted)]">
                             / 100% default allocation
@@ -606,14 +618,16 @@ export default function MonitoringChecklistsPage() {
                           </p>
                         )}
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-line)]">
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-ink-subtle)_22%,var(--color-line))]">
                         <div
                           className={`h-full rounded-full transition-all ${
                             weightComplete
-                              ? "bg-[var(--color-brand)]"
+                              ? "bg-[var(--status-success)]"
                               : activeWeightTotal > 100
                                 ? "bg-[var(--status-danger)]"
-                                : "bg-[var(--status-warning)]"
+                                : activeWeightTotal >= 50
+                                  ? "bg-[var(--status-warn)]"
+                                  : "bg-[var(--color-ink-subtle)]"
                           }`}
                           style={{
                             width: `${Math.min(100, activeWeightTotal)}%`,

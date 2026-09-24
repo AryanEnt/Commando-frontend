@@ -652,7 +652,13 @@ export function SeChecklistWorkspace({
                   liveAllocation ? (
                     <div
                       className={`ck-weight-summary${
-                        liveAllocation.isComplete ? " is-complete" : ""
+                        liveAllocation.isComplete
+                          ? " is-complete is-tone-ok"
+                          : liveAllocation.over > 0
+                            ? " is-tone-over"
+                            : liveAllocation.total >= 50
+                              ? " is-tone-mid"
+                              : " is-tone-low"
                       }`}
                     >
                       <div className="ck-weight-summary-row">
@@ -680,7 +686,9 @@ export function SeChecklistWorkspace({
                               ? " is-over"
                               : liveAllocation.isComplete
                                 ? " is-ok"
-                                : ""
+                                : liveAllocation.total >= 50
+                                  ? " is-mid"
+                                  : " is-low"
                           }`}
                           style={{
                             width: `${Math.min(100, liveAllocation.total)}%`,
