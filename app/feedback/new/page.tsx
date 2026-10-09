@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import {
   Button,
@@ -16,7 +16,6 @@ import {
 
 export default function NewFeedbackPage() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [form, setForm] = useState({
     salesExecutiveProfileId: "",
@@ -42,12 +41,10 @@ export default function NewFeedbackPage() {
         salesExecutiveProfileId: form.salesExecutiveProfileId,
         body: form.body,
       });
-      pushToast("Feedback saved", "success");
+      toast.success("Feedback added");
       router.push(`/feedback/${res.data.feedback.id}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to create";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to add feedback"));
     } finally {
       setSubmitting(false);
     }

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
 import {
   api,
   type SalesSupportLink,
@@ -11,19 +10,26 @@ import {
 } from "@/lib/api";
 import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
+import { useSwotDetailHref } from "@/lib/swot-display";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
+  Avatar,
   ButtonLink,
   EmptyState,
   ErrorState,
   PageHeader,
-  PulseGrid,
-  PulseStat,
-  Skeleton,
-  TableFrame,
   TextInput,
 } from "@/components/ui";
+import {
+  DashEmpty,
+  DashHero,
+  DashPanel,
+  DashSkeleton,
+  HealthSummary,
+  KpiStat,
+  type SignalTone,
+} from "@/components/dashboard/DashboardKit";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -33,6 +39,13 @@ type WorkItem = {
   id: string;
   bucket: WorkBucket;
   task: SupportTask;
+};
+
+const BUCKET_BADGE: Record<WorkBucket, { status: string; label: string }> = {
+  overdue: { status: "OVERDUE", label: "Overdue" },
+  today: { status: "DUE_TODAY", label: "Due today" },
+  blocked: { status: "BLOCKED", label: "Blocked" },
+  upcoming: { status: "UPCOMING", label: "Upcoming" },
 };
 
 function startOfDay(d = new Date()) {
@@ -59,6 +72,10 @@ function isUpcoming(task: SupportTask) {
   return due > today && due <= inWeek;
 }
 
+function needsAttention(task: SupportTask) {
+  return task.isOverdue || task.status === "BLOCKED";
+}
+
 /** Map API status to Support-facing label (PENDING = assigned in UI). */
 function supportStatusLabel(status: SupportTask["status"]) {
   if (status === "PENDING") return "Assigned";
@@ -66,36 +83,19 @@ function supportStatusLabel(status: SupportTask["status"]) {
   return status.replaceAll("_", " ");
 }
 
+/** "Assigned" is a neutral state here; amber is reserved for due-now signals. */
 function statusBadgeStatus(task: SupportTask) {
   if (task.isOverdue && task.status !== "COMPLETED" && task.status !== "BLOCKED") {
     return "OVERDUE";
   }
+  if (task.status === "PENDING") return "WATCH";
   return task.status;
 }
 
-function SupportSkeleton() {
-  return (
-    <div
-      className="space-y-6"
-      aria-busy="true"
-      aria-label="Loading Sales Support dashboard"
-    >
-      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)]">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="border-r border-b border-[var(--color-line)] px-4 py-3.5 last:border-r-0"
-            >
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="mt-2 h-7 w-10" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <Skeleton className="h-56 w-full rounded-[var(--radius-md)]" />
-    </div>
-  );
+function taskSignal(task: SupportTask): SignalTone {
+  if (task.isOverdue && task.status !== "BLOCKED") return "critical";
+  if (task.status === "BLOCKED" || isDueToday(task)) return "warning";
+  return "positive";
 }
 
 export function SalesSupportDashboard({
@@ -106,6 +106,7 @@ export function SalesSupportDashboard({
   firstName: string;
   roleCode?: string;
 }) {
+  const swotHref = useSwotDetailHref();
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [links, setLinks] = useState<SalesSupportLink[]>([]);
@@ -139,6 +140,7 @@ export function SalesSupportDashboard({
           api
             .getSwotList(token, {
               source: "SALES_SUPPORT_EXECUTIVE",
+              subjectType: "EXECUTIVE",
               pageSize: 1,
             })
             .catch(() => null),
@@ -168,8 +170,8 @@ export function SalesSupportDashboard({
     [activeTasks],
   );
 
-  const inProgressCount = useMemo(
-    () => activeTasks.filter((t) => t.status === "IN_PROGRESS").length,
+  const attentionCount = useMemo(
+    () => activeTasks.filter(needsAttention).length,
     [activeTasks],
   );
 
@@ -285,69 +287,48 @@ export function SalesSupportDashboard({
     );
   }, [overdueTasks, dueTodayTasks, activeTasks]);
 
-  const pulse = [
+  const kpis: {
+    label: string;
+    value: number;
+    hint: string;
+    href: string;
+    tone: SignalTone;
+  }[] = [
     {
-      label: "Active relationships",
-      value: links.length,
-      hint: "SEs you support",
-      href: "#supported-ses",
-      warn: false,
-      tone: "brand" as const,
-    },
-    {
-      label: "Assigned tasks",
-      value: activeTasks.length,
-      hint: "Open support work",
-      href: "#my-tasks",
-      warn: false,
-      tone: "accent" as const,
-    },
-    {
-      label: "In progress",
-      value: inProgressCount,
-      hint: "Currently working",
-      href: "#my-tasks",
-      warn: false,
-      tone: "info" as const,
+      label: "Overdue",
+      value: overdueTasks.length,
+      hint: "Past due date",
+      href: "#today-next",
+      tone: overdueTasks.length > 0 ? "critical" : "neutral",
     },
     {
       label: "Due today",
       value: dueTodayTasks.length,
       hint: "Needs attention today",
       href: "#today-next",
-      warn: dueTodayTasks.length > 0,
-      tone: dueTodayTasks.length > 0 ? ("warn" as const) : ("success" as const),
-    },
-    {
-      label: "Overdue",
-      value: overdueTasks.length,
-      hint: "Past due date",
-      href: "#today-next",
-      warn: overdueTasks.length > 0,
-      tone: overdueTasks.length > 0 ? ("danger" as const) : ("success" as const),
+      tone: dueTodayTasks.length > 0 ? "warning" : "neutral",
     },
     {
       label: "Blocked",
       value: blockedTasks.length,
       hint: "Waiting on a blocker",
       href: "#today-next",
-      warn: blockedTasks.length > 0,
-      tone: blockedTasks.length > 0 ? ("warn" as const) : ("brand" as const),
+      tone: blockedTasks.length > 0 ? "warning" : "neutral",
+    },
+    {
+      label: "Supported SEs",
+      value: links.length,
+      hint: "Active support relationships",
+      href: "#supported-ses",
+      tone: "neutral",
     },
   ];
-
-  const bucketLabel = (b: WorkBucket) => {
-    if (b === "overdue") return "Overdue";
-    if (b === "today") return "Due today";
-    if (b === "blocked") return "Blocked";
-    return "Upcoming";
-  };
 
   const taskHref = (id: string) =>
     `/my-tasks/${id}?returnTo=${encodeURIComponent("/dashboard")}`;
 
   return (
-    <div className="space-y-6 lg:space-y-7">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Sales Support"
         title="Sales Support Dashboard"
@@ -355,7 +336,7 @@ export function SalesSupportDashboard({
         actions={
           <div className="flex flex-wrap gap-2">
             {selfSwot ? (
-              <ButtonLink href={`/swot/${selfSwot.id}`} size="sm">
+              <ButtonLink href={swotHref(selfSwot.id)} size="sm">
                 View My SWOT
               </ButtonLink>
             ) : (
@@ -363,7 +344,7 @@ export function SalesSupportDashboard({
                 Add My SWOT
               </ButtonLink>
             )}
-            <ButtonLink href="/work-log" variant="secondary" size="sm">
+            <ButtonLink href="/work-log" variant="outline" size="sm">
               + Add Work Log
             </ButtonLink>
             <ButtonLink href="/my-tasks" variant="ghost" size="sm">
@@ -376,142 +357,171 @@ export function SalesSupportDashboard({
         }
       />
 
-      {state === "loading" && <SupportSkeleton />}
+      {state === "loading" && (
+        <DashSkeleton label="Loading Sales Support dashboard" />
+      )}
       {state === "error" && error && (
         <ErrorState message={error} onRetry={() => void load()} />
       )}
 
       {state === "ready" && (
         <>
-          {/* Support pulse */}
-          <section aria-labelledby="support-pulse-heading">
-            <div className="mb-2.5">
-              <h2 id="support-pulse-heading" className="text-section-title">
-                Support pulse
-              </h2>
-              <p className="mt-0.5 text-meta">
-                Relationships and task load — Team Lead remains SE owner
-              </p>
-            </div>
-            <PulseGrid columns={6}>
-                {pulse.map((cell) => (
-                  <PulseStat key={cell.label} {...cell} />
-                ))}
-            </PulseGrid>
-          </section>
-
-          {/* Today / next */}
-          <section
-            id="today-next"
-            aria-labelledby="today-next-heading"
-            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]"
+          <DashHero
+            anchor={
+              <HealthSummary
+                title="Task health"
+                healthy={activeTasks.length - attentionCount}
+                attention={attentionCount}
+                healthyLabel="On schedule"
+                attentionLabel="Overdue or blocked"
+                emptyText="No open support tasks"
+              />
+            }
           >
-            <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-              <h2 id="today-next-heading" className="text-section-title">
-                Today / next work
-              </h2>
-              <p className="mt-0.5 text-meta">
-                Overdue → due today → blocked → upcoming
-              </p>
-            </div>
-            {workQueue.length === 0 ? (
-              <div className="flex items-start gap-3 px-4 py-6 sm:px-5">
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)]">
-                  <CheckCircle2 size={16} aria-hidden />
-                </span>
-                <div>
-                  <p className="text-[13px] font-medium text-[var(--status-success)]">
-                    No urgent support work
-                  </p>
-                  <p className="mt-1 text-meta">
-                    Overdue, due today, blocked, and upcoming tasks will appear
-                    here.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
-                {workQueue.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge
-                          status={
-                            item.bucket === "overdue"
-                              ? "OVERDUE"
-                              : item.bucket === "blocked"
-                                ? "BLOCKED"
-                                : item.bucket === "today"
-                                  ? "NEEDS_ATTENTION"
-                                  : "PENDING"
-                          }
-                          label={bucketLabel(item.bucket)}
-                        />
-                        <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                          {item.task.title}
+            {kpis.map((kpi) => (
+              <KpiStat key={kpi.label} {...kpi} />
+            ))}
+          </DashHero>
+
+          <div className="grid gap-5 lg:grid-cols-12 lg:items-start">
+            <DashPanel
+              id="today-next"
+              tone="brand"
+              title="Today / next work"
+              description="Overdue, due today, blocked, then upcoming"
+              className="lg:col-span-7"
+            >
+              {workQueue.length === 0 ? (
+                <DashEmpty
+                  tone="positive"
+                  title="No urgent support work"
+                  description="Overdue, due today, blocked, and upcoming tasks will appear here."
+                />
+              ) : (
+                <ul className="dash-list">
+                  {workQueue.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge {...BUCKET_BADGE[item.bucket]} />
+                          <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                            {item.task.title}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-meta">
+                          <Link
+                            href={`/profiles/${item.task.salesExecutiveProfileId}`}
+                            className="font-medium text-[var(--color-ink)] hover:underline"
+                          >
+                            {item.task.profile.displayName}
+                          </Link>
+                          {" · "}
+                          {item.task.priority}
+                          {item.task.dueDate
+                            ? ` · Due ${formatDate(item.task.dueDate)}`
+                            : ""}
+                          {" · "}
+                          {supportStatusLabel(item.task.status)}
                         </p>
                       </div>
-                      <p className="mt-1 text-meta">
-                        <Link
-                          href={`/profiles/${item.task.salesExecutiveProfileId}`}
-                          className="font-medium text-[var(--color-ink)] hover:underline"
-                        >
-                          {item.task.profile.displayName}
-                        </Link>
-                        {" · "}
-                        {item.task.priority}
-                        {item.task.dueDate
-                          ? ` · Due ${formatDate(item.task.dueDate)}`
-                          : ""}
-                        {" · "}
-                        {supportStatusLabel(item.task.status)}
-                      </p>
-                    </div>
-                    <Link
-                      href={taskHref(item.task.id)}
-                      className="shrink-0 text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                    >
-                      Open task
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                      <Link
+                        href={taskHref(item.task.id)}
+                        className="shrink-0 text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
+                      >
+                        Open task
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DashPanel>
 
-          {/* My support tasks (primary) */}
-          <section
+            <DashPanel
+              id="guidance"
+              title="Task guidance"
+              description="DO / DON'T from your highest-priority guided task"
+              className="lg:col-span-5"
+            >
+              {!guidanceTask ? (
+                <DashEmpty
+                  title="No guidance on current tasks"
+                  description="When a task includes DO / DON'T instructions, they will appear here."
+                />
+              ) : (
+                <div className="space-y-4 px-6 pb-5">
+                  <div>
+                    <Link
+                      href={taskHref(guidanceTask.id)}
+                      className="text-[13px] font-semibold text-[var(--color-ink)] hover:underline"
+                    >
+                      {guidanceTask.title}
+                    </Link>
+                    <p className="mt-0.5 text-meta">
+                      {guidanceTask.profile.displayName}
+                      {guidanceTask.dueDate
+                        ? ` · Due ${formatDate(guidanceTask.dueDate)}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] bg-[var(--status-success-bg)] px-4 py-3">
+                    <p className="text-eyebrow text-[var(--status-success)]">
+                      DO
+                    </p>
+                    {guidanceTask.shouldDo?.length ? (
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] text-[var(--color-ink)]">
+                        {guidanceTask.shouldDo.map((d) => (
+                          <li key={d.id}>{d.text}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-meta">No DO guidance stored.</p>
+                    )}
+                  </div>
+                  <div className="rounded-[var(--radius-sm)] bg-[var(--status-danger-bg)] px-4 py-3">
+                    <p className="text-eyebrow text-[var(--status-danger)]">
+                      DON&apos;T
+                    </p>
+                    {guidanceTask.shouldNotDo?.length ? (
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] text-[var(--color-ink)]">
+                        {guidanceTask.shouldNotDo.map((d) => (
+                          <li key={d.id}>{d.text}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-meta">
+                        No DON&apos;T guidance stored.
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href={taskHref(guidanceTask.id)}
+                    className="inline-flex text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
+                  >
+                    Open full task detail
+                  </Link>
+                </div>
+              )}
+            </DashPanel>
+          </div>
+
+          <DashPanel
             id="my-tasks"
-            aria-labelledby="my-tasks-heading"
-            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-              <div>
-                <p className="text-eyebrow">Primary</p>
-                <h2
-                  id="my-tasks-heading"
-                  className="mt-1 text-section-title text-[1.05rem]"
-                >
-                  My support tasks
-                </h2>
-                <p className="mt-0.5 text-meta">
-                  Shared task model — same records across Team Lead, Commando,
-                  and SE views
-                </p>
-              </div>
+            title="My support tasks"
+            description="Same task records Team Lead, Commando, and the SE see"
+            aside={
               <Link
                 href="/my-tasks"
                 className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
               >
                 Full task list
               </Link>
-            </div>
-
-            <div className="border-b border-[var(--color-line)] px-4 py-3 sm:px-5">
-              <div className="flex flex-wrap items-end gap-3">
+            }
+          >
+            {activeTasks.length > 0 ? (
+              <div className="grid gap-3 px-6 pb-4 sm:grid-cols-3 xl:grid-cols-6">
                 <TextInput
                   label="Search"
                   value={search}
@@ -558,10 +568,7 @@ export function SalesSupportDashboard({
                   label="Sales Executive"
                   value={seFilter}
                   onChange={setSeFilter}
-                  options={[
-                    { value: "", label: "All SEs" },
-                    ...seOptions,
-                  ]}
+                  options={[{ value: "", label: "All SEs" }, ...seOptions]}
                 />
                 <SearchableSelect
                   label="Assigned by"
@@ -573,10 +580,10 @@ export function SalesSupportDashboard({
                   ]}
                 />
               </div>
-            </div>
+            ) : null}
 
             {activeTasks.length === 0 ? (
-              <div className="px-4 py-6 sm:px-5">
+              <div className="px-6 pb-6">
                 <EmptyState
                   title="No assigned support tasks"
                   description="When Team Lead or Commando assigns you work, it will appear here."
@@ -586,50 +593,39 @@ export function SalesSupportDashboard({
                 />
               </div>
             ) : filteredTasks.length === 0 ? (
-              <div className="px-4 py-6 sm:px-5">
-                <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                  No tasks match these filters
-                </p>
-                <p className="mt-1 text-meta">
-                  Clear filters to see your full active queue.
-                </p>
-              </div>
+              <DashEmpty
+                title="No tasks match these filters"
+                description="Clear filters to see your full active queue."
+              />
             ) : (
-              <TableFrame>
-                <table className="w-full min-w-[56rem] text-left text-[13px]">
+              <div className="overflow-x-auto">
+                <table className="dash-table w-full min-w-[58rem] text-left text-[13px]">
                   <thead>
-                    <tr className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)]/60 text-eyebrow">
-                      <th className="px-4 py-2.5 font-semibold sm:px-5">
-                        Task
-                      </th>
-                      <th className="px-3 py-2.5 font-semibold">
-                        Sales Executive
-                      </th>
-                      <th className="px-3 py-2.5 font-semibold">Assigned by</th>
-                      <th className="px-3 py-2.5 font-semibold">Due</th>
-                      <th className="px-3 py-2.5 font-semibold">Priority</th>
-                      <th className="px-3 py-2.5 font-semibold">Status</th>
-                      <th className="px-3 py-2.5 font-semibold">DO / DON&apos;T</th>
-                      <th className="px-4 py-2.5 font-semibold sm:px-5">
+                    <tr>
+                      <th className="min-w-[13rem]">Task</th>
+                      <th>Sales Executive</th>
+                      <th>Assigned by</th>
+                      <th>Due</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>DO / DON&apos;T</th>
+                      <th>
                         <span className="sr-only">Action</span>
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--color-line)]">
+                  <tbody>
                     {filteredTasks.slice(0, 25).map((t) => {
                       const doText =
                         t.shouldDo?.map((d) => d.text).join("; ") || "";
                       const dontText =
                         t.shouldNotDo?.map((d) => d.text).join("; ") || "";
                       return (
-                        <tr
-                          key={t.id}
-                          className="transition hover:bg-[var(--color-surface-2)]/50"
-                        >
-                          <td className="px-4 py-3 align-top sm:px-5">
+                        <tr key={t.id} data-signal={taskSignal(t)}>
+                          <td>
                             <Link
                               href={taskHref(t.id)}
-                              className="font-medium text-[var(--color-ink)] hover:underline"
+                              className="font-semibold text-[var(--color-ink)] hover:underline"
                             >
                               {t.title}
                             </Link>
@@ -639,7 +635,7 @@ export function SalesSupportDashboard({
                               </p>
                             ) : null}
                           </td>
-                          <td className="px-3 py-3 align-top">
+                          <td>
                             <Link
                               href={`/profiles/${t.salesExecutiveProfileId}`}
                               className="font-medium text-[var(--color-ink)] hover:underline"
@@ -647,23 +643,22 @@ export function SalesSupportDashboard({
                               {t.profile.displayName}
                             </Link>
                           </td>
-                          <td className="px-3 py-3 align-top text-meta">
+                          <td className="text-meta">
                             {personName(t.assignedBy)}
                           </td>
                           <td
-                            className={`px-3 py-3 align-top tabular-nums ${
+                            className={`whitespace-nowrap tabular-nums ${
                               t.isOverdue
-                                ? "font-medium text-[var(--status-danger)]"
+                                ? "font-semibold text-[var(--status-danger)]"
                                 : "text-meta"
                             }`}
                           >
                             {formatDate(t.dueDate)}
-                            {t.isOverdue ? " · Overdue" : ""}
                           </td>
-                          <td className="px-3 py-3 align-top">
+                          <td>
                             <StatusBadge status={t.priority} />
                           </td>
-                          <td className="px-3 py-3 align-top">
+                          <td>
                             <StatusBadge
                               status={statusBadgeStatus(t)}
                               label={
@@ -673,7 +668,7 @@ export function SalesSupportDashboard({
                               }
                             />
                           </td>
-                          <td className="max-w-[12rem] px-3 py-3 align-top text-meta">
+                          <td className="max-w-[12rem] text-meta">
                             {doText || dontText ? (
                               <span className="line-clamp-2">
                                 {doText ? `DO: ${doText}` : ""}
@@ -684,190 +679,82 @@ export function SalesSupportDashboard({
                               "—"
                             )}
                           </td>
-                          <td className="px-4 py-3 align-top text-right sm:px-5">
-                            <Link
+                          <td className="text-right">
+                            <ButtonLink
                               href={taskHref(t.id)}
-                              className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+                              variant="outline"
+                              size="sm"
                             >
                               Open
-                            </Link>
+                            </ButtonLink>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </TableFrame>
+              </div>
             )}
-          </section>
+          </DashPanel>
 
-          {/* SEs I support + Task guidance */}
-          <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
-            <section
-              id="supported-ses"
-              aria-labelledby="supported-ses-heading"
-              className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] lg:col-span-7"
-            >
-              <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-                <h2 id="supported-ses-heading" className="text-section-title">
-                  Sales Executives I support
-                </h2>
-                <p className="mt-0.5 text-meta">
-                  Active support relationships — open the SE workspace with
-                  context preserved
-                </p>
-              </div>
-              {seRows.length === 0 ? (
-                <div className="px-4 py-6 sm:px-5">
-                  <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                    No active support relationships
-                  </p>
-                  <p className="mt-1 text-meta">
-                    When a Team Lead assigns you to a Sales Executive, they will
-                    appear here.
-                  </p>
-                </div>
-              ) : (
-                <TableFrame>
-                  <table className="w-full min-w-[32rem] text-left text-[13px]">
-                    <thead>
-                      <tr className="border-b border-[var(--color-line)] text-eyebrow">
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          Sales Executive
-                        </th>
-                        <th className="px-3 py-2.5 font-semibold">Team</th>
-                        <th className="px-3 py-2.5 font-semibold">
-                          Relationship
-                        </th>
-                        <th className="px-3 py-2.5 font-semibold">Tasks</th>
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          Overdue
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--color-line)]">
-                      {seRows.map(({ link, activeCount, overdueCount }) => (
-                        <tr
-                          key={link.id}
-                          className="transition hover:bg-[var(--color-surface-2)]/50"
-                        >
-                          <td className="px-4 py-3 align-top sm:px-5">
-                            <Link
-                              href={`/profiles/${link.salesExecutiveProfileId}`}
-                              className="font-medium text-[var(--color-ink)] hover:underline"
-                            >
-                              {link.profile.displayName}
-                            </Link>
-                          </td>
-                          <td className="px-3 py-3 align-top text-meta">
-                            {link.profile.team?.name ?? "—"}
-                          </td>
-                          <td className="px-3 py-3 align-top">
-                            <StatusBadge
-                              status="ACTIVE"
-                              label={
-                                link.responsibilityType?.trim() || "Active"
-                              }
-                            />
-                          </td>
-                          <td className="px-3 py-3 align-top tabular-nums text-meta">
-                            {activeCount}
-                          </td>
-                          <td
-                            className={`px-4 py-3 align-top tabular-nums sm:px-5 ${
-                              overdueCount > 0
-                                ? "font-medium text-[var(--status-danger)]"
-                                : "text-meta"
-                            }`}
-                          >
-                            {overdueCount}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </TableFrame>
-              )}
-            </section>
-
-            <section
-              aria-labelledby="guidance-heading"
-              className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] lg:col-span-5"
-            >
-              <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-                <h2 id="guidance-heading" className="text-section-title">
-                  Task guidance
-                </h2>
-                <p className="mt-0.5 text-meta">
-                  DO / DON&apos;T from your highest-priority guided task
-                </p>
-              </div>
-              {!guidanceTask ? (
-                <div className="px-4 py-6 sm:px-5">
-                  <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                    No guidance on current tasks
-                  </p>
-                  <p className="mt-1 text-meta">
-                    When a task includes DO / DON&apos;T instructions, they will
-                    appear here.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4 px-4 py-4 sm:px-5">
-                  <div>
-                    <Link
-                      href={taskHref(guidanceTask.id)}
-                      className="text-[13px] font-medium text-[var(--color-ink)] hover:underline"
-                    >
-                      {guidanceTask.title}
-                    </Link>
-                    <p className="mt-0.5 text-meta">
-                      {guidanceTask.profile.displayName}
-                      {guidanceTask.dueDate
-                        ? ` · Due ${formatDate(guidanceTask.dueDate)}`
-                        : ""}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-eyebrow text-[var(--status-success)]">
-                      DO
-                    </p>
-                    {guidanceTask.shouldDo?.length ? (
-                      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] text-[var(--color-ink)]">
-                        {guidanceTask.shouldDo.map((d) => (
-                          <li key={d.id}>{d.text}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-meta">No DO guidance stored.</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-eyebrow text-[var(--status-danger)]">
-                      DON&apos;T
-                    </p>
-                    {guidanceTask.shouldNotDo?.length ? (
-                      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] text-[var(--color-ink)]">
-                        {guidanceTask.shouldNotDo.map((d) => (
-                          <li key={d.id}>{d.text}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-meta">
-                        No DON&apos;T guidance stored.
-                      </p>
-                    )}
-                  </div>
-                  <Link
-                    href={taskHref(guidanceTask.id)}
-                    className="inline-flex text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+          <DashPanel
+            id="supported-ses"
+            tone="bare"
+            title="Sales Executives I support"
+            description="Active support relationships — Team Lead remains the SE owner"
+          >
+            {seRows.length === 0 ? (
+              <DashEmpty
+                title="No active support relationships"
+                description="When a Team Lead assigns you to a Sales Executive, they will appear here."
+              />
+            ) : (
+              <ul className="dash-list">
+                {seRows.map(({ link, activeCount, overdueCount }) => (
+                  <li
+                    key={link.id}
+                    className="flex flex-wrap items-center justify-between gap-3"
                   >
-                    Open full task detail
-                  </Link>
-                </div>
-              )}
-            </section>
-          </div>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={link.profile.displayName} size="sm" />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/profiles/${link.salesExecutiveProfileId}`}
+                          className="text-[13px] font-semibold text-[var(--color-ink)] hover:underline"
+                        >
+                          {link.profile.displayName}
+                        </Link>
+                        <p className="text-meta">
+                          {link.profile.team?.name ?? "—"} ·{" "}
+                          {link.responsibilityType?.trim() || "Active support"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-5 text-[12px] text-[var(--color-ink-muted)]">
+                      <span>
+                        <span className="mr-1 text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                          {activeCount}
+                        </span>
+                        open
+                      </span>
+                      <span>
+                        <span
+                          className={`mr-1 text-[15px] font-semibold tabular-nums ${
+                            overdueCount > 0
+                              ? "text-[var(--status-danger)]"
+                              : "text-[var(--color-ink)]"
+                          }`}
+                        >
+                          {overdueCount}
+                        </span>
+                        overdue
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DashPanel>
         </>
       )}
     </div>

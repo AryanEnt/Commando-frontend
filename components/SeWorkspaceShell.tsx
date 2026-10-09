@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ChangeDesignationButton } from "@/components/ChangeDesignationButton";
+import { CommandoViewOnlyBanner } from "@/components/CommandoViewOnlyBanner";
 import { SeWorkspaceSidebar } from "@/components/se-workspace/SeWorkspaceSidebar";
 import {
   Avatar,
@@ -51,7 +53,7 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
-  const { profile, workspace, loading, error, teamLeadLocked } =
+  const { profile, workspace, loading, error, teamLeadLocked, commandoReadOnly } =
     useSeWorkspace();
   const section = seSectionFromPathname(pathname);
 
@@ -83,16 +85,25 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
   const lastCompleted =
     !assignment &&
     profile.assignmentHistory.some((a) => a.status === "COMPLETED");
-  const status = workspaceStatus({
-    assignment: Boolean(assignment),
-    healthStatus,
-    lastCompleted,
-  });
+  const status = commandoReadOnly
+    ? { status: "COMPLETED", label: "Handed off · View-only" }
+    : workspaceStatus({
+        assignment: Boolean(assignment),
+        healthStatus,
+        lastCompleted,
+      });
   const canAddDailyLog =
     useContextualSidebar &&
     roleCode !== "SUPER_ADMIN" &&
     !teamLeadLocked &&
+    !commandoReadOnly &&
     (roleCode === "TEAM_LEAD" || Boolean(assignment));
+  const viewOnlyBanner = commandoReadOnly ? (
+    <CommandoViewOnlyBanner
+      access={commandoReadOnly}
+      seName={profile.displayName}
+    />
+  ) : null;
 
   if (isSalesExecutive) {
     return (
@@ -195,6 +206,7 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
               ? () => router.push(seCreateHref(profile.id, "daily-log"))
               : undefined
           }
+          viewOnlyUntil={commandoReadOnly?.until}
         />
       </div>
 
@@ -207,6 +219,9 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
       >
         {section === "reviews" ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {viewOnlyBanner ? (
+              <div className="shrink-0 px-4 pt-3">{viewOnlyBanner}</div>
+            ) : null}
             {teamLeadLocked ? (
               <div
                 role="status"
@@ -248,6 +263,8 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
             </ol>
           </nav>
 
+          {viewOnlyBanner}
+
           {teamLeadLocked ? (
             <div
               role="status"
@@ -280,7 +297,9 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
                       {profile.team.name}
                       {assignment?.teamLead
                         ? ` · Team Lead: ${personName(assignment.teamLead)}`
-                        : ""}
+                        : commandoReadOnly?.teamLead
+                          ? ` · Team Lead: ${personName(commandoReadOnly.teamLead)}`
+                          : ""}
                       {assignment?.commando
                         ? ` · Commando: ${personName(assignment.commando)}`
                         : ""}
@@ -301,6 +320,14 @@ export function SeWorkspaceShell({ children }: { children: React.ReactNode }) {
                     <StatusBadge status={status.status} label={status.label} />
                   </span>
                 </p>
+              </div>
+              <div className="ml-auto">
+                <ChangeDesignationButton
+                  userId={profile.user.id}
+                  name={profile.displayName}
+                  currentRole="SALES_EXECUTIVE"
+                  redirectToWorkspace
+                />
               </div>
             </div>
           ) : null}

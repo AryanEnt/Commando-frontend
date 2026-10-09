@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useTrackNavigation } from "@/lib/nav-history";
 import {
   isWideContentPath,
   navItemsForRole,
@@ -44,6 +45,7 @@ import {
 } from "@/lib/navigation";
 import { personName, roleLabel } from "@/lib/labels";
 import { api, type ProfileListItem } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Avatar, IconButton } from "@/components/ui";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -130,6 +132,7 @@ function SeHeaderContextChip({ href }: { href: string }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, hasPermission, token } = useAuth();
   const pathname = usePathname();
+  useTrackNavigation();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -257,7 +260,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     ? "history"
                     : item.section === "eisenhower"
                       ? "tasks"
-                      : item.section === "performance"
+                      : item.section === "swot"
                         ? "reports"
                         : "profiles",
       }));
@@ -325,7 +328,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user || pathname === "/login") {
     return (
       <div className="h-dvh min-h-0 overflow-y-auto overflow-x-hidden">
         {children}
@@ -341,7 +344,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const frame = (
     <div
-      className="flex h-dvh min-h-0 overflow-hidden bg-[var(--color-canvas)] text-[var(--color-ink)]"
+      className="app-backdrop flex h-dvh min-h-0 overflow-hidden text-[var(--color-ink)]"
       style={
         {
           ["--sidebar-current-w" as string]: collapsed
@@ -360,7 +363,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 flex-col border-r border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-[transform,width] duration-200 ease-[var(--ease)] lg:w-[var(--sidebar-current-w)] lg:translate-x-0 ${
+        className={`shell-sidebar fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 flex-col border-r border-[var(--color-sidebar-border)] bg-[var(--color-sidebar)] text-[var(--color-sidebar-muted)] transition-[transform,width] duration-200 ease-[var(--ease)] lg:w-[var(--sidebar-current-w)] lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -374,7 +377,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Link
             href={homeHref}
-            className={`flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
+            className={`flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-sidebar-accent)] ${
               collapsed ? "lg:justify-center" : ""
             }`}
             onClick={() => setSidebarOpen(false)}
@@ -384,7 +387,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               C
             </span>
             <span className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
-              <span className="block truncate text-[13px] font-semibold tracking-tight text-[var(--color-ink)]">
+              <span className="block truncate text-[13px] font-semibold tracking-tight text-[var(--color-sidebar-fg)]">
                 COMMANDO
               </span>
               <span className="block truncate text-[10px] text-[var(--color-sidebar-subtle)]">
@@ -447,7 +450,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         ? `${item.label}, ${alertCount} new`
                         : item.label
                     }
-                    className={`shell-nav-item group relative mb-0.5 flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] transition duration-150 ${
+                    className={`shell-nav-item group relative mb-0.5 flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition duration-150 ${
                       collapsed
                         ? "lg:justify-center lg:gap-0 lg:px-0 lg:py-2.5"
                         : ""
@@ -455,7 +458,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     {active ? (
                       <span
-                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-brand-dark)]"
+                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-sidebar-accent)]"
                         aria-hidden
                       />
                     ) : null}
@@ -468,7 +471,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         />
                         {alertCount > 0 && collapsed ? (
                           <span
-                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[var(--color-brand-dark)] ring-2 ring-[var(--color-sidebar)] lg:block"
+                            className="absolute -right-1 -top-1 hidden h-2 w-2 rounded-full bg-[var(--color-sidebar-accent)] ring-2 ring-[var(--color-sidebar)] lg:block"
                             aria-hidden
                           />
                         ) : null}
@@ -508,7 +511,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Avatar name={displayName} size="sm" />
             <div className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>
-              <p className="truncate text-xs font-medium text-[var(--color-ink)]">
+              <p className="truncate text-xs font-medium text-[var(--color-sidebar-fg)]">
                 {displayName}
               </p>
               <p className="truncate text-[10px] text-[var(--color-sidebar-subtle)]">
@@ -519,8 +522,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               title="Log out"
               aria-label="Log out"
-              onClick={() => logout().then(() => router.push("/login"))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-ink)]"
+              onClick={() =>
+                logout().then(() => {
+                  toast.success("Signed out");
+                  router.push("/login");
+                })
+              }
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-sidebar-subtle)] transition hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-sidebar-fg)]"
             >
               <LogOut size={14} />
             </button>
@@ -579,7 +587,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       }}
                       onFocus={() => setSearchOpen(true)}
                       placeholder="Search Sales Executives…"
-                      className="h-8 w-52 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-canvas)] pl-8 pr-12 text-[13px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] md:w-64"
+                      className="field-input h-8 w-52 rounded-[var(--radius-sm)] border bg-[var(--color-surface)] pl-8 pr-12 text-[13px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition md:w-64"
                     />
                     <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-subtle)] md:inline">
                       ⌘K

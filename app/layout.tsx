@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Nunito_Sans, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
-import { ToastProvider } from "@/lib/toast-context";
 import { AppShell } from "@/components/AppShell";
-import { ToastHost } from "@/components/ToastHost";
+import { AppToaster } from "@/components/AppToaster";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const bodyFont = Nunito_Sans({
+  variable: "--font-body",
   subsets: ["latin"],
 });
 
@@ -25,15 +24,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${bodyFont.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="h-full overflow-hidden">
         <AuthProvider>
-          <ToastProvider>
-            <AppShell>{children}</AppShell>
-            <ToastHost />
-          </ToastProvider>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
+        <AppToaster />
       </body>
     </html>
   );

@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, ApiError, type WeeklyReview } from "@/lib/api";
+import { api, errorMessage, type WeeklyReview } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate } from "@/lib/dates";
 import { weeklyReviewSubjectName } from "@/lib/weekly-review-display";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -63,7 +63,6 @@ const NARRATIVE_SECTIONS = [
 export default function WeeklyReviewDetailPage() {
   const params = useParams<{ id: string }>();
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [review, setReview] = useState<WeeklyReview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -127,11 +126,9 @@ export default function WeeklyReviewDetailPage() {
         meetingDate: new Date(form.meetingDate).toISOString(),
       });
       setReview(res.data.review);
-      pushToast("Weekly review saved.", "success");
+      toast.success("Weekly review saved");
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to save";
-      setError(msg);
-      pushToast("Unable to save weekly review.", "error");
+      toast.error(errorMessage(err, "Unable to save weekly review"));
     } finally {
       setBusy(false);
     }
@@ -144,12 +141,9 @@ export default function WeeklyReviewDetailPage() {
     try {
       const res = await api.acknowledgeWeeklyReview(token, review.id);
       setReview(res.data.review);
-      pushToast("Review acknowledged", "success");
+      toast.success("Review acknowledged");
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Failed to acknowledge";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to acknowledge review"));
     } finally {
       setBusy(false);
     }
@@ -162,9 +156,7 @@ export default function WeeklyReviewDetailPage() {
       const res = await api.getWeeklyReviewMinutesUrl(token, review.id);
       window.open(res.data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Failed to download minutes";
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to download minutes"));
     } finally {
       setMinutesBusy(false);
     }

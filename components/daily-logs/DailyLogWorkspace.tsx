@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   api,
-  ApiError,
+  errorMessage,
   type DailyLog,
   type DailyLogEntry,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -28,6 +28,7 @@ import {
   DailyLogPrioritizeFlow,
   type Classification,
 } from "@/components/daily-logs/DailyLogPrioritizeFlow";
+import { DailyLogAttachmentGrid } from "@/components/daily-logs/DailyLogScreenshots";
 
 type Mode = "workspace" | "add" | "edit" | "prioritize";
 
@@ -60,8 +61,7 @@ export function DailyLogWorkspace({
   backHref: string;
   profileId?: string;
 }) {
-  const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
+  const { token, hasPermission, user } = useAuth();
   const router = useRouter();
   const [log, setLog] = useState<DailyLog | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +117,9 @@ export function DailyLogWorkspace({
         coachingGiven: values.coachingGiven.trim() || null,
         expectedChange: values.expectedChange.trim() || null,
         followUp: values.followUp.trim() || null,
+        ...(values.attachments.length > 0
+          ? { attachments: values.attachments }
+          : {}),
       };
       const wasEdit = mode === "edit" && editing;
       const res = wasEdit
@@ -129,12 +132,9 @@ export function DailyLogWorkspace({
       }
       setMode("workspace");
       setEditing(null);
-      pushToast(wasEdit ? "Activity updated" : "Activity added", "success");
+      toast.success(wasEdit ? "Activity updated" : "Activity added");
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Failed to save entry",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to save activity"));
     } finally {
       setBusy(false);
     }
@@ -147,12 +147,28 @@ export function DailyLogWorkspace({
       const res = await api.deleteDailyLogEntry(token, log.id, deleteId);
       setLog(res.data.log);
       setDeleteId(null);
-      pushToast("Activity removed", "success");
+      toast.success("Activity removed");
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Failed to delete",
-        "error",
+      toast.error(errorMessage(err, "Unable to remove activity"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeScreenshot(entryId: string, attachmentId: string) {
+    if (!token || !log) return;
+    setBusy(true);
+    try {
+      const res = await api.removeDailyLogAttachment(
+        token,
+        log.id,
+        entryId,
+        attachmentId,
       );
+      setLog(res.data.log);
+      toast.success("Screenshot removed");
+    } catch (err) {
+      toast.error(errorMessage(err, "Unable to remove screenshot"));
     } finally {
       setBusy(false);
     }
@@ -165,10 +181,9 @@ export function DailyLogWorkspace({
       const res = await api.submitDailyLog(token, log.id, { classifications });
       setLog(res.data.log);
       setMode("workspace");
-      pushToast(
-        `Daily Log submitted · ${res.data.prioritizedCount} prioritized for Eisenhower`,
-        "success",
-      );
+      toast.success("Daily Log submitted", {
+        description: `${res.data.prioritizedCount} prioritized for Eisenhower`,
+      });
       router.push(
         log.salesExecutiveProfileId
           ? `/profiles/${log.salesExecutiveProfileId}/eisenhower`
@@ -177,10 +192,7 @@ export function DailyLogWorkspace({
             : "/daily-logs",
       );
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Failed to submit",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to submit Daily Log"));
     } finally {
       setBusy(false);
     }
@@ -308,6 +320,22 @@ export function DailyLogWorkspace({
                     setMode("edit");
                   }}
                   onDelete={() => setDeleteId(entry.id)}
+                  screenshots={
+                    token ? (
+                      <DailyLogAttachmentGrid
+                        token={token}
+                        logId={log.id}
+                        entryId={entry.id}
+                        attachments={entry.attachments ?? []}
+                        currentUserId={user?.id}
+                        canRemove={draft && canWrite && !composing}
+                        busy={busy}
+                        onRemove={(attachmentId) =>
+                          void removeScreenshot(entry.id, attachmentId)
+                        }
+                      />
+                    ) : null
+                  }
                 />
               </li>
             ))}
@@ -406,13 +434,14 @@ export function DailyLogWorkspace({
   );
 }
 
-function TimelineCard({
+export function TimelineCard({
   entry,
   submitted,
   highlight,
   canEdit,
   onEdit,
   onDelete,
+  screenshots,
 }: {
   entry: DailyLogEntry;
   submitted: boolean;
@@ -420,6 +449,7 @@ function TimelineCard({
   canEdit: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  screenshots?: ReactNode;
 }) {
   return (
     <article
@@ -438,6 +468,11 @@ function TimelineCard({
       <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
         {entry.activityType.name}
       </p>
+      {entry.activityType.description?.trim() ? (
+        <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-ink-subtle)]">
+          {entry.activityType.description}
+        </p>
+      ) : null}
       <p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-ink)]">
         {entry.observation}
       </p>
@@ -448,6 +483,7 @@ function TimelineCard({
         <MetaBlock label="Expected change" value={entry.expectedChange} />
         <MetaBlock label="Follow-up" value={entry.followUp} />
       </dl>
+      {screenshots}
       {entry.eisenhowerCategory ? (
         <p className="mt-3 text-[12px] font-medium text-[var(--color-brand)]">
           Eisenhower · {entry.eisenhowerCategory.replaceAll("_", " ")}

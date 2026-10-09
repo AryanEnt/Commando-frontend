@@ -53,6 +53,7 @@ export const SSE_LIVE_SECTIONS: ReadonlySet<SseSection> = new Set([
   "monitoring",
   "checklist",
   "reviews",
+  "interventions",
 ]);
 
 export function sseWorkspaceHref(userId: string, section?: SseSection) {
@@ -60,9 +61,28 @@ export function sseWorkspaceHref(userId: string, section?: SseSection) {
   return `/support/${userId}/${section}`;
 }
 
-export function sseSwotCreateHref(userId: string) {
-  const returnTo = encodeURIComponent(sseWorkspaceHref(userId, "swot"));
-  return `/swot/new?subjectUserId=${encodeURIComponent(userId)}&returnTo=${returnTo}`;
+export type SseSwotCreateHrefOptions = {
+  fresh?: boolean;
+  /** Defaults to the SSE workspace SWOT section. */
+  returnTo?: string;
+  /** Shown immediately on the form so the header does not wait on support-subjects. */
+  name?: string;
+};
+
+export function sseSwotCreateHref(
+  userId: string,
+  freshOrOptions: boolean | SseSwotCreateHrefOptions = false,
+) {
+  const opts =
+    typeof freshOrOptions === "boolean"
+      ? { fresh: freshOrOptions }
+      : freshOrOptions;
+  const params = new URLSearchParams();
+  params.set("subjectUserId", userId);
+  params.set("returnTo", opts.returnTo ?? sseWorkspaceHref(userId, "swot"));
+  if (opts.name?.trim()) params.set("name", opts.name.trim());
+  if (opts.fresh) params.set("fresh", "1");
+  return `/swot/new?${params.toString()}`;
 }
 
 export function sseDailyLogHref(userId: string, logId: string) {

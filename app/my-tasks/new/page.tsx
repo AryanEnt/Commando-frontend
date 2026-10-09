@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, type SyncSupportLink } from "@/lib/api";
+import { api, errorMessage, type SyncSupportLink } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
@@ -28,7 +28,6 @@ export default function NewSupportTaskPage() {
 
 function NewSupportTaskForm() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const lockedProfileId = searchParams.get("profileId") ?? "";
@@ -49,7 +48,6 @@ function NewSupportTaskForm() {
   });
   const [shouldDo, setShouldDo] = useState<string[]>([""]);
   const [shouldNotDo, setShouldNotDo] = useState<string[]>([""]);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -85,7 +83,6 @@ function NewSupportTaskForm() {
     e.preventDefault();
     if (!token) return;
     setSubmitting(true);
-    setError(null);
     try {
       const res = await api.createSupportTask(token, {
         title: form.title.trim(),
@@ -100,7 +97,7 @@ function NewSupportTaskForm() {
         shouldDo: shouldDo.map((s) => s.trim()).filter(Boolean),
         shouldNotDo: shouldNotDo.map((s) => s.trim()).filter(Boolean),
       });
-      pushToast("Support task created", "success");
+      toast.success("Support task created");
       if (returnTo) {
         router.push(returnTo);
       } else if (lockedProfileId) {
@@ -109,9 +106,7 @@ function NewSupportTaskForm() {
         router.push(`/my-tasks/${res.data.task.id}`);
       }
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Create failed";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to create support task"));
     } finally {
       setSubmitting(false);
     }
@@ -149,8 +144,6 @@ function NewSupportTaskForm() {
           Executive profile.
         </p>
       </div>
-
-      {error && <ErrorState message={error} />}
 
       <form
         onSubmit={onSubmit}

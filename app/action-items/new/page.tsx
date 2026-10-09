@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { dueIsoFromInputs } from "@/lib/dates";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { DueDateTimePicker } from "@/components/DueDateTimePicker";
@@ -19,7 +19,6 @@ import {
 
 export default function NewActionItemPage() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [form, setForm] = useState({
     salesExecutiveProfileId: "",
@@ -50,12 +49,10 @@ export default function NewActionItemPage() {
         description: form.description.trim() || null,
         dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
-      pushToast("Assignment created", "success");
+      toast.success("Assignment created");
       router.push(`/action-items/${res.data.actionItem.id}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to create";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to create assignment"));
     } finally {
       setSubmitting(false);
     }

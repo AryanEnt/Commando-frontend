@@ -38,6 +38,12 @@ const TONE: Record<string, string> = {
     "bg-[var(--status-info-bg)] text-[var(--status-info)] ring-[var(--status-info-ring)]",
   NORMAL_MANAGEMENT:
     "bg-[var(--status-info-bg)] text-[var(--status-info)] ring-[var(--status-info-ring)]",
+  UPCOMING:
+    "bg-[var(--status-info-bg)] text-[var(--status-info)] ring-[var(--status-info-ring)]",
+  WATCH:
+    "bg-[var(--status-neutral-bg)] text-[var(--status-neutral)] ring-[var(--status-neutral-ring)]",
+  DUE_TODAY:
+    "bg-[var(--status-warn-bg)] text-[var(--status-warn)] ring-[var(--status-warn-ring)]",
 
   /* Warning / pending */
   PENDING:
@@ -96,8 +102,9 @@ const TONE: Record<string, string> = {
     "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
   SALES_EXECUTIVE:
     "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
+  /* Rose accent is reserved for active intervention */
   UNDER_INTERVENTION:
-    "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
+    "bg-[var(--color-accent-rose-soft)] text-[var(--color-accent-rose-ink)] ring-[color-mix(in_srgb,var(--color-accent-rose)_45%,transparent)]",
   EXCELLENT:
     "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success-ring)]",
 };
@@ -113,7 +120,7 @@ export function StatusBadge({
   const tone = TONE[key] ?? TONE.INACTIVE;
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[var(--text-meta)] font-medium ring-1 ring-inset ${tone}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[var(--text-meta)] font-semibold ring-1 ring-inset ${tone}`}
     >
       <span className="status-dot shrink-0" aria-hidden />
       {label ?? statusLabel(status)}

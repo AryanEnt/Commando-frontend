@@ -11,12 +11,13 @@ import {
   UserMinus,
   UsersRound,
 } from "lucide-react";
-import { api, type Team, type TeamMember } from "@/lib/api";
+import { api, errorMessage, type Team, type TeamMember } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate } from "@/lib/dates";
 import { personName, roleLabel } from "@/lib/labels";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { ChangeDesignationButton } from "@/components/ChangeDesignationButton";
 import {
   Avatar,
   Button,
@@ -28,9 +29,7 @@ import {
   LoadingState,
   PageHeader,
   SelectField,
-  Skeleton,
   StatusPill,
-  TextInput,
 } from "@/components/ui";
 
 const TEAM_ROLE_OPTIONS = [
@@ -61,8 +60,7 @@ function roleTone(
 
 export default function TeamDetailPage() {
   const params = useParams<{ id: string }>();
-  const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
+  const { token, hasPermission, user: me } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [users, setUsers] = useState<
@@ -84,8 +82,9 @@ export default function TeamDetailPage() {
   const [addError, setAddError] = useState<string | null>(null);
   const [endTarget, setEndTarget] = useState<TeamMember | null>(null);
   const [endBusy, setEndBusy] = useState(false);
-
   const canManage = hasPermission("TEAM_MANAGE");
+  const canChangeDesignation =
+    me?.roleCode === "SUPER_ADMIN" || me?.roleCode === "TEAM_LEAD";
 
   async function reloadMembers() {
     if (!token || !params.id) return;
@@ -183,12 +182,9 @@ export default function TeamDetailPage() {
       setRoleInTeam("MEMBER");
       setDrawerOpen(false);
       await reloadMembers();
-      pushToast("Member added to team", "success");
+      toast.success("Member added to team");
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to add member";
-      setAddError(message);
-      pushToast(message, "error");
+      setAddError(errorMessage(err, "Unable to add member"));
     } finally {
       setAddBusy(false);
     }
@@ -201,12 +197,9 @@ export default function TeamDetailPage() {
       await api.endTeamMember(token, params.id, endTarget.id);
       setEndTarget(null);
       await reloadMembers();
-      pushToast("Membership ended", "success");
+      toast.success("Membership ended");
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Failed to end membership",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to end membership"));
     } finally {
       setEndBusy(false);
     }
@@ -396,6 +389,11 @@ export default function TeamDetailPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredActive.map((m) => {
             const name = personName(m.user);
+            const canSwitch =
+              canChangeDesignation &&
+              m.user.id !== me?.id &&
+              (m.user.role?.code === "SALES_EXECUTIVE" ||
+                m.user.role?.code === "SALES_SUPPORT_EXECUTIVE");
             return (
               <div
                 key={m.id}
@@ -441,17 +439,26 @@ export default function TeamDetailPage() {
                   </span>
                 </div>
 
-                {canManage ? (
-                  <div className="mt-3 border-t border-[var(--color-line)] pt-3">
-                    <Button
-                      variant="danger"
-                      size="sm"
+                {canSwitch || canManage ? (
+                  <div className="mt-3 flex flex-col gap-2 border-t border-[var(--color-line)] pt-3">
+                    <ChangeDesignationButton
+                      userId={m.user.id}
+                      name={name}
+                      currentRole={m.user.role?.code}
                       className="w-full"
-                      onClick={() => setEndTarget(m)}
-                    >
-                      <UserMinus size={14} aria-hidden />
-                      End membership
-                    </Button>
+                      onChanged={reloadMembers}
+                    />
+                    {canManage ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setEndTarget(m)}
+                      >
+                        <UserMinus size={14} aria-hidden />
+                        End membership
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

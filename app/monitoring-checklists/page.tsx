@@ -4,12 +4,12 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type MonitoringCategory,
   type MonitoringChecklistItem,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   AdminPageShell,
@@ -42,7 +42,6 @@ type ItemDraft = { code: string; label: string; defaultWeight: string };
 
 export default function MonitoringChecklistsPage() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [categories, setCategories] = useState<MonitoringCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +166,7 @@ export default function MonitoringChecklistsPage() {
           name: categoryDraft.name.trim(),
           description: categoryDraft.description.trim() || undefined,
         });
-        pushToast("Checklist created successfully", "success");
+        toast.success("Checklist created");
         setSelectedId(res.data.category.id);
         setPage(1);
         setCategoryDrawer(null);
@@ -178,15 +177,12 @@ export default function MonitoringChecklistsPage() {
           name: categoryDraft.name.trim(),
           description: categoryDraft.description.trim() || null,
         });
-        pushToast("Checklist updated successfully", "success");
+        toast.success("Checklist updated");
       }
       setCategoryDrawer(null);
       await load();
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Could not save checklist";
-      pushToast(msg, "error");
-      setError(msg);
+      toast.error(errorMessage(err, "Unable to save checklist"));
     } finally {
       setSaving(false);
     }
@@ -212,13 +208,10 @@ export default function MonitoringChecklistsPage() {
       });
       setItemDraft({ code: "", label: "", defaultWeight: "0" });
       setItemDrawerOpen(false);
-      pushToast("Checklist item added", "success");
+      toast.success("Checklist item added");
       await load();
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Could not add checklist item";
-      pushToast(msg, "error");
-      setError(msg);
+      toast.error(errorMessage(err, "Unable to add checklist item"));
     } finally {
       setSaving(false);
     }
@@ -228,7 +221,7 @@ export default function MonitoringChecklistsPage() {
     if (!token) return;
     const weight = Number.parseInt(raw, 10);
     if (!Number.isFinite(weight) || weight < 0 || weight > 100) {
-      pushToast("Weight must be an integer from 0 to 100", "error");
+      toast.warning("Weight must be a whole number from 0 to 100");
       return;
     }
     if (weight === item.defaultWeight) return;
@@ -237,13 +230,10 @@ export default function MonitoringChecklistsPage() {
       await api.updateMonitoringChecklistItem(token, item.id, {
         defaultWeight: weight,
       });
-      pushToast("Default weight updated", "success");
+      toast.success("Default weight updated");
       await load();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not update weight",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to update weight"));
     } finally {
       setWeightSavingId(null);
     }
@@ -259,25 +249,19 @@ export default function MonitoringChecklistsPage() {
           isActive: !cat.isActive,
           archivedAt: cat.isActive ? new Date().toISOString() : null,
         });
-        pushToast(
-          cat.isActive ? "Checklist deactivated" : "Checklist activated",
-          "success",
-        );
+        toast.success(cat.isActive ? "Checklist deactivated" : "Checklist activated");
       } else {
         const item = pending.item;
         await api.updateMonitoringChecklistItem(token, item.id, {
           isActive: !item.isActive,
           archivedAt: item.isActive ? new Date().toISOString() : null,
         });
-        pushToast(
-          item.isActive ? "Item deactivated" : "Item activated",
-          "success",
-        );
+        toast.success(item.isActive ? "Item deactivated" : "Item activated");
       }
       setPending(null);
       await load();
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Update failed", "error");
+      toast.error(errorMessage(err, "Unable to update status"));
     } finally {
       setToggling(false);
     }
@@ -289,15 +273,16 @@ export default function MonitoringChecklistsPage() {
     setDeleting(true);
     try {
       const res = await api.deleteMonitoringCategory(token, id);
-      pushToast(res.data.message, "success");
+      if (res.data.deleted) {
+        toast.success("Checklist deleted");
+      } else {
+        toast.info("Checklist deactivated", { description: res.data.message });
+      }
       setPendingDelete(null);
       if (selectedId === id) setSelectedId("");
       await load();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not delete checklist",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to delete checklist"));
     } finally {
       setDeleting(false);
     }
@@ -457,7 +442,7 @@ export default function MonitoringChecklistsPage() {
                         <AdminTd className="text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1">
                             <Button
-                              variant="ghost"
+                              variant={c.isActive ? "warn-soft" : "success-soft"}
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -467,9 +452,8 @@ export default function MonitoringChecklistsPage() {
                               {c.isActive ? "Deactivate" : "Activate"}
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-soft"
                               size="sm"
-                              className="text-[var(--status-danger)] hover:text-[var(--status-danger)]"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPendingDelete(c);
@@ -523,14 +507,14 @@ export default function MonitoringChecklistsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant="info-soft"
                       onClick={() => openEditCategory(selected)}
                     >
                       Edit
                     </Button>
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant={selected.isActive ? "warn-soft" : "success-soft"}
                       onClick={() =>
                         setPending({ kind: "category", item: selected })
                       }
@@ -539,8 +523,7 @@ export default function MonitoringChecklistsPage() {
                     </Button>
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="text-[var(--status-danger)]"
+                      variant="danger-soft"
                       onClick={() => setPendingDelete(selected)}
                     >
                       Delete
@@ -721,7 +704,7 @@ export default function MonitoringChecklistsPage() {
                             label={item.isActive ? "Active" : "Inactive"}
                           />
                           <Button
-                            variant="ghost"
+                            variant={item.isActive ? "warn-soft" : "success-soft"}
                             size="sm"
                             onClick={() => setPending({ kind: "item", item })}
                           >

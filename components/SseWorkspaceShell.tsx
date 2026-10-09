@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ChangeDesignationButton } from "@/components/ChangeDesignationButton";
 import { SseWorkspaceSidebar } from "@/components/sse-workspace/SseWorkspaceSidebar";
 import {
   Avatar,
@@ -167,6 +168,14 @@ export function SseWorkspaceShell({ children }: { children: React.ReactNode }) {
                     <StatusBadge status={status.status} label={status.label} />
                   </span>
                 </p>
+              </div>
+              <div className="ml-auto">
+                <ChangeDesignationButton
+                  userId={subject.userId}
+                  name={subject.displayName}
+                  currentRole="SALES_SUPPORT_EXECUTIVE"
+                  redirectToWorkspace
+                />
               </div>
             </div>
           ) : null}

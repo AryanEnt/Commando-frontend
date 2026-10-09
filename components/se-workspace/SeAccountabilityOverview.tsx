@@ -23,6 +23,7 @@ import type {
 import { formatDate, formatWhen } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
+import { useSwotDetailHref } from "@/lib/swot-display";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ButtonLink, Skeleton } from "@/components/ui";
 
@@ -155,6 +156,7 @@ export function SeAccountabilityOverview({
   canViewSupport,
   managementActions,
 }: Props) {
+  const swotHref = useSwotDetailHref();
   const assignment = profile.currentAssignment;
   const referral = workspace?.latestReferral ?? null;
 
@@ -769,7 +771,7 @@ export function SeAccountabilityOverview({
                 </p>
                 {selfSwot ? (
                   <Link
-                    href={`/swot/${selfSwot.id}`}
+                    href={swotHref(selfSwot.id)}
                     className="text-xs font-medium text-[var(--color-brand)] hover:underline"
                   >
                     Open →
@@ -799,7 +801,7 @@ export function SeAccountabilityOverview({
                   Team Lead:{" "}
                   {tlSwot ? (
                     <Link
-                      href={`/swot/${tlSwot.id}`}
+                      href={swotHref(tlSwot.id)}
                       className="font-medium text-[var(--color-brand)] hover:underline"
                     >
                       View
@@ -812,7 +814,7 @@ export function SeAccountabilityOverview({
                   Self:{" "}
                   {selfSwot ? (
                     <Link
-                      href={`/swot/${selfSwot.id}`}
+                      href={swotHref(selfSwot.id)}
                       className="font-medium text-[var(--color-brand)] hover:underline"
                     >
                       View
@@ -825,7 +827,7 @@ export function SeAccountabilityOverview({
                   Commando:{" "}
                   {commandoSwot ? (
                     <Link
-                      href={`/swot/${commandoSwot.id}`}
+                      href={swotHref(commandoSwot.id)}
                       className="font-medium text-[var(--color-brand)] hover:underline"
                     >
                       View

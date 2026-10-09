@@ -4,11 +4,13 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api, type Assignment } from "@/lib/api";
+import { api, errorMessage, type Assignment } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { HandoffReportDialog } from "@/components/assignments/HandoffReportDialog";
+import { HandoffReportsPanel } from "@/components/assignments/HandoffReportsPanel";
 import {
   Button,
   DateTimeCell,
@@ -29,8 +31,7 @@ import {
 export default function AssignmentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
+  const { token, hasPermission, user } = useAuth();
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"COMPLETED" | "EXITED">("COMPLETED");
@@ -44,6 +45,7 @@ export default function AssignmentDetailPage() {
   const [endTime, setEndTime] = useState(toLocalTimeInput());
   const [newCommandoUserId, setNewCommandoUserId] = useState("");
   const [transferReason, setTransferReason] = useState("");
+  const [showHandoff, setShowHandoff] = useState(false);
   const [commandos, setCommandos] = useState<
     { id: string; firstName: string; lastName: string; email: string; role: { code: string } }[]
   >([]);
@@ -67,28 +69,17 @@ export default function AssignmentDetailPage() {
     }
   }, [token, params.id, canOperateAssignment]);
 
-  async function onEnd(e: FormEvent) {
+  function onEnd(e: FormEvent) {
     e.preventDefault();
-    if (!token || !params.id) return;
-    try {
-      const res = await api.endAssignment(token, params.id, {
-        status,
-        endedAt: combineLocalDateTime(endDate, endTime),
-        completionReason: reason || undefined,
-        outcome: outcome || undefined,
-        initialProblem: initialProblem || undefined,
-        interventionProvided: interventionProvided || undefined,
-        improvementObserved: improvementObserved || undefined,
-        remainingGaps: remainingGaps || undefined,
-      });
-      setAssignment(res.data.assignment);
-      pushToast("Assignment ended", "success");
-    } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Failed to end assignment",
-        "error",
-      );
-    }
+    setShowHandoff(true);
+  }
+
+  function onEnded(ended: Assignment) {
+    setShowHandoff(false);
+    setAssignment(ended);
+    toast.success("Assignment ended", {
+      description: "Your handoff report is with the Team Lead.",
+    });
   }
 
   async function onTransfer(e: FormEvent) {
@@ -100,13 +91,10 @@ export default function AssignmentDetailPage() {
         reason: transferReason,
       });
       setAssignment(res.data.assignment);
-      pushToast("Assignment transferred", "success");
+      toast.success("Assignment transferred");
       router.push(`/assignments/${res.data.assignment.id}`);
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Failed to transfer assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to transfer assignment"));
     }
   }
 
@@ -123,6 +111,8 @@ export default function AssignmentDetailPage() {
   if (!assignment) return <LoadingState />;
 
   const isActive = assignment.status === "ACTIVE";
+  const canViewHandoffReports =
+    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "SUPER_ADMIN";
 
   const details = (
     <dl className="grid gap-3 sm:grid-cols-2">
@@ -210,6 +200,10 @@ export default function AssignmentDetailPage() {
         <ReadOnlyPanel title="Assignment history">{details}</ReadOnlyPanel>
       )}
 
+      {!isActive && canViewHandoffReports ? (
+        <HandoffReportsPanel assignmentId={assignment.id} />
+      ) : null}
+
       {canOperateAssignment && isActive && (
         <form
           onSubmit={onEnd}
@@ -280,8 +274,28 @@ export default function AssignmentDetailPage() {
             value={remainingGaps}
             onChange={(e) => setRemainingGaps(e.target.value)}
           />
-          <Button type="submit">Complete intervention</Button>
+          <Button type="submit">Continue to handoff report</Button>
         </form>
+      )}
+
+      {canOperateAssignment && isActive && (
+        <HandoffReportDialog
+          open={showHandoff}
+          assignmentId={assignment.id}
+          profileName={assignment.profile?.displayName ?? "this Sales Executive"}
+          endInput={{
+            status,
+            endedAt: combineLocalDateTime(endDate, endTime),
+            completionReason: reason || undefined,
+            outcome: outcome || undefined,
+            initialProblem: initialProblem || undefined,
+            interventionProvided: interventionProvided || undefined,
+            improvementObserved: improvementObserved || undefined,
+            remainingGaps: remainingGaps || undefined,
+          }}
+          onCancel={() => setShowHandoff(false)}
+          onCompleted={onEnded}
+        />
       )}
 
       {canOperateAssignment && isActive && (

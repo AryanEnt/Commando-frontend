@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { useEffect, useState, type ReactNode } from "react";
 import {
   api,
+  errorMessage,
   type ActionItem,
   type DailyLog,
   type EisenhowerTask,
@@ -16,14 +17,24 @@ import {
   type WeeklyReview,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate, formatWhen } from "@/lib/dates";
-import { formatSwotField } from "@/lib/swot-points";
+import {
+  swotDetailHref,
+  swotKindLabel,
+  swotSourceLabel,
+} from "@/lib/swot-display";
+import { ProfileSwotPanel } from "@/components/swot/ProfileSwotPanel";
+import {
+  SwotWorkspaceView,
+  UserSwotSection,
+} from "@/components/swot/SwotSections";
 import { personName } from "@/lib/labels";
 import { INTERVENTION_STAGES, interventionStageFromAssignment } from "@/lib/lifecycle";
 import { useSeWorkspace } from "@/lib/se-workspace-context";
 import {
   seCreateHref,
+  seSwotCreateHref,
   seSectionFromPathname,
   seWorkspaceHref,
   type SeSection,
@@ -41,9 +52,10 @@ import { DailyWorkLogPanel } from "@/components/daily-work-logs/DailyWorkLogPane
 import { WeeklyReviewHub } from "@/components/weekly-reviews/WeeklyReviewHub";
 import { SeWeeklyReviewsPanel } from "@/components/se-workspace/SeWeeklyReviewsPanel";
 import { SeChecklistWorkspace } from "@/components/monitoring/SeChecklistWorkspace";
+import { HandoffReportDialog } from "@/components/assignments/HandoffReportDialog";
+import { HandoffReportsPanel } from "@/components/assignments/HandoffReportsPanel";
 import {
   Button,
-  ConfirmDialog,
   EmptyState,
   ErrorState,
   LifecycleStepper,
@@ -56,7 +68,6 @@ export function SeWorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { token, hasPermission, user } = useAuth();
-  const { pushToast } = useToast();
   const {
     profile,
     workspace,
@@ -64,6 +75,7 @@ export function SeWorkspaceContent() {
     loading,
     error: profileError,
     teamLeadLocked,
+    commandoReadOnly,
     reload,
   } = useSeWorkspace();
 
@@ -101,9 +113,7 @@ export function SeWorkspaceContent() {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState<string | null>(null);
-  const [completeBusy, setCompleteBusy] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [signingReviewId, setSigningReviewId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -270,41 +280,25 @@ export function SeWorkspaceContent() {
     }
   }
 
-  async function completeIntervention() {
-    if (!token || !profile?.currentAssignment) return;
-    setCompleteBusy(true);
-    setActionError(null);
-    try {
-      await api.endAssignment(token, profile.currentAssignment.id, {
-        status: "COMPLETED",
-        completionReason: "Intervention completed from Sales Executive workspace",
-      });
-      setConfirmComplete(false);
-      await reload();
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Could not complete intervention",
-      );
-    } finally {
-      setCompleteBusy(false);
-    }
+  async function onInterventionCompleted() {
+    setConfirmComplete(false);
+    toast.success("Intervention completed", {
+      description: "Your handoff report is with the Team Lead.",
+    });
+    await reload();
   }
 
   async function signWeeklyReview(reviewId: string) {
     if (!token) return;
     setSigningReviewId(reviewId);
-    setActionError(null);
     try {
       const res = await api.acknowledgeWeeklyReview(token, reviewId);
       setReviews((prev) =>
         prev.map((r) => (r.id === reviewId ? res.data.review : r)),
       );
-      pushToast("Weekly review signed", "success");
+      toast.success("Weekly review signed");
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Could not sign weekly review";
-      setActionError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to sign weekly review"));
     } finally {
       setSigningReviewId(null);
     }
@@ -322,12 +316,34 @@ export function SeWorkspaceContent() {
   const assignment = profile.currentAssignment;
   const canCompleteIntervention =
     Boolean(assignment) && hasPermission("ASSIGNMENT_UPDATE");
+  const canViewHandoffReports = role === "TEAM_LEAD" || role === "SUPER_ADMIN";
+  const latestEndedAssignment = profile.assignmentHistory
+    .filter((a) => a.endedAt)
+    .reduce<(typeof profile.assignmentHistory)[number] | null>(
+      (latest, a) => (!latest || a.endedAt! > latest.endedAt! ? a : latest),
+      null,
+    );
 
   const stage = interventionStageFromAssignment(
     assignment,
     workspace?.latestReferral?.status,
   );
   const referral = workspace?.latestReferral;
+
+  const isSse = role === "SALES_SUPPORT_EXECUTIVE";
+  const profileSwotSelfView = isSe || isSse;
+  const userSwots = swots.filter(
+    (s) => (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
+  );
+  const canUpdateUserSwot =
+    hasPermission("SWOT_CREATE") &&
+    role !== "SUPER_ADMIN" &&
+    !(isTl && teamLeadLocked) &&
+    !commandoReadOnly;
+  // Profile SWOT stays writable for the Team Lead during an intervention.
+  const canUpdateProfileSwot =
+    hasPermission("SWOT_CREATE") &&
+    (isTl || (isCommando && Boolean(assignment) && !commandoReadOnly));
 
   // Super Admin is read-only on SE operational data; Commando / Team Lead write.
   const canOperate =
@@ -352,11 +368,6 @@ export function SeWorkspaceContent() {
     if (isSe) {
       return (
         <div>
-          {actionError ? (
-            <div className="mb-4">
-              <ErrorState message={actionError} />
-            </div>
-          ) : null}
           <SeWeeklyReviewsPanel
             profileId={profile.id}
             profileName={profile.displayName}
@@ -369,11 +380,6 @@ export function SeWorkspaceContent() {
     }
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        {actionError ? (
-          <div className="shrink-0 px-4 pt-3">
-            <ErrorState message={actionError} />
-          </div>
-        ) : null}
         <WeeklyReviewHub
           profileId={profile.id}
           profileName={profile.displayName}
@@ -395,8 +401,6 @@ export function SeWorkspaceContent() {
         <LifecycleStepper stages={[...INTERVENTION_STAGES]} current={stage} />
       )}
 
-      {actionError && <ErrorState message={actionError} />}
-
       {section === "overview" &&
         (isSe ? (
           <SalesExecutiveDashboard
@@ -409,7 +413,7 @@ export function SeWorkspaceContent() {
             onRetryMetrics={retryMetrics}
             feedback={feedback}
             reviews={reviews}
-            swots={swots}
+            swots={userSwots}
             actions={actions}
             eisenhower={eisenhower}
             supportTasks={supportTasks}
@@ -441,7 +445,7 @@ export function SeWorkspaceContent() {
             metricsError={metricsError}
             feedback={feedback}
             reviews={reviews}
-            swots={swots}
+            swots={userSwots}
             actions={actions}
             eisenhower={eisenhower}
             timeline={timeline}
@@ -453,7 +457,9 @@ export function SeWorkspaceContent() {
               Boolean(
                 hasPermission("SWOT_CREATE") &&
                   user?.roleCode !== "SUPER_ADMIN" &&
-                  (isSe || (isTl && !teamLeadLocked) || isCommando),
+                  (isSe ||
+                    (isTl && !teamLeadLocked) ||
+                    (isCommando && !commandoReadOnly)),
               )
             }
             canViewSupport={hasPermission("SALES_SUPPORT_LINK_VIEW")}
@@ -536,14 +542,16 @@ export function SeWorkspaceContent() {
             ) : null
           }
         >
-          <div className="mb-3">
-            <Link
-              href={seWorkspaceHref(profile.id, "checklist")}
-              className="ck-entry-link"
-            >
-              Customize Checklist
-            </Link>
-          </div>
+          {!commandoReadOnly ? (
+            <div className="mb-3">
+              <Link
+                href={seWorkspaceHref(profile.id, "checklist")}
+                className="ck-entry-link"
+              >
+                Customize Checklist
+              </Link>
+            </div>
+          ) : null}
           <section className="surface p-4">
             {monitoring.length === 0 ? (
               <EmptyState
@@ -647,11 +655,15 @@ export function SeWorkspaceContent() {
           profileName={profile.displayName}
           teamLeadLocked={teamLeadLocked}
           canAssign={
-            hasPermission("SALES_SUPPORT_LINK_ASSIGN") && !teamLeadLocked
+            hasPermission("SALES_SUPPORT_LINK_ASSIGN") &&
+            !teamLeadLocked &&
+            !commandoReadOnly
           }
           canView={hasPermission("SALES_SUPPORT_LINK_VIEW")}
           canCreateTask={
-            hasPermission("SALES_SUPPORT_TASK_CREATE") && !teamLeadLocked
+            hasPermission("SALES_SUPPORT_TASK_CREATE") &&
+            !teamLeadLocked &&
+            !commandoReadOnly
           }
           supportTeam={supportTeam}
           supportTasks={supportTasks}
@@ -685,7 +697,6 @@ export function SeWorkspaceContent() {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={completeBusy}
                 onClick={() => setConfirmComplete(true)}
               >
                 Complete intervention
@@ -802,6 +813,14 @@ export function SeWorkspaceContent() {
               </tbody>
             </table>
           </section>
+          {canViewHandoffReports && latestEndedAssignment ? (
+            <div className="mt-4">
+              <HandoffReportsPanel
+                key={latestEndedAssignment.id}
+                assignmentId={latestEndedAssignment.id}
+              />
+            </div>
+          ) : null}
           {referral && !assignment ? (
             <section className="surface mt-4 p-4">
               <h2 className="text-sm font-semibold">Latest handoff</h2>
@@ -865,12 +884,13 @@ export function SeWorkspaceContent() {
           primary={
             hasPermission("SWOT_CREATE") &&
             user?.roleCode !== "SUPER_ADMIN" &&
-            !(isTl && teamLeadLocked) ? (
+            !(isTl && teamLeadLocked) &&
+            !commandoReadOnly ? (
               <Link
                 href={seCreateHref(profile.id, "swot")}
                 className="action-chip"
               >
-                {isSe ? "Edit my SWOT" : "Update SWOT"}
+                {isSe ? "Edit my SWOT" : "Update User SWOT"}
               </Link>
             ) : null
           }
@@ -953,163 +973,23 @@ export function SeWorkspaceContent() {
               ) : null}
             </section>
 
-            <div className="space-y-4" id="swot">
-              <div>
-                <h2 className="text-sm font-semibold text-[var(--color-ink)]">
-                  Executive SWOT
-                </h2>
-                <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
-                  About the individual — independent of the sales profile.
-                </p>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-3">
-              {(
-                [
-                  {
-                    source: "TEAM_LEAD" as const,
-                    title: "Team Lead assessment",
-                  },
-                  {
-                    source: "SALES_EXECUTIVE" as const,
-                    title: "My Executive SWOT",
-                  },
-                  {
-                    source: "COMMANDO" as const,
-                    title: "Commando assessment",
-                  },
-                ] as const
-              ).map(({ source, title }) => {
-                const versions = swots
-                  .filter(
-                    (s) =>
-                      s.source === source &&
-                      (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
-                  )
-                  .slice()
-                  .sort((a, b) => {
-                    const av = a.versionNumber ?? 0;
-                    const bv = b.versionNumber ?? 0;
-                    if (bv !== av) return bv - av;
-                    return (
-                      new Date(b.createdAt).getTime() -
-                      new Date(a.createdAt).getTime()
-                    );
-                  });
-                const item = versions[0] ?? null;
-                const locked =
-                  source === "COMMANDO" &&
-                  Boolean(assignment) &&
-                  !item &&
-                  isSe;
-                return (
-                  <section key={source} className="surface p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
-                        {title}
-                      </h2>
-                      {item ? (
-                        <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-brand-dark)]">
-                          Current · v{item.versionNumber ?? versions.length}
-                        </span>
-                      ) : null}
-                    </div>
-                    {item ? (
-                      <div className="mt-3 space-y-2 text-sm">
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {formatDate(item.createdAt)}
-                        </p>
-                        <Field
-                          label="Strengths"
-                          value={formatSwotField(
-                            item.strengthPoints,
-                            item.strength,
-                          )}
-                        />
-                        <Field
-                          label="Weaknesses"
-                          value={formatSwotField(
-                            item.weaknessPoints,
-                            item.weakness,
-                          )}
-                        />
-                        <Field
-                          label="Opportunities"
-                          value={formatSwotField(
-                            item.opportunityPoints,
-                            item.opportunity,
-                          )}
-                        />
-                        <Field
-                          label="Threats"
-                          value={formatSwotField(
-                            item.threatPoints,
-                            item.threat,
-                          )}
-                        />
-                        <Link
-                          href={`/swot/${item.id}`}
-                          className="inline-block text-sm text-[var(--color-brand)] hover:underline"
-                        >
-                          Open SWOT
-                        </Link>
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
-                        {locked
-                          ? "Not shared with you yet. Team Lead or Commando can make this SWOT visible."
-                          : `No ${title.toLowerCase()} recorded yet.`}
-                      </p>
-                    )}
-                  </section>
-                );
-              })}
-              </div>
-            </div>
+            <UserSwotSection
+              swots={swots}
+              viewerIsSubject={isSe}
+              viewerRole={role}
+              returnTo={pathname}
+              error={swotError}
+              historyHref={seWorkspaceHref(profile.id, "swot")}
+            />
 
-            <section className="surface p-4">
-              <h2 className="text-sm font-semibold">SWOT history</h2>
-              {swotError ? (
-                <p className="mt-2 text-sm text-[var(--status-danger)]">
-                  {swotError}
-                </p>
-              ) : swots.filter((s) => (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE").length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
-                  No SWOT records.
-                </p>
-              ) : (
-                <ul className="mt-3 divide-y divide-[var(--color-line)]">
-                  {[...swots]
-                    .filter((s) => (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE")
-                    .sort((a, b) => {
-                      const av = a.versionNumber ?? 0;
-                      const bv = b.versionNumber ?? 0;
-                      if (bv !== av) return bv - av;
-                      return (
-                        new Date(b.createdAt).getTime() -
-                        new Date(a.createdAt).getTime()
-                      );
-                    })
-                    .map((s) => (
-                    <li key={s.id} className="py-3">
-                      <Link
-                        href={`/swot/${s.id}`}
-                        className="flex justify-between gap-3 text-sm"
-                      >
-                        <span>
-                          {s.source.replaceAll("_", " ")}
-                          {s.versionNumber != null
-                            ? ` · v${s.versionNumber}`
-                            : ""}
-                        </span>
-                        <span className="text-[var(--color-ink-muted)]">
-                          {formatDate(s.createdAt)}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            <ProfileSwotPanel
+              profileId={profile.id}
+              swots={swots}
+              canUpdate={canUpdateProfileSwot}
+              returnTo={pathname}
+              viewerIsSelf={profileSwotSelfView}
+              showHistory={false}
+            />
           </div>
         </SectionFrame>
       )}
@@ -1211,214 +1091,37 @@ export function SeWorkspaceContent() {
       {section === "swot" && (
         <SectionFrame
           title="SWOT"
-          description={`Executive SWOT for ${profile.displayName}. Updating always creates a new version in that stream.`}
-          primary={
-            hasPermission("SWOT_CREATE") &&
-            user?.roleCode !== "SUPER_ADMIN" &&
-            !(isTl && teamLeadLocked) ? (
-              <Link
-                href={seCreateHref(profile.id, "swot")}
-                className="action-chip"
-              >
-                {isSe ? "Add Executive SWOT" : "Update Executive SWOT"}
-              </Link>
-            ) : null
+          description={
+            isSe
+              ? "Two separate SWOTs: User SWOT is about you as a person, Profile SWOT is about the account. Updating one never changes the other."
+              : `Two separate SWOTs for ${profile.displayName}: User SWOT is about the person, Profile SWOT is about the account. Updating one never changes the other.`
           }
         >
-          <div className="space-y-5">
-            <div className="grid gap-4 lg:grid-cols-3">
-              {(
-                [
-                  {
-                    source: "TEAM_LEAD" as const,
-                    title: "Team Lead assessment",
-                  },
-                  {
-                    source: "SALES_EXECUTIVE" as const,
-                    title: "My Executive SWOT",
-                  },
-                  {
-                    source: "COMMANDO" as const,
-                    title: "Commando assessment",
-                  },
-                ] as const
-              ).map(({ source, title }) => {
-                const versions = swots
-                  .filter(
-                    (s) =>
-                      s.source === source &&
-                      (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
-                  )
-                  .slice()
-                  .sort((a, b) => {
-                    const av = a.versionNumber ?? 0;
-                    const bv = b.versionNumber ?? 0;
-                    if (bv !== av) return bv - av;
-                    return (
-                      new Date(b.createdAt).getTime() -
-                      new Date(a.createdAt).getTime()
-                    );
-                  });
-                const item = versions[0] ?? null;
-                const locked =
-                  (source === "COMMANDO" || source === "TEAM_LEAD") &&
-                  !item &&
-                  isSe;
-                return (
-                  <section key={`exec-${source}`} className="surface p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-ink-subtle)]">
-                        {title}
-                      </h2>
-                      {item ? (
-                        <span className="rounded-full bg-[var(--color-brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-brand-dark)]">
-                          Current · v{item.versionNumber ?? versions.length}
-                        </span>
-                      ) : null}
-                    </div>
-                    {item ? (
-                      <div className="mt-3 space-y-2 text-sm">
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {formatDate(item.createdAt)} ·{" "}
-                          {personName(item.createdBy)}
-                          {!isSe && item.source !== "SALES_EXECUTIVE" ? (
-                            <>
-                              {" "}
-                              ·{" "}
-                              {swotShareLabel(item)}
-                            </>
-                          ) : null}
-                        </p>
-                        <Field
-                          label="Strengths"
-                          value={formatSwotField(
-                            item.strengthPoints,
-                            item.strength,
-                          )}
-                        />
-                        <Field
-                          label="Weaknesses"
-                          value={formatSwotField(
-                            item.weaknessPoints,
-                            item.weakness,
-                          )}
-                        />
-                        <Field
-                          label="Opportunities"
-                          value={formatSwotField(
-                            item.opportunityPoints,
-                            item.opportunity,
-                          )}
-                        />
-                        <Field
-                          label="Threats"
-                          value={formatSwotField(
-                            item.threatPoints,
-                            item.threat,
-                          )}
-                        />
-                        <Link
-                          href={`/swot/${item.id}`}
-                          className="inline-block text-sm text-[var(--color-brand)] hover:underline"
-                        >
-                          View version →
-                        </Link>
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
-                        {locked
-                          ? "Not shared with you yet. Team Lead or Commando can make this SWOT visible."
-                          : `No ${title.toLowerCase()} recorded yet.`}
-                      </p>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-
-            <section className="surface p-4">
-              <h2 className="text-sm font-semibold">SWOT history</h2>
-              <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
-                Older versions are read-only. Team Lead and Commando always see
-                each other’s SWOT; Sales Executives only see versions marked
-                visible.
-              </p>
-              {swotError ? (
-                <p className="mt-3 text-sm text-[var(--status-danger)]">
-                  {swotError}
-                </p>
-              ) : swots.length === 0 ? (
-                <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
-                  No SWOT records.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {[...swots]
-                    .filter((s) => (s.subjectType ?? "EXECUTIVE") === "EXECUTIVE")
-                    .sort((a, b) => {
-                      const av = a.versionNumber ?? 0;
-                      const bv = b.versionNumber ?? 0;
-                      if (bv !== av) return bv - av;
-                      return (
-                        new Date(b.createdAt).getTime() -
-                        new Date(a.createdAt).getTime()
-                      );
-                    })
-                    .map((s) => {
-                      const latestForSource = swots
-                        .filter(
-                          (x) =>
-                            x.source === s.source &&
-                            (x.subjectType ?? "EXECUTIVE") === "EXECUTIVE",
-                        )
-                        .sort((a, b) => {
-                          const av = a.versionNumber ?? 0;
-                          const bv = b.versionNumber ?? 0;
-                          if (bv !== av) return bv - av;
-                          return (
-                            new Date(b.createdAt).getTime() -
-                            new Date(a.createdAt).getTime()
-                          );
-                        })[0];
-                      const isCurrent = latestForSource?.id === s.id;
-                      return (
-                        <li
-                          key={s.id}
-                          className="rounded-[var(--radius-md)] border border-[var(--color-line)] px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="text-[14px] font-semibold text-[var(--color-ink)]">
-                                Version {s.versionNumber ?? "—"}
-                                {isCurrent ? (
-                                  <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
-                                    Current
-                                  </span>
-                                ) : null}
-                              </p>
-                              <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
-                                {s.source.replaceAll("_", " ")} ·{" "}
-                                {formatDate(s.createdAt)} ·{" "}
-                                {personName(s.createdBy)}
-                                {!isSe && s.source !== "SALES_EXECUTIVE"
-                                  ? ` · ${swotShareLabel(s)}`
-                                  : ""}
-                              </p>
-                            </div>
-                            <Link
-                              href={`/swot/${s.id}`}
-                              className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                            >
-                              View version
-                            </Link>
-                          </div>
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </section>
-          </div>
+          <SwotWorkspaceView
+            swots={swots}
+            viewerIsSubject={isSe}
+            viewerRole={role}
+            returnTo={pathname}
+            error={swotError}
+            userSwotLinks={
+              canUpdateUserSwot
+                ? {
+                    updateHref: seSwotCreateHref(profile.id),
+                    newHref: seSwotCreateHref(profile.id, true),
+                  }
+                : null
+            }
+            profileSection={
+              <ProfileSwotPanel
+                profileId={profile.id}
+                swots={swots}
+                canUpdate={canUpdateProfileSwot}
+                returnTo={pathname}
+                viewerIsSelf={profileSwotSelfView}
+                showHistory={false}
+              />
+            }
+          />
         </SectionFrame>
       )}
 
@@ -1489,10 +1192,12 @@ export function SeWorkspaceContent() {
                   {swots.map((s) => (
                     <li key={s.id} className="py-3">
                       <Link
-                        href={`/swot/${s.id}`}
+                        href={swotDetailHref(s.id, pathname)}
                         className="flex justify-between gap-3 text-sm"
                       >
-                        <span>{s.source.replaceAll("_", " ")}</span>
+                        <span>
+                          {swotKindLabel(s)} · {swotSourceLabel(s.source)}
+                        </span>
                         <span className="text-[var(--color-ink-muted)]">
                           {formatDate(s.createdAt)}
                         </span>
@@ -1542,14 +1247,16 @@ export function SeWorkspaceContent() {
         </SectionFrame>
       )}
 
-      <ConfirmDialog
+      <HandoffReportDialog
         open={confirmComplete}
-        title="Complete this intervention?"
-        message="Ends the active assignment only. Closing a Team Lead handoff is a separate action and does not remove this Sales Executive from your active list."
-        confirmLabel="Complete intervention"
-        busy={completeBusy}
-        onConfirm={() => void completeIntervention()}
+        assignmentId={profile.currentAssignment?.id ?? null}
+        profileName={profile.displayName}
+        endInput={{
+          status: "COMPLETED",
+          completionReason: "Intervention completed from Sales Executive workspace",
+        }}
         onCancel={() => setConfirmComplete(false)}
+        onCompleted={onInterventionCompleted}
       />
     </div>
   );
@@ -1582,52 +1289,3 @@ function SectionFrame({
   );
 }
 
-function swotShareLabel(item: SwotItem) {
-  const groups = [
-    item.strengthPoints,
-    item.weaknessPoints,
-    item.opportunityPoints,
-    item.threatPoints,
-  ];
-  const hasPoints = groups.some((g) => g && g.length > 0);
-  if (hasPoints) {
-    const total = groups.reduce((n, g) => n + (g?.length ?? 0), 0);
-    const shared = groups.reduce(
-      (n, g) => n + (g?.filter((p) => p.visible).length ?? 0),
-      0,
-    );
-    if (shared === 0) return "Hidden from SE";
-    if (shared === total) return "All points shared";
-    return `${shared}/${total} points shared`;
-  }
-  const n = [
-    item.visibleStrength,
-    item.visibleWeakness,
-    item.visibleOpportunity,
-    item.visibleThreat,
-  ].filter(Boolean).length;
-  if (n === 0) return "Hidden from SE";
-  if (n === 4) return "All points shared";
-  return `${n}/4 boxes shared`;
-}
-
-function Field({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
-  return (
-    <div>
-      <dt className="text-xs text-[var(--color-ink-subtle)]">{label}</dt>
-      <dd className="mt-0.5 whitespace-pre-line text-[var(--color-ink)]">
-        {value?.trim()
-          ? value
-          : value === null
-            ? "Held back from you"
-            : "—"}
-      </dd>
-    </div>
-  );
-}

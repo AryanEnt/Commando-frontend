@@ -2,8 +2,9 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ImagePlus, Trash2, Upload } from "lucide-react";
-import { api, type ActionItemDetail } from "@/lib/api";
+import { api, errorMessage, type ActionItemDetail } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toast } from "@/lib/toast";
 
 const IMAGE_ACCEPT =
   "image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif";
@@ -120,22 +121,27 @@ export function ActionItemScreenshots({
   const [error, setError] = useState<string | null>(null);
 
   async function uploadFile(file: File) {
-    setBusy(true);
     setError(null);
+    const invalid = !file.type.startsWith("image/")
+      ? "Choose a PNG, JPEG, WebP, or GIF image."
+      : file.size > MAX_IMAGE_BYTES
+        ? "Image must be 10 MB or smaller."
+        : null;
+    if (invalid) {
+      setError(invalid);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    setBusy(true);
     try {
-      if (!file.type.startsWith("image/")) {
-        throw new Error("Choose a PNG, JPEG, WebP, or GIF image.");
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        throw new Error("Image must be 10 MB or smaller.");
-      }
       const uploaded = await uploadActionItemImage(token, file);
       const res = await api.addActionItemAttachment(token, item.id, {
         ...uploaded,
       });
       onItemUpdated(res.data.actionItem);
+      toast.success("Screenshot uploaded");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(errorMessage(err, "Unable to upload image"));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -152,8 +158,9 @@ export function ActionItemScreenshots({
         attachmentId,
       );
       onItemUpdated(res.data.actionItem);
+      toast.success("Screenshot removed");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not remove image");
+      setError(errorMessage(err, "Unable to remove image"));
     } finally {
       setBusy(false);
     }

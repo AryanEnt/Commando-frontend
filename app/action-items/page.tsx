@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, type ActionItem, type ProfileListItem } from "@/lib/api";
+import { api, errorMessage, type ActionItem, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDue } from "@/lib/dates";
 import { TeamLeadListRedirectGate } from "@/lib/team-lead-list-redirect";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -32,7 +32,6 @@ export default function ActionItemsPage() {
 
 function ActionItemsContent() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [view, setView] = useState<"active" | "history">("active");
   const [items, setItems] = useState<ActionItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
@@ -95,7 +94,7 @@ function ActionItemsContent() {
     setCompletingId(id);
     try {
       await api.completeActionItem(token, id);
-      pushToast("Action completed", "success");
+      toast.success("Action completed");
       const res = await api.getActionItems(token, {
         view,
         profileId: profileId || undefined,
@@ -106,10 +105,7 @@ function ActionItemsContent() {
       setItems(res.data.actionItems);
       setTotal(res.data.total);
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Could not complete action",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to complete action"));
     } finally {
       setCompletingId(null);
     }

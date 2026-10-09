@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import {
   SeContextualCreatePage,
   handleApiSubmit,
@@ -18,6 +17,7 @@ export default function ContextualFeedbackNewPage() {
       description="Appends a historical feedback record. Source is set from your role."
       permission="FEEDBACK_CREATE"
       returnHref={(id) => `/profiles/${id}/feedback`}
+      successToast="Feedback added"
     >
       {({ profileId, submitting, setSubmitting, setError, onSuccess }) => (
         <FeedbackForm
@@ -46,7 +46,6 @@ function FeedbackForm({
   onSuccess: (href: string) => void;
 }) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [body, setBody] = useState("");
 
   async function onSubmit(e: FormEvent) {
@@ -55,13 +54,13 @@ function FeedbackForm({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createFeedback(token, {
+      await api.createFeedback(token, {
         salesExecutiveProfileId: profileId,
         body,
       });
       onSuccess(`/profiles/${profileId}/feedback`);
     } catch (err) {
-      handleApiSubmit(err, setError, pushToast);
+      handleApiSubmit(err, setError, "Unable to add feedback");
     } finally {
       setSubmitting(false);
     }

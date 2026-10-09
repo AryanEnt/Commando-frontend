@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { StarRating } from "@/components/StarRating";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate } from "@/lib/dates";
+import { useSwotDetailHref } from "@/lib/swot-display";
 import {
   ErrorState,
   LoadingState,
@@ -17,6 +18,7 @@ import {
 export default function CommandoPerformanceReportDetailPage() {
   const { token, user, hasPermission } = useAuth();
   const params = useParams();
+  const swotHref = useSwotDetailHref();
   const assignmentId = String(params.assignmentId);
   const [report, setReport] = useState<CommandoPerformanceReportDetail | null>(
     null,
@@ -186,7 +188,7 @@ export default function CommandoPerformanceReportDetailPage() {
                 <span>
                   {s.source} · {formatDate(s.createdAt)}
                 </span>
-                <Link href={`/swot/${s.id}`} className="underline">
+                <Link href={swotHref(s.id)} className="underline">
                   View
                 </Link>
               </li>

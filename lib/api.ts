@@ -2,7 +2,9 @@ import {
   clearSession,
   getStoredAccessToken,
   persistSession,
+  setLogoutReason,
 } from "@/lib/session";
+import { is } from "date-fns/locale";
 
 /** Same-origin in the browser (Next proxies /api). Direct URL only for SSR. */
 function apiBase() {
@@ -26,6 +28,31 @@ export class ApiError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+export const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
+
+/**
+ * User-facing text for a failed request. Only 4xx API messages are written for
+ * end users; server faults, transport errors and unknown throws use `fallback`.
+ */
+export function errorMessage(
+  err: unknown,
+  fallback: string = GENERIC_ERROR_MESSAGE,
+): string {
+  if (!(err instanceof ApiError) || err.status >= 500) return fallback;
+  switch (err.code) {
+    case "VALIDATION_ERROR":
+      return "Check the required fields and try again.";
+    case "TIMEOUT":
+      return "The request timed out. Please try again.";
+    case "UNAUTHORIZED":
+      return "Your session has expired. Please sign in again.";
+    case "ERROR":
+      return fallback;
+    default:
+      return err.message;
   }
 }
 
@@ -72,6 +99,9 @@ async function refreshSessionOnce(): Promise<string | null> {
       const body = await readJson(res);
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
+          if (errorFromBody(res, body).code === "SESSION_REPLACED") {
+            setLogoutReason("SESSION_REPLACED");
+          }
           clearSession();
         }
         return null;
@@ -97,7 +127,27 @@ async function refreshSessionOnce(): Promise<string | null> {
   return refreshInFlight;
 }
 
+const inflightGets = new Map<string, Promise<unknown>>();
+
+/** Overlapping identical GETs (several panels loading the same record) share one network call. */
 async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  if (method !== "GET" || options.signal) return send<T>(path, options);
+
+  const key = `${options.token ?? getStoredAccessToken() ?? ""}|${path}`;
+  let shared = inflightGets.get(key);
+  if (!shared) {
+    shared = send<T>(path, options).finally(() => inflightGets.delete(key));
+    inflightGets.set(key, shared);
+  }
+  // Each caller gets its own copy so one component can't mutate another's data.
+  return structuredClone(await shared) as T;
+}
+
+async function send<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
@@ -132,7 +182,7 @@ async function request<T>(
     ) {
       const next = await refreshSessionOnce();
       if (next) {
-        return request<T>(path, {
+        return send<T>(path, {
           ...options,
           token: next,
           skipAuthRefresh: true,
@@ -415,20 +465,7 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  endAssignment(
-    token: string,
-    id: string,
-    body: {
-      status: "COMPLETED" | "EXITED";
-      endedAt?: string;
-      completionReason?: string;
-      outcome?: string;
-      initialProblem?: string;
-      interventionProvided?: string;
-      improvementObserved?: string;
-      remainingGaps?: string;
-    },
-  ) {
+  endAssignment(token: string, id: string, body: EndAssignmentBody) {
     return request<{ data: { assignment: Assignment } }>(
       `/api/assignments/${id}/end`,
       {
@@ -436,6 +473,37 @@ export const api = {
         token,
         body: JSON.stringify(body),
       },
+    );
+  },
+  getHandoffRequirements(token: string, assignmentId: string) {
+    return request<{ data: HandoffRequirements }>(
+      `/api/assignments/${assignmentId}/handoff-requirements`,
+      { token },
+    );
+  },
+  getHandoffReports(token: string, assignmentId: string) {
+    return request<{ data: { reports: HandoffReport[] } }>(
+      `/api/assignments/${assignmentId}/handoff-reports`,
+      { token },
+    );
+  },
+  getSubjectHandoffReports(token: string, subjectUserId: string) {
+    return request<{ data: { reports: SubjectHandoffReport[] } }>(
+      `/api/assignments/handoff-reports?subjectUserId=${encodeURIComponent(subjectUserId)}`,
+      { token },
+    );
+  },
+  getHandoffAttachmentUrl(token: string, assignmentId: string, attachmentId: string) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(
+      `/api/assignments/${assignmentId}/handoff-reports/attachments/${attachmentId}/url`,
+      { token },
     );
   },
   getUsers(
@@ -519,6 +587,26 @@ export const api = {
   updateUserRole(token: string, id: string, roleCode: string) {
     return request<{ data: { user: ManagedUserDetail } }>(
       `/api/users/${id}/role`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ roleCode }),
+      },
+    );
+  },
+  getUserDesignation(token: string, id: string) {
+    return request<{ data: DesignationEligibility }>(
+      `/api/users/${id}/designation`,
+      { token },
+    );
+  },
+  updateUserDesignation(
+    token: string,
+    id: string,
+    roleCode: "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE",
+  ) {
+    return request<{ data: { user: ManagedUserDetail } }>(
+      `/api/users/${id}/designation`,
       {
         method: "PATCH",
         token,
@@ -653,6 +741,16 @@ export const api = {
       },
     );
   },
+  getSnapshotEvidenceUrl(token: string, referralId: string, evidenceId: string) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(`/api/referrals/${referralId}/evidence/${evidenceId}/url`, { token });
+  },
   rejectReferral(
     token: string,
     id: string,
@@ -694,6 +792,7 @@ export const api = {
       executiveUserId?: string;
       subjectUserId?: string;
       subjectType?: "EXECUTIVE" | "PROFILE";
+      authorUserId?: string;
       commandoUserId?: string;
       source?: string;
       page?: number;
@@ -701,6 +800,7 @@ export const api = {
     },
   ) {
     const sp = new URLSearchParams();
+    if (params?.authorUserId) sp.set("authorUserId", params.authorUserId);
     if (params?.search) sp.set("search", params.search);
     if (params?.teamId) sp.set("teamId", params.teamId);
     if (params?.profileId) sp.set("profileId", params.profileId);
@@ -780,6 +880,39 @@ export const api = {
       token,
       body: JSON.stringify(body),
     });
+  },
+  addSwotPoint(
+    token: string,
+    id: string,
+    body: { quadrant: SwotQuadrantName; text: string; reason?: string },
+  ) {
+    return request<{ data: { swot: SwotItem } }>(`/api/swot/${id}/points`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+  updateSwotPoint(
+    token: string,
+    id: string,
+    pointId: string,
+    body: { text: string; reason?: string },
+  ) {
+    return request<{ data: { swot: SwotItem } }>(
+      `/api/swot/${id}/points/${encodeURIComponent(pointId)}`,
+      { method: "PATCH", token, body: JSON.stringify(body) },
+    );
+  },
+  deleteSwotPoint(
+    token: string,
+    id: string,
+    pointId: string,
+    body: { reason?: string },
+  ) {
+    return request<{ data: { swot: SwotItem } }>(
+      `/api/swot/${id}/points/${encodeURIComponent(pointId)}`,
+      { method: "DELETE", token, body: JSON.stringify(body) },
+    );
   },
   getActivityTypes(
     token: string,
@@ -900,6 +1033,7 @@ export const api = {
   getDailyWorkLogs(
     token: string,
     params?: {
+      kind?: DailyWorkEntryKind;
       authorUserId?: string;
       profileId?: string;
       date?: string;
@@ -911,6 +1045,7 @@ export const api = {
     },
   ) {
     const sp = new URLSearchParams();
+    if (params?.kind) sp.set("kind", params.kind);
     if (params?.authorUserId) sp.set("authorUserId", params.authorUserId);
     if (params?.profileId) sp.set("profileId", params.profileId);
     if (params?.date) sp.set("date", params.date);
@@ -929,28 +1064,105 @@ export const api = {
       };
     }>(`/api/daily-work-logs${q}`, { token });
   },
+  getWorkActivityOptions(token: string) {
+    return request<{ data: { activities: WorkActivityOption[] } }>(
+      "/api/daily-work-logs/activity-options",
+      { token },
+    );
+  },
   createDailyWorkLog(
     token: string,
-    body: { activity: string; notes?: string | null; loggedAt: string },
+    body: Partial<WorkActivityInput> & {
+      kind?: DailyWorkEntryKind;
+      /** Older free-text entries; structured entries send listItem instead. */
+      activity?: string;
+      notes?: string | null;
+      loggedAt: string;
+      startedAt?: string | null;
+      endedAt?: string | null;
+      attachments?: DailyWorkLogAttachmentUpload[];
+    },
   ) {
     return request<{ data: { log: DailyWorkLog } }>("/api/daily-work-logs", {
       method: "POST",
       token,
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        tzOffsetMinutes: new Date().getTimezoneOffset(),
+      }),
     });
   },
   updateDailyWorkLog(
     token: string,
     id: string,
-    body: {
+    body: Partial<WorkActivityInput> & {
       activity?: string;
       notes?: string | null;
       loggedAt?: string;
+      startedAt?: string | null;
+      endedAt?: string | null;
+      attachments?: DailyWorkLogAttachmentUpload[];
+      removeAttachmentIds?: string[];
     },
   ) {
     return request<{ data: { log: DailyWorkLog } }>(
       `/api/daily-work-logs/${id}`,
-      { method: "PATCH", token, body: JSON.stringify(body) },
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({
+          ...body,
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
+      },
+    );
+  },
+  getDailyWorkCommitments(
+    token: string,
+    params: {
+      dateFrom: string;
+      dateTo: string;
+      authorUserId?: string;
+      profileId?: string;
+    },
+  ) {
+    const sp = new URLSearchParams({
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+    });
+    if (params.authorUserId) sp.set("authorUserId", params.authorUserId);
+    if (params.profileId) sp.set("profileId", params.profileId);
+    return request<{ data: { commitments: DailyWorkCommitment[] } }>(
+      `/api/daily-work-logs/commitments?${sp}`,
+      { token },
+    );
+  },
+  createCommitmentPlan(
+    token: string,
+    body: { items: CommitmentPlanItem[]; note?: string | null },
+  ) {
+    return request<{
+      data: { logs: DailyWorkLog[]; commitment: DailyWorkCommitment | null };
+    }>("/api/daily-work-logs/commitments/plan", {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        ...body,
+        tzOffsetMinutes: new Date().getTimezoneOffset(),
+      }),
+    });
+  },
+  saveTodayDailyWorkCommitment(token: string, commitment: string) {
+    return request<{ data: { commitment: DailyWorkCommitment } }>(
+      "/api/daily-work-logs/commitments/today",
+      {
+        method: "PUT",
+        token,
+        body: JSON.stringify({
+          commitment,
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
+      },
     );
   },
   deleteDailyWorkLog(token: string, id: string) {
@@ -1005,6 +1217,7 @@ export const api = {
       coachingGiven?: string | null;
       expectedChange?: string | null;
       followUp?: string | null;
+      attachments?: DailyLogAttachmentUpload[];
     },
   ) {
     return request<{ data: { log: DailyLog } }>(
@@ -1025,6 +1238,7 @@ export const api = {
       coachingGiven: string | null;
       expectedChange: string | null;
       followUp: string | null;
+      attachments: DailyLogAttachmentUpload[];
     }>,
   ) {
     return request<{ data: { log: DailyLog } }>(
@@ -1035,6 +1249,35 @@ export const api = {
   deleteDailyLogEntry(token: string, logId: string, entryId: string) {
     return request<{ data: { log: DailyLog } }>(
       `/api/daily-logs/${logId}/entries/${entryId}`,
+      { method: "DELETE", token },
+    );
+  },
+  getDailyLogAttachmentUrl(
+    token: string,
+    logId: string,
+    entryId: string,
+    attachmentId: string,
+  ) {
+    return request<{
+      data: {
+        url: string;
+        fileName: string;
+        contentType: string;
+        expiresInSeconds: number;
+      };
+    }>(
+      `/api/daily-logs/${logId}/entries/${entryId}/attachments/${attachmentId}/url`,
+      { token },
+    );
+  },
+  removeDailyLogAttachment(
+    token: string,
+    logId: string,
+    entryId: string,
+    attachmentId: string,
+  ) {
+    return request<{ data: { log: DailyLog } }>(
+      `/api/daily-logs/${logId}/entries/${entryId}/attachments/${attachmentId}`,
       { method: "DELETE", token },
     );
   },
@@ -1182,7 +1425,7 @@ export const api = {
   presignUpload(
     token: string,
     body: {
-      purpose: "weekly-review-minutes" | "support-task-image" | "action-item-image";
+      purpose: UploadPurpose;
       fileName: string;
       contentType: string;
       contentLength: number;
@@ -1205,7 +1448,7 @@ export const api = {
   async uploadObject(
     token: string,
     body: {
-      purpose: "weekly-review-minutes" | "support-task-image" | "action-item-image";
+      purpose: UploadPurpose;
       fileName: string;
       contentType: string;
       file: Blob | File | ArrayBuffer | Buffer;
@@ -1307,6 +1550,8 @@ export const api = {
       { method: "POST", token, body: JSON.stringify(body) },
     );
   },
+
+  
   updateMonitoringCategory(
     token: string,
     id: string,
@@ -1405,6 +1650,21 @@ export const api = {
     return request<{ data: { record: MonitoringRecord } }>(
       `/api/monitoring/${id}`,
       { token },
+    );
+  },
+  updateMonitoringRecord(
+    token: string,
+    id: string,
+    body: {
+      observation?: string | null;
+      observedAt?: string;
+      responses?: Array<{ id: string; value: string }>;
+      supportInvolvement?: { none?: boolean; salesSupportUserIds?: string[] };
+    },
+  ) {
+    return request<{ data: { record: MonitoringRecord } }>(
+      `/api/monitoring/${id}`,
+      { method: "PATCH", token, body: JSON.stringify(body) },
     );
   },
   getEffectiveMonitoringChecklist(
@@ -2252,6 +2512,7 @@ export const api = {
       };
     }>(`/api/reports/commando-performance${q}`, { token });
   },
+ 
   getCommandoPerformanceReportDetail(token: string, assignmentId: string) {
     return request<{ data: { report: CommandoPerformanceReportDetail } }>(
       `/api/reports/commando-performance/${assignmentId}`,
@@ -2382,6 +2643,25 @@ export type ManagedUserDetail = Omit<ManagedUser, "profile"> & {
   } | null;
 };
 
+export type DesignationEligibility = {
+  currentRole: "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE";
+  canChange: boolean;
+  blocker:
+    | {
+        code: "COMMANDO_INTERVENTION";
+        message: string;
+        commando: { id: string; firstName: string; lastName: string };
+        startedAt: string;
+      }
+    | { code: "SUPPORT_LINKS"; message: string; count: number }
+    | null;
+};
+
+
+
+
+
+
 export type TeamMember = {
   id: string;
   roleInTeam: string;
@@ -2412,6 +2692,88 @@ export type Assignment = {
   teamLead: { id: string; firstName: string; lastName: string; email: string };
 };
 
+export type EndAssignmentBody = {
+  status: "COMPLETED" | "EXITED";
+  endedAt?: string;
+  completionReason?: string;
+  outcome?: string;
+  initialProblem?: string;
+  interventionProvided?: string;
+  improvementObserved?: string;
+  remainingGaps?: string;
+  handoffReports?: HandoffReportInput[];
+};
+
+export type HandoffReportInput = {
+  subjectUserId: string;
+  description: string;
+  salesAchieved?: number | null;
+  salesTarget?: number | null;
+  attachments: SnapshotEvidenceUpload[];
+};
+
+export type HandoffSubject = {
+  userId: string;
+  name: string;
+  role: SnapshotSubjectRole;
+  startingSnapshot: {
+    overallPerformance: SnapshotPerformanceLevel;
+    trend: SnapshotTrend;
+    note: string;
+    salesAchieved: number | null;
+    salesTarget: number | null;
+    achievementPct: number | null;
+  } | null;
+};
+
+export type HandoffRequirements = {
+  period: { start: string; end: string };
+  subjects: HandoffSubject[];
+};
+
+export type HandoffReport = {
+  id: string;
+  subjectUserId: string;
+  subjectRole: SnapshotSubjectRole;
+  subjectName: string;
+  description: string;
+  salesAchieved: number | null;
+  salesTarget: number | null;
+  achievementPct: number | null;
+  period: { start: string; end: string };
+  createdAt: string;
+  createdBy: { id: string; firstName: string; lastName: string };
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number | null;
+    createdAt: string;
+  }>;
+};
+
+export type SubjectHandoffReport = HandoffReport & {
+  assignment: {
+    id: string;
+    status: "ACTIVE" | "COMPLETED" | "EXITED";
+    startedAt: string;
+    endedAt: string | null;
+    profile: { id: string; displayName: string };
+    commando: { id: string; firstName: string; lastName: string };
+  };
+};
+
+/** Present only for Commando viewers. READ_ONLY = handed off to the Team Lead, view window open. */
+export type CommandoAccess =
+  | { mode: "FULL" | "NONE" }
+  | {
+      mode: "READ_ONLY";
+      handedOffAt: string;
+      until: string;
+      daysLeft: number;
+      teamLead: { id: string; firstName: string; lastName: string; email: string } | null;
+    };
+
 export type ProfileListItem = {
   id: string;
   displayName: string;
@@ -2420,6 +2782,7 @@ export type ProfileListItem = {
   team: { id: string; name: string };
   user: { id: string; email: string; firstName: string; lastName: string };
   currentAssignment?: Assignment | null;
+  commandoAccess?: CommandoAccess | null;
 };
 
 export type ProfileDetail = ProfileListItem & {
@@ -2491,6 +2854,88 @@ export type ProvideReferralInformationBody = {
   priority1: string;
   priority2: string;
   priority3: string;
+  performanceSnapshot: PerformanceSnapshotBody;
+};
+
+export type SnapshotPerformanceLevel = "STRONG" | "AVERAGE" | "NEEDS_ATTENTION";
+export type SnapshotTrend = "IMPROVING" | "STABLE" | "DECLINING";
+export type SnapshotSubjectRole = "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE";
+
+export type SnapshotPeriod = {
+  kind: "SIX_MONTHS" | "ALL_HISTORY";
+  start: string;
+  end: string;
+};
+
+export type SnapshotFields = {
+  overallPerformance: SnapshotPerformanceLevel;
+  trend: SnapshotTrend;
+  insights: string[];
+  note: string;
+  salesAchieved?: number | null;
+  salesTarget?: number | null;
+  achievementPct?: number | null;
+};
+
+export type SnapshotEvidenceUpload = {
+  key: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+};
+
+export type PerformanceSnapshotBody = {
+  salesExecutive: SnapshotFields;
+  salesSupport: Array<SnapshotFields & { subjectUserId: string }>;
+  evidence: SnapshotEvidenceUpload[];
+};
+
+/** Who the Team Lead snapshots while deciding: the SE plus each linked SSE. */
+export type SnapshotSubject = {
+  userId: string;
+  name: string;
+  role: SnapshotSubjectRole;
+  period: SnapshotPeriod;
+};
+
+export type PerformanceSnapshot = Required<SnapshotFields> & {
+  id: string;
+  subjectUserId: string;
+  subjectRole: SnapshotSubjectRole;
+  subjectName: string;
+  period: SnapshotPeriod;
+  createdAt: string;
+  createdBy: { id: string; firstName: string; lastName: string };
+};
+
+export type SnapshotEvidence = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number | null;
+  createdAt: string;
+};
+
+export type ReferralSwotSummary = {
+  id: string;
+  subjectType: "EXECUTIVE" | "PROFILE";
+  source: string;
+  versionNumber: number | null;
+  createdAt: string;
+  createdBy: { id: string; firstName: string; lastName: string };
+  strengthPoints: Array<{ id: string; text: string }>;
+  weaknessPoints: Array<{ id: string; text: string }>;
+  opportunityPoints: Array<{ id: string; text: string }>;
+  threatPoints: Array<{ id: string; text: string }>;
+};
+
+export type TeamLeadUserSwot = {
+  subjectUserId: string;
+  role: "SALES_EXECUTIVE" | "SALES_SUPPORT_EXECUTIVE";
+  name: string;
+  swot: ReferralSwotSummary | null;
+  /** The person's own latest User SWOT. */
+  selfSwot?: ReferralSwotSummary | null;
 };
 
 export type ReferralAssignedSupport = {
@@ -2559,6 +3004,17 @@ export type Referral = {
     source: string;
     createdAt: string;
   }>;
+  /** Latest User SWOT per source (Team Lead / Commando / Super Admin viewers). */
+  userSwots?: ReferralSwotSummary[];
+  /** Latest Team Lead / Commando Profile SWOT for this intervention. */
+  profileSwot?: ReferralSwotSummary | null;
+  /** Latest Team Lead User SWOT for the SE, then each linked SSE (null when none yet). */
+  teamLeadUserSwots?: TeamLeadUserSwot[];
+  /** Team Lead's performance snapshot (SE first, then linked SSEs). */
+  performanceSnapshots?: PerformanceSnapshot[];
+  snapshotEvidence?: SnapshotEvidence[];
+  /** Only while the Team Lead is deciding. */
+  snapshotSubjects?: SnapshotSubject[];
   allowedActions: string[];
 };
 
@@ -2631,9 +3087,25 @@ export type SwotItem = {
     email: string;
     role: { code: string };
   };
+
+  /** Set when a Super Admin corrected points; createdBy stays the original author. */
+  correctedById?: string | null;
+  correctedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: { code: string };
+  } | null;
+  correctedAt?: string | null;
+  correctionReason?: string | null;
+  /** Super Admin only: whether this is the latest version of its chain. */
+  isCurrentVersion?: boolean;
   createdAt: string;
   updatedAt: string;
 };
+
+export type SwotQuadrantName = "strength" | "weakness" | "opportunity" | "threat";
 
 export type ActivityType = {
   id: string;
@@ -2648,7 +3120,7 @@ export type DailyLogEntry = {
   id: string;
   dailyLogId: string;
   activityTypeId: string;
-  activityType: { id: string; code: string; name: string };
+  activityType: { id: string; code: string; name: string; description?: string | null };
   sessionTitle: string;
   observation: string;
   evidence: string | null;
@@ -2669,12 +3141,101 @@ export type DailyLogEntry = {
   loggedAt: string;
   createdById: string;
   createdBy: { id: string; firstName: string; lastName: string; email: string };
+  attachments?: DailyLogEntryAttachment[];
   createdAt: string;
   updatedAt: string;
 };
 
+export type DailyLogEntryAttachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number | null;
+  caption: string | null;
+  createdAt: string;
+  uploadedBy: { id: string; firstName: string; lastName: string };
+};
+
+export type DailyLogAttachmentUpload = {
+  key: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  caption?: string | null;
+};
+
+export type UploadPurpose =
+  | "weekly-review-minutes"
+  | "support-task-image"
+  | "action-item-image"
+  | "daily-log-image"
+  | "daily-work-log-image"
+  | "intervention-evidence"
+  | "handoff-report";
+
+export type DailyWorkLogAttachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number | null;
+  /** Short-lived signed view URL; null when storage is unavailable. */
+  url: string | null;
+  createdAt: string;
+};
+
+export type DailyWorkLogAttachmentUpload = {
+  key: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+};
+
+export type DailyWorkEntryKind = "LOG" | "COMMITMENT";
+
+export type WorkSubItemOption = { code: string; label: string };
+
+export type WorkActivityOption = {
+  code: string;
+  label: string;
+  /** Empty when the activity has no sub item. */
+  subItems: WorkSubItemOption[];
+  /** Only these activities ask for a Total Amount. */
+  hasAmount?: boolean;
+};
+
+/** Structured activity fields shared by create and update. */
+export type WorkActivityInput = {
+  listItem: string;
+  subItem: string | null;
+  count: number;
+  startedAt: string;
+  endedAt: string;
+  /** Cleared on save; only older entries carry a free-text range. */
+  timeRange: null;
+  totalAmount: number | null;
+};
+
+/** One planned activity in today's commitment (no time range). */
+export type CommitmentPlanItem = {
+  listItem: string;
+  subItem: string | null;
+  count: number;
+  totalAmount: number | null;
+};
+
 export type DailyWorkLog = {
   id: string;
+  /** LOG = completed work; COMMITMENT = planned (locked once added). */
+  kind?: DailyWorkEntryKind;
+  /** Activity / sub item codes; null on older free-text entries. */
+  listItem?: string | null;
+  subItem?: string | null;
+  listItemLabel?: string | null;
+  subItemLabel?: string | null;
+  /** Completed count (LOG) or target (COMMITMENT). */
+  count?: number | null;
+  timeRange?: string | null;
+  totalAmount?: number | null;
   authorUserId: string;
   author: {
     id: string;
@@ -2693,6 +3254,21 @@ export type DailyWorkLog = {
   activity: string;
   notes: string | null;
   loggedAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMinutes: number | null;
+  attachments: DailyWorkLogAttachment[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DailyWorkCommitment = {
+  id: string;
+  authorUserId: string;
+  salesExecutiveProfileId: string | null;
+  /** Author's local calendar day (YYYY-MM-DD). */
+  commitDate: string;
+  commitment: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -2887,7 +3463,7 @@ export type WeeklyReviewHub = {
       expectedChange: string | null;
       followUp: string | null;
       loggedAt: string;
-      activityType: { id: string; name: string; code: string };
+      activityType: { id: string; name: string; code: string; description?: string | null };
       eisenhowerCategory: string | null;
       hasEvidence: boolean;
       hasCoaching: boolean;
@@ -3392,6 +3968,8 @@ export type WorkspaceEvent = {
   createdAt: string;
   updatedAt: string;
 };
+
+
 
 export type EisenhowerStatus =
   | "OPEN"

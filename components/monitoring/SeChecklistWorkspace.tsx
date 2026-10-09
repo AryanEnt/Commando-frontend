@@ -12,12 +12,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type EffectiveMonitoringChecklistItem,
   type MonitoringCategory,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { allocationStatus } from "@/lib/monitoring-scoring";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
 import {
@@ -91,7 +91,6 @@ export function SeChecklistWorkspace({
     ? sseCreateHref(executiveUserId, "monitoring")
     : seCreateHref(profileId!, "monitoring");
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -384,18 +383,18 @@ export function SeChecklistWorkspace({
       return null;
     });
     if (itemsPayload.some((p) => p == null || !Number.isFinite(p.weight))) {
-      pushToast("Each weight must be an integer from 0 to 100", "error");
+      toast.warning("Each weight must be a whole number from 0 to 100");
       return;
     }
     const total = itemsPayload.reduce((s, p) => s + (p?.weight ?? 0), 0);
     const alloc = allocationStatus(total);
     if (!alloc.isComplete) {
-      pushToast(
-        alloc.remaining > 0
-          ? `Weights must total 100%. ${alloc.remaining}% remaining.`
-          : `Weights must total 100%. ${alloc.over}% over allocation.`,
-        "error",
-      );
+      toast.warning("Weights must total 100%", {
+        description:
+          alloc.remaining > 0
+            ? `${alloc.remaining}% remaining.`
+            : `${alloc.over}% over allocation.`,
+      });
       return;
     }
     setSavingWeights(true);
@@ -429,12 +428,9 @@ export function SeChecklistWorkspace({
       }
       setWeightDrafts(drafts);
       setWeightsDirty(false);
-      pushToast("Checklist weights saved for this SE", "success");
+      toast.success("Checklist weights saved");
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not save weights",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to save weights"));
     } finally {
       setSavingWeights(false);
     }
@@ -452,12 +448,9 @@ export function SeChecklistWorkspace({
       setAddLabel("");
       setAdding(false);
       await loadCategory(selectedId);
-      pushToast("Checklist item added", "success");
+      toast.success("Checklist item added");
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not add item",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to add item"));
     } finally {
       setAddBusy(false);
     }
@@ -482,12 +475,9 @@ export function SeChecklistWorkspace({
         });
       }
       await loadCategory(selectedId);
-      pushToast("Removed from this SE's checklist", "success");
+      toast.success("Item removed from checklist");
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not remove item",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to remove item"));
     } finally {
       setBusyItemId(null);
     }

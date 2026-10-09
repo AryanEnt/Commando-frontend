@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   api,
+  errorMessage,
   type EisenhowerCategory,
   type EventImportance,
   type EventUrgency,
   type WorkspaceEventType,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { Button, Drawer, inputClass, labelClass } from "@/components/ui";
 
 const EVENT_TYPES: { value: WorkspaceEventType; label: string }[] = [
@@ -71,7 +72,6 @@ export function AddEventDrawer({
   redirectToEisenhower = true,
 }: Props) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [type, setType] = useState<WorkspaceEventType>(defaultType);
@@ -93,7 +93,7 @@ export function AddEventDrawer({
 
   async function save() {
     if (!token || !title.trim()) {
-      pushToast("Describe what happened", "error");
+      toast.warning("Describe what happened");
       return;
     }
     setBusy(true);
@@ -133,7 +133,7 @@ export function AddEventDrawer({
         // Matrix already saved — timeline failure should not undo that
       }
 
-      pushToast(`Saved to Eisenhower · ${quadrantLabel(category)}`, "success");
+      toast.success("Saved to Eisenhower", { description: quadrantLabel(category) });
       reset();
       onClose();
       await onCreated?.();
@@ -141,10 +141,7 @@ export function AddEventDrawer({
         router.push(`/profiles/${profileId}/eisenhower`);
       }
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Could not save to Eisenhower",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to save to Eisenhower"));
     } finally {
       setBusy(false);
     }

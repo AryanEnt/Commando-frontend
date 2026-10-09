@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type Team } from "@/lib/api";
+import { api, errorMessage, type Team } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -140,7 +140,6 @@ function ReviewRow({
 
 export default function CreateSalesExecutivePage() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -265,14 +264,11 @@ export default function CreateSalesExecutivePage() {
         teamName: res.data.profile.team.name,
         displayName: res.data.profile.displayName,
       });
-      pushToast("Sales Executive created successfully", "success");
+      toast.success("Sales Executive created");
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Unable to create the Sales Executive. No changes were saved.";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(
+        errorMessage(err, "Unable to create the Sales Executive. No changes were saved."),
+      );
     } finally {
       setSubmitting(false);
     }

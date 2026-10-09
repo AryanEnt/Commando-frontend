@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   api,
+  type CommandoAccess,
   type InterventionWorkspace,
   type ProfileDetail,
   type SeSupportTeamContext,
@@ -25,6 +26,8 @@ type SeWorkspaceContextValue = {
   loading: boolean;
   error: string | null;
   teamLeadLocked: boolean;
+  /** Commando viewing an SE they handed off — can see everything, change nothing. */
+  commandoReadOnly: Extract<CommandoAccess, { mode: "READ_ONLY" }> | null;
   reload: () => Promise<void>;
 };
 
@@ -92,6 +95,11 @@ export function SeWorkspaceProvider({
       teamLeadLocked:
         user?.roleCode === "TEAM_LEAD" &&
         Boolean(profile?.currentAssignment),
+      commandoReadOnly:
+        user?.roleCode === "COMMANDO_EXECUTIVE" &&
+        profile?.commandoAccess?.mode === "READ_ONLY"
+          ? profile.commandoAccess
+          : null,
       reload,
     }),
     [

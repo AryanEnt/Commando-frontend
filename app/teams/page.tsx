@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, Network, Plus, Search, UsersRound } from "lucide-react";
-import { api, type OrganizationStructure, type Team } from "@/lib/api";
+import { api, errorMessage, type OrganizationStructure, type Team } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { personName } from "@/lib/labels";
 import {
   Avatar,
@@ -175,7 +175,6 @@ function TeamsSkeleton() {
 
 export default function TeamsPage() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [orgTeams, setOrgTeams] = useState<OrgTeam[]>([]);
   const [search, setSearch] = useState("");
@@ -232,14 +231,13 @@ export default function TeamsPage() {
         name,
         description: description || undefined,
       });
-      pushToast("Team created", "success");
+      toast.success("Team created");
       setName("");
       setDescription("");
       setDrawerOpen(false);
       await load(search);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to create team";
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to create team"));
     } finally {
       setCreating(false);
     }

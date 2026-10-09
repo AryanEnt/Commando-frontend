@@ -127,7 +127,8 @@ describe("SE workspace navigation", () => {
     expect(labels[0]).toBe("My workspace");
     expect(labels).toContain("My Assignment");
     expect(labels).toContain("My Reviews");
-    expect(labels).toContain("Performance");
+    expect(labels).toContain("SWOT");
+    expect(labels).not.toContain("Performance");
     expect(labels).toContain("Feedback");
     expect(labels).toContain("History");
     expect(labels).not.toContain("Coaching");

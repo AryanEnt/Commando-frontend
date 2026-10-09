@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, type SyncSupportLink } from "@/lib/api";
+import { api, errorMessage, type SyncSupportLink } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
@@ -17,7 +17,6 @@ import {
 
 export default function NewSyncEvaluationPage() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [profileId, setProfileId] = useState("");
   const [links, setLinks] = useState<SyncSupportLink[]>([]);
@@ -69,12 +68,10 @@ export default function NewSyncEvaluationPage() {
         issue,
         recommendedAction,
       });
-      pushToast("Sync evaluation saved", "success");
+      toast.success("Sync evaluation saved");
       router.push(`/sync-evaluations/${res.data.evaluation.id}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to create";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to save sync evaluation"));
     } finally {
       setSubmitting(false);
     }

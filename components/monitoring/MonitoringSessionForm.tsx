@@ -5,14 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   api,
-  ApiError,
+  errorMessage,
   type EffectiveMonitoringChecklistItem,
   type MonitoringCategory,
   type SalesSupportLink,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { seWorkspaceHref } from "@/lib/se-workspace-nav";
 import { sseWorkspaceHref } from "@/lib/sse-workspace-nav";
 import { SearchableSelect } from "@/components/SearchableSelect";
@@ -84,7 +84,6 @@ export function MonitoringSessionForm({
     : seWorkspaceHref(profileId!, "checklist");
   const isSupportSubject = Boolean(executiveUserId);
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [categories, setCategories] = useState<MonitoringCategory[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [items, setItems] = useState<ChecklistRow[]>([]);
@@ -208,16 +207,16 @@ export function MonitoringSessionForm({
     e.preventDefault();
     if (!token || !selectedCategory || items.length === 0) return;
     if (!weightAlloc.isComplete) {
-      pushToast(
-        weightAlloc.remaining > 0
-          ? `Checklist weights must total 100% before monitoring (${weightAlloc.remaining}% remaining). Customize the checklist first.`
-          : `Checklist weights must total 100% before monitoring (${weightAlloc.over}% over). Customize the checklist first.`,
-        "error",
-      );
+      toast.warning("Checklist weights must total 100%", {
+        description:
+          weightAlloc.remaining > 0
+            ? `${weightAlloc.remaining}% remaining. Customize the checklist first.`
+            : `${weightAlloc.over}% over. Customize the checklist first.`,
+      });
       return;
     }
     if (unanswered > 0) {
-      pushToast("Mark every checklist item before saving", "error");
+      toast.warning("Mark every checklist item before saving");
       return;
     }
     setSubmitting(true);
@@ -262,15 +261,10 @@ export function MonitoringSessionForm({
             }
           : {}),
       });
-      pushToast("Monitoring session saved", "success");
+      toast.success("Monitoring session saved");
       onSuccess(res.data.record.id);
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : "Unable to save the monitoring session.";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to save the monitoring session"));
     } finally {
       setSubmitting(false);
     }
@@ -393,21 +387,14 @@ export function MonitoringSessionForm({
                           type="button"
                           role="radio"
                           aria-checked={selected}
+                          data-value={opt.value}
                           onClick={() =>
                             setResponses((prev) => ({
                               ...prev,
                               [item.clientKey]: opt.value,
                             }))
                           }
-                          className={`rounded-full px-3 py-1 text-[12px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand)] ${
-                            selected
-                              ? opt.value === "YES"
-                                ? "bg-[var(--color-brand)] text-[var(--color-brand-on)]"
-                                : opt.value === "NO"
-                                  ? "bg-[var(--status-danger)] text-white"
-                                  : "bg-[var(--color-ink-subtle)] text-white"
-                              : "bg-[var(--color-surface-2)] text-[var(--color-ink-muted)] hover:bg-[var(--color-brand-soft)]"
-                          }`}
+                          className="response-pill focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand)]"
                         >
                           {opt.label}
                         </button>

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { api, type ManagedUser, type Team } from "@/lib/api";
+import { api, errorMessage, type ManagedUser, type Team } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { roleLabel } from "@/lib/labels";
 import { formatDate } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationControls } from "@/components/PaginationControls";
+import { ChangeDesignationButton } from "@/components/ChangeDesignationButton";
 import {
   ConfirmDialog,
   EmptyState,
@@ -32,7 +33,6 @@ const ROLE_OPTIONS = [
 
 export default function UsersPage() {
   const { token, hasPermission, user: me } = useAuth();
-  const { pushToast } = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [search, setSearch] = useState("");
@@ -101,14 +101,11 @@ export default function UsersPage() {
     setBusy(true);
     try {
       await api.updateUserStatus(token, statusTarget.id, !statusTarget.isActive);
-      pushToast(
-        statusTarget.isActive ? "User deactivated" : "User activated",
-        "success",
-      );
+      toast.success(statusTarget.isActive ? "User deactivated" : "User reactivated");
       setStatusTarget(null);
       await load(page);
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Update failed", "error");
+      toast.error(errorMessage(err, "Unable to update user status"));
     } finally {
       setBusy(false);
     }
@@ -195,7 +192,6 @@ export default function UsersPage() {
                     <th>User</th>
                     <th>Role</th>
                     <th>Team</th>
-                    <th>Profile</th>
                     <th>Status</th>
                     <th>Created</th>
                     <th />
@@ -214,19 +210,6 @@ export default function UsersPage() {
                       </td>
                       <td>{roleLabel(u.role.code)}</td>
                       <td>{u.team?.name ?? "—"}</td>
-                      <td>
-                        {u.profileStatus === "created" ? (
-                          <span className="text-sm text-[var(--status-success)]">
-                            Profile ✓
-                          </span>
-                        ) : u.profileStatus === "missing" ? (
-                          <span className="text-sm text-[var(--status-warn)]">
-                            Not created
-                          </span>
-                        ) : (
-                          <span className="text-[var(--color-ink-subtle)]">—</span>
-                        )}
-                      </td>
                       <td>
                         <StatusBadge
                           status={u.isActive ? "ACTIVE" : "INACTIVE"}
@@ -248,7 +231,15 @@ export default function UsersPage() {
                               href={`/profiles/${u.profile.id}`}
                               className="btn btn-ghost btn-sm"
                             >
-                              Profile
+                              Workspace
+                            </Link>
+                          ) : null}
+                          {u.role.code === "SALES_SUPPORT_EXECUTIVE" ? (
+                            <Link
+                              href={`/support/${u.id}`}
+                              className="btn btn-ghost btn-sm"
+                            >
+                              Workspace
                             </Link>
                           ) : null}
                           {u.profileStatus === "missing" &&
@@ -260,6 +251,12 @@ export default function UsersPage() {
                               Create profile
                             </Link>
                           ) : null}
+                          <ChangeDesignationButton
+                            userId={u.id}
+                            name={`${u.firstName} ${u.lastName}`}
+                            currentRole={u.role.code}
+                            onChanged={() => load(page)}
+                          />
                           {canStatus && me?.id !== u.id ? (
                             <button
                               type="button"

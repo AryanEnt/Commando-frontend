@@ -2,8 +2,9 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ImagePlus, Trash2, Upload, X } from "lucide-react";
-import { api, type SupportTask } from "@/lib/api";
+import { api, errorMessage, type SupportTask } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui";
 
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif";
@@ -162,8 +163,9 @@ export function SupportTaskScreenshots({
       setPending(null);
       setCaption("");
       if (inputRef.current) inputRef.current.value = "";
+      toast.success("Screenshot uploaded");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(errorMessage(err, "Unable to upload image"));
     } finally {
       setBusy(false);
     }
@@ -179,8 +181,9 @@ export function SupportTaskScreenshots({
         attachmentId,
       );
       onTaskUpdated(res.data.task);
+      toast.success("Screenshot removed");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not remove image");
+      setError(errorMessage(err, "Unable to remove image"));
     } finally {
       setBusy(false);
     }

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { sseWorkspaceHref } from "@/lib/sse-workspace-nav";
 import { handleApiSubmit } from "@/components/SeContextualCreatePage";
 import {
@@ -19,7 +19,6 @@ import {
 export default function SupportFeedbackNewPage() {
   const params = useParams<{ userId: string }>();
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -52,10 +51,10 @@ export default function SupportFeedbackNewPage() {
         executiveUserId: userId,
         body,
       });
-      pushToast("Feedback added", "success");
+      toast.success("Feedback added");
       router.push(returnHref);
     } catch (err) {
-      handleApiSubmit(err, setError, pushToast);
+      handleApiSubmit(err, setError, "Unable to add feedback");
     } finally {
       setSubmitting(false);
     }

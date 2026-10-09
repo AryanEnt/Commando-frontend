@@ -2,9 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, type ProfileListItem } from "@/lib/api";
+import { api, errorMessage, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { personName } from "@/lib/labels";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
@@ -74,7 +74,6 @@ export default function NewReferralPage() {
 
 function NewReferralForm() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedProfileId = searchParams.get("profileId") ?? "";
@@ -187,15 +186,10 @@ function NewReferralForm() {
           threat: form.threat.trim(),
         },
       });
-      pushToast("Intervention submitted to Commando", "success");
+      toast.success("Intervention submitted to Commando");
       router.push(`/referrals/${res.data.referral.id}`);
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : "We couldn't submit the intervention. Please try again.";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to submit the intervention. Please try again."));
     } finally {
       setSubmitting(false);
     }

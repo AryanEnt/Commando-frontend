@@ -2,17 +2,14 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
-  ClipboardList,
   Flag,
   History,
-  Info,
   LayoutGrid,
-  ListChecks,
   Plus,
   RefreshCw,
   Target,
@@ -20,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  errorMessage,
   type ActionItem,
   type EisenhowerCategory,
   type EisenhowerTask,
@@ -33,13 +31,21 @@ import {
   type InterventionWorkspace,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate, formatWhen } from "@/lib/dates";
 import { formatSwotField } from "@/lib/swot-points";
 import { personName } from "@/lib/labels";
 import { seWorkspaceHref } from "@/lib/se-workspace-nav";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Avatar, Button, ButtonLink, PerformanceMeter, Skeleton } from "@/components/ui";
+import {
+  DashEmpty,
+  DashHero,
+  DashPanel,
+  HealthSummary,
+  KpiStat,
+  type SignalTone,
+} from "@/components/dashboard/DashboardKit";
 
 type Props = {
   profile: ProfileDetail;
@@ -67,7 +73,7 @@ type PriorityItem = {
   meta: string;
   href: string;
   actionLabel: string;
-  severity: "critical" | "warning" | "watch" | "info";
+  badge: { status: string; label: string };
 };
 
 const EISENHOWER_META: Record<
@@ -132,60 +138,14 @@ function swotSourceLabel(source: SwotItem["source"]) {
   return "My self-added SWOT";
 }
 
-function SectionCard({
-  title,
-  subtitle,
-  action,
-  children,
-  className = "",
-}: {
-  title: string;
-  subtitle?: string;
-  action?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
+function PanelLink({ href, children }: { href: string; children: string }) {
   return (
-    <section
-      className={`overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] ${className}`}
+    <Link
+      href={href}
+      className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3.5 sm:px-5">
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]">
-            {title}
-          </h2>
-          {subtitle ? (
-            <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
-              {subtitle}
-            </p>
-          ) : null}
-        </div>
-        {action}
-      </div>
       {children}
-    </section>
-  );
-}
-
-function EmptyBlock({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col items-start gap-2 px-4 py-7 sm:px-5">
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]">
-        <Icon size={16} strokeWidth={1.75} aria-hidden />
-      </span>
-      <p className="text-[13px] font-semibold text-[var(--color-ink)]">{title}</p>
-      <p className="max-w-sm text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
-        {description}
-      </p>
-    </div>
+    </Link>
   );
 }
 
@@ -207,7 +167,7 @@ function SwotTile({ item, title }: { item: SwotItem | null; title: string }) {
                 ["S", item.strength, "bg-[var(--status-success-bg)] text-[var(--status-success)]"],
                 ["W", item.weakness, "bg-[var(--status-info-bg)] text-[var(--status-info)]"],
                 ["O", item.opportunity, "bg-[var(--status-warn-bg)] text-[var(--status-warn)]"],
-                ["T", item.threat, "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"],
+                ["T", item.threat, "bg-[var(--status-danger-bg)] text-[var(--status-danger)]"],
               ] as const
             ).map(([k, v, tone]) => (
               <div
@@ -269,7 +229,6 @@ export function SalesExecutiveDashboard({
   onActionsChanged,
 }: Props) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [completingId, setCompletingId] = useState<string | null>(null);
   const assignment = profile.currentAssignment;
   const referral = workspace?.latestReferral ?? null;
@@ -325,13 +284,10 @@ export function SalesExecutiveDashboard({
     setCompletingId(id);
     try {
       await api.completeActionItem(token, id);
-      pushToast("Assignment completed", "success");
+      toast.success("Assignment completed");
       await onActionsChanged?.();
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Could not complete assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to complete assignment"));
     } finally {
       setCompletingId(null);
     }
@@ -342,30 +298,30 @@ export function SalesExecutiveDashboard({
     priorities.push({
       id: `od-${a.id}`,
       title: a.title,
-      meta: `Overdue action · Due ${formatDate(a.dueDate)}`,
+      meta: `Assignment · Due ${formatDate(a.dueDate)}`,
       href: seWorkspaceHref(profile.id, "actions"),
-      actionLabel: "Open actions →",
-      severity: "critical",
+      actionLabel: "Open actions",
+      badge: { status: "OVERDUE", label: "Overdue" },
     });
   }
   for (const t of overdueSupport.slice(0, 3)) {
     priorities.push({
       id: `sup-${t.id}`,
       title: t.title,
-      meta: `Overdue support · ${personName(t.salesSupportUser)}`,
+      meta: `Support · ${personName(t.salesSupportUser)}`,
       href: seWorkspaceHref(profile.id, "support"),
-      actionLabel: "Open support →",
-      severity: "warning",
+      actionLabel: "Open support",
+      badge: { status: "NEEDS_ATTENTION", label: "Overdue support" },
     });
   }
   for (const a of dueSoonActions.slice(0, 3)) {
     priorities.push({
       id: `soon-${a.id}`,
       title: a.title,
-      meta: `Action due ${formatDate(a.dueDate)}`,
+      meta: `Assignment · Due ${formatDate(a.dueDate)}`,
       href: seWorkspaceHref(profile.id, "actions"),
-      actionLabel: "Open actions →",
-      severity: "warning",
+      actionLabel: "Open actions",
+      badge: { status: "DUE_TODAY", label: "Due soon" },
     });
   }
   if (draftReviews[0]) {
@@ -374,8 +330,8 @@ export function SalesExecutiveDashboard({
       title: draftReviews[0].weekLabel || "Weekly review draft",
       meta: "Review in progress — awaiting completion",
       href: `/weekly-reviews/${draftReviews[0].id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`,
-      actionLabel: "Open review →",
-      severity: "watch",
+      actionLabel: "Open review",
+      badge: { status: "WATCH", label: "In progress" },
     });
   } else if (submittedReviews[0] && !submittedReviews[0].signed) {
     priorities.push({
@@ -383,8 +339,8 @@ export function SalesExecutiveDashboard({
       title: submittedReviews[0].weekLabel || "Weekly review",
       meta: "Submitted — awaiting your signature",
       href: `/weekly-reviews/${submittedReviews[0].id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`,
-      actionLabel: "Review & sign →",
-      severity: "watch",
+      actionLabel: "Review & sign",
+      badge: { status: "DUE_TODAY", label: "To sign" },
     });
   }
   if (feedback[0] && priorities.length < 6) {
@@ -393,8 +349,8 @@ export function SalesExecutiveDashboard({
       title: "Latest feedback",
       meta: `${personName(feedback[0].createdBy)} · ${formatDate(feedback[0].createdAt)}`,
       href: seWorkspaceHref(profile.id, "feedback"),
-      actionLabel: "Read feedback →",
-      severity: "info",
+      actionLabel: "Read feedback",
+      badge: { status: "UPCOMING", label: "Feedback" },
     });
   }
   if (
@@ -407,14 +363,112 @@ export function SalesExecutiveDashboard({
       title: workspace.nextAction.label,
       meta: workspace.nextAction.reason || "Current coaching priority",
       href: seWorkspaceHref(profile.id, "overview"),
-      actionLabel: "View →",
-      severity: "info",
+      actionLabel: "View",
+      badge: { status: "UPCOMING", label: "Coaching focus" },
     });
   }
 
+  const kpis: {
+    label: string;
+    value: number | string;
+    hint: string;
+    href: string;
+    tone: SignalTone;
+  }[] = [
+    {
+      label: "Overdue",
+      value: overdueActions.length,
+      hint: "Assignments past due",
+      href: seWorkspaceHref(profile.id, "actions"),
+      tone: overdueActions.length > 0 ? "critical" : "neutral",
+    },
+    {
+      label: "Due this week",
+      value: dueSoonActions.length,
+      hint: "Assignments due in 7 days",
+      href: seWorkspaceHref(profile.id, "actions"),
+      tone: dueSoonActions.length > 0 ? "warning" : "neutral",
+    },
+    {
+      label: "My score",
+      value: metricsLoading
+        ? "…"
+        : myScore != null
+          ? Math.round(myScore)
+          : "—",
+      hint: myMetric
+        ? `Evaluated ${formatDate(myMetric.evaluatedAt)}`
+        : "No personal score yet",
+      href: seWorkspaceHref(profile.id, "performance"),
+      tone: myScore != null ? "info" : "neutral",
+    },
+    {
+      label: "Feedback",
+      value: feedback.length,
+      hint: feedback[0]
+        ? `Latest ${formatDate(feedback[0].createdAt)}`
+        : "None received yet",
+      href: seWorkspaceHref(profile.id, "feedback"),
+      tone: "neutral",
+    },
+  ];
+
+  const progressStats = [
+    {
+      label: "Open assignments",
+      value: openActions.length,
+      hint:
+        overdueActions.length > 0
+          ? `${overdueActions.length} overdue`
+          : "None overdue",
+    },
+    {
+      label: "Reviews",
+      value: reviews.length,
+      hint: `${submittedReviews.length} submitted`,
+    },
+    {
+      label: "Days under Commando",
+      value: underIntervention
+        ? (daysUnder ?? profile.totalDaysUnderCommando)
+        : profile.totalDaysUnderCommando || 0,
+      hint: underIntervention ? "Current intervention" : "Lifetime total",
+    },
+    {
+      label: "Monthly planning",
+      value: currentMonthTasks.length,
+      hint: "Eisenhower items this month",
+    },
+  ];
+
+  const quickActions = [
+    canEditSelfSwot
+      ? { href: swotHref, label: "Add my SWOT", icon: Plus }
+      : null,
+    {
+      href: seWorkspaceHref(profile.id, "work-log"),
+      label: "Add work log",
+      icon: Plus,
+    },
+    {
+      href: seWorkspaceHref(profile.id, "history"),
+      label: "View history",
+      icon: History,
+    },
+    {
+      href: seWorkspaceHref(profile.id, "swot"),
+      label: "Open SWOT",
+      icon: Target,
+    },
+    {
+      href: seWorkspaceHref(profile.id, "eisenhower"),
+      label: "Open monthly planning",
+      icon: LayoutGrid,
+    },
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
   return (
-    <div className="space-y-5">
-      {/* Page header */}
+    <div className="space-y-6">
       <div className="page-hero flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-brand)]">
@@ -429,7 +483,7 @@ export function SalesExecutiveDashboard({
         </div>
         <div className="flex flex-wrap gap-2">
           {canEditSelfSwot ? (
-            <ButtonLink href={swotHref} variant="secondary" size="sm">
+            <ButtonLink href={swotHref} variant="outline" size="sm">
               <Plus size={14} aria-hidden />
               Add my SWOT
             </ButtonLink>
@@ -444,19 +498,87 @@ export function SalesExecutiveDashboard({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-12 xl:items-start">
-        {/* PRIMARY */}
-        <div className="min-w-0 space-y-4 xl:col-span-8">
-          {/* Current performance summary */}
-          <SectionCard
-            title="Current performance summary"
-            subtitle={`${profile.displayName} · ${profile.team.name}`}
+      <DashHero
+        anchor={
+          <HealthSummary
+            title="My assignments"
+            healthy={openActions.length - overdueActions.length}
+            attention={overdueActions.length}
+            healthyLabel="On track"
+            attentionLabel="Overdue"
+            emptyText="No open assignments"
+          />
+        }
+      >
+        {kpis.map((kpi) => (
+          <KpiStat key={kpi.label} {...kpi} />
+        ))}
+      </DashHero>
+
+      <div className="grid gap-5 xl:grid-cols-12 xl:items-start">
+        <div className="min-w-0 space-y-5 xl:col-span-8">
+          <DashPanel
+            id="se-priorities"
+            tone="brand"
+            title="Current priorities"
+            description="What you should work on next"
+            aside={
+              priorities.length > 0 ? (
+                <PanelLink href={seWorkspaceHref(profile.id, "actions")}>
+                  View all
+                </PanelLink>
+              ) : (
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)]"
+                  aria-hidden
+                >
+                  <CheckCircle2 size={16} />
+                </span>
+              )
+            }
           >
-            <div className="grid gap-0 lg:grid-cols-2">
-              <div className="border-b border-[var(--color-line)] px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-subtle)]">
-                  Management state
-                </p>
+            {priorities.length === 0 ? (
+              <DashEmpty
+                tone="positive"
+                title="Nothing urgent right now"
+                description="Overdue assignments, upcoming reviews, and support follow-ups will appear here."
+              />
+            ) : (
+              <ul className="dash-list">
+                {priorities.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-wrap items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge {...item.badge} />
+                        <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                          {item.title}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-meta">{item.meta}</p>
+                    </div>
+                    <Link
+                      href={item.href}
+                      className="shrink-0 text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
+                    >
+                      {item.actionLabel}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DashPanel>
+
+          <DashPanel
+            id="se-performance-summary"
+            title="Current performance summary"
+            description={`${profile.displayName} · ${profile.team.name}`}
+          >
+            <div className="grid border-t border-[var(--color-line)] lg:grid-cols-2">
+              <div className="border-b border-[var(--color-line)] px-6 py-5 lg:border-b-0 lg:border-r">
+                <p className="text-eyebrow">Management state</p>
                 <div className="mt-2.5">
                   {underIntervention ? (
                     <StatusBadge
@@ -473,18 +595,14 @@ export function SalesExecutiveDashboard({
                 {underIntervention && assignment ? (
                   <dl className="mt-3 space-y-2 text-[13px]">
                     <div>
-                      <dt className="text-[12px] text-[var(--color-ink-muted)]">
-                        Current Commando
-                      </dt>
+                      <dt className="text-meta">Current Commando</dt>
                       <dd className="font-medium text-[var(--color-ink)]">
                         {personName(assignment.commando)}
                       </dd>
                     </div>
                     {daysUnder != null ? (
                       <div>
-                        <dt className="text-[12px] text-[var(--color-ink-muted)]">
-                          Days under Commando
-                        </dt>
+                        <dt className="text-meta">Days under Commando</dt>
                         <dd className="font-medium tabular-nums text-[var(--color-ink)]">
                           {daysUnder}
                           {assignment.startedAt
@@ -495,9 +613,7 @@ export function SalesExecutiveDashboard({
                     ) : null}
                     {referral?.recommendationFocus || referral?.whatIsTheGap ? (
                       <div>
-                        <dt className="text-[12px] text-[var(--color-ink-muted)]">
-                          Current focus
-                        </dt>
+                        <dt className="text-meta">Current focus</dt>
                         <dd className="text-[var(--color-ink-muted)]">
                           {referral.recommendationFocus || referral.whatIsTheGap}
                         </dd>
@@ -505,9 +621,7 @@ export function SalesExecutiveDashboard({
                     ) : null}
                     {teamLeadName ? (
                       <div>
-                        <dt className="text-[12px] text-[var(--color-ink-muted)]">
-                          Team Lead (permanent owner)
-                        </dt>
+                        <dt className="text-meta">Team Lead (permanent owner)</dt>
                         <dd className="font-medium text-[var(--color-ink)]">
                           {teamLeadName}
                         </dd>
@@ -524,10 +638,8 @@ export function SalesExecutiveDashboard({
                 )}
               </div>
 
-              <div className="px-4 py-4 sm:px-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-ink-subtle)]">
-                  Performance
-                </p>
+              <div className="px-6 py-5">
+                <p className="text-eyebrow">Performance</p>
                 {metricsLoading ? (
                   <div className="mt-3 space-y-2">
                     <Skeleton className="h-9 w-20" />
@@ -575,7 +687,7 @@ export function SalesExecutiveDashboard({
                         —
                       </p>
                     )}
-                    <p className="mt-2 text-[12px] text-[var(--color-ink-muted)]">
+                    <p className="mt-2 text-meta">
                       {myMetric
                         ? `My metric · ${myMetric.source.replaceAll("_", " ")} · ${formatDate(myMetric.evaluatedAt)}`
                         : "No personal performance score yet"}
@@ -586,7 +698,7 @@ export function SalesExecutiveDashboard({
                       </p>
                     ) : null}
                     {myMetric?.scores?.length ? (
-                      <ul className="mt-3 flex flex-wrap gap-3">
+                      <ul className="mt-3 flex flex-wrap gap-4">
                         {myMetric.scores.slice(0, 4).map((s) => (
                           <li key={s.id}>
                             <p className="text-[11px] text-[var(--color-ink-subtle)]">
@@ -602,14 +714,14 @@ export function SalesExecutiveDashboard({
                   </div>
                 )}
                 {commandoScore && !commandoScore.visible ? (
-                  <p className="mt-3 text-[12px] text-[var(--color-ink-muted)]">
+                  <p className="mt-3 text-meta">
                     {commandoScore.hiddenReason ||
                       "Commando performance scores are not visible during an active assignment."}
                   </p>
                 ) : null}
                 {commandoScore?.visible &&
                 commandoScore.averageMetricScore != null ? (
-                  <p className="mt-3 text-[12px] text-[var(--color-ink-muted)]">
+                  <p className="mt-3 text-meta">
                     Commando score:{" "}
                     <span className="font-medium tabular-nums text-[var(--color-ink)]">
                       {Math.round(commandoScore.averageMetricScore)}
@@ -623,173 +735,43 @@ export function SalesExecutiveDashboard({
                   href={seWorkspaceHref(profile.id, "performance")}
                   className="mt-4 inline-block text-[13px] font-medium text-[var(--color-brand)] hover:underline"
                 >
-                  Open performance details →
+                  Open performance details
                 </Link>
               </div>
             </div>
-          </SectionCard>
+          </DashPanel>
 
-          {/* Current priorities */}
-          <section
-            className={`overflow-hidden rounded-[var(--radius-md)] border shadow-[var(--shadow-sm)] ${
-              priorities.length > 0
-                ? "border-[var(--status-warn-ring)] bg-[var(--color-surface)]"
-                : "border-[var(--color-line)] bg-[var(--color-surface)]"
-            }`}
-          >
-            <div
-              className={`flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3.5 sm:px-5 ${
-                priorities.length > 0
-                  ? "border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)]/70"
-                  : "border-[var(--color-line)]"
-              }`}
-            >
-              <div>
-                <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-ink)]">
-                  Current priorities
-                </h2>
-                <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
-                  What you should work on next
-                </p>
-              </div>
-              {priorities.length > 0 ? (
-                <Link
-                  href={seWorkspaceHref(profile.id, "actions")}
-                  className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                >
-                  View all priorities →
-                </Link>
-              ) : (
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)]"
-                  aria-hidden
-                >
-                  <CheckCircle2 size={16} />
-                </span>
-              )}
-            </div>
-            {priorities.length === 0 ? (
-              <div className="px-4 py-6 sm:px-5">
-                <p className="text-[13px] font-medium text-[var(--status-success)]">
-                  Nothing urgent right now
-                </p>
-                <p className="mt-1 text-[12px] text-[var(--color-ink-muted)]">
-                  Overdue actions, upcoming reviews, and support follow-ups will
-                  appear here.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
-                {priorities.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5"
-                  >
-                    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                      <span
-                        className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                          item.severity === "critical"
-                            ? "bg-[var(--status-danger-bg)] text-[var(--status-danger)]"
-                            : item.severity === "warning"
-                              ? "bg-[var(--status-warn-bg)] text-[var(--status-warn)]"
-                              : "bg-[var(--status-info-bg)] text-[var(--status-info)]"
-                        }`}
-                        aria-hidden
-                      >
-                        <Info size={12} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-[var(--color-ink)]">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 text-[12px] text-[var(--color-ink-muted)]">
-                          {item.meta}
-                        </p>
-                      </div>
-                    </div>
-                    <Link
-                      href={item.href}
-                      className="shrink-0 text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                    >
-                      {item.actionLabel}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* Reviews + Actions row */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SectionCard
-              title="Reviews"
-              subtitle="Recent weekly reviews and resulting actions"
-              action={
-                <Link
-                  href={seWorkspaceHref(profile.id, "reviews")}
-                  className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                >
-                  View all →
-                </Link>
-              }
-            >
-              {recentReviews.length === 0 ? (
-                <EmptyBlock
-                  icon={ClipboardList}
-                  title="No weekly reviews yet"
-                  description="Reviews from your Team Lead or Commando will appear here."
-                />
-              ) : (
-                <ul className="divide-y divide-[var(--color-line)]">
-                  {recentReviews.map((r) => (
-                    <li key={r.id} className="px-4 py-3 sm:px-5">
-                      <div className="flex items-start justify-between gap-2">
-                        <Link
-                          href={`/weekly-reviews/${r.id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`}
-                          className="text-[13px] font-semibold text-[var(--color-ink)] hover:underline"
-                        >
-                          {r.weekLabel || "Weekly review"}
-                        </Link>
-                        <StatusBadge status={r.status} />
-                      </div>
-                      <p className="mt-1 text-[12px] text-[var(--color-ink-muted)]">
-                        {formatDate(r.meetingDate || r.weekStartDate)}
-                        {r.nextWeekAction
-                          ? ` · ${r.nextWeekAction}`
-                          : ""}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Assignment"
-              subtitle="Your current open follow-through items"
-              action={
-                <Link
-                  href={seWorkspaceHref(profile.id, "actions")}
-                  className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                >
-                  View all →
-                </Link>
+          <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+            <DashPanel
+              id="se-assignments"
+              title="Assignments"
+              description="Your current open follow-through items"
+              aside={
+                <PanelLink href={seWorkspaceHref(profile.id, "actions")}>
+                  View all
+                </PanelLink>
               }
             >
               {openActions.length === 0 ? (
-                <EmptyBlock
-                  icon={ListChecks}
+                <DashEmpty
+                  tone="positive"
                   title="No open assignments"
                   description="Assignments from reviews and coaching will appear here."
                 />
               ) : (
-                <ul className="divide-y divide-[var(--color-line)]">
+                <ul className="dash-list">
                   {openActions.slice(0, 6).map((a) => {
                     const overdue = isOverdueAction(a);
+                    const signal: SignalTone = overdue
+                      ? "critical"
+                      : isDueSoon(a)
+                        ? "warning"
+                        : "positive";
                     return (
                       <li
                         key={a.id}
-                        className="flex items-start justify-between gap-3 px-4 py-3 sm:px-5"
+                        data-signal={signal}
+                        className="flex items-start justify-between gap-3"
                       >
                         <div className="min-w-0">
                           <Link
@@ -801,19 +783,21 @@ export function SalesExecutiveDashboard({
                           <p
                             className={`mt-1 text-[12px] tabular-nums ${
                               overdue
-                                ? "font-medium text-[var(--status-danger)]"
+                                ? "font-semibold text-[var(--status-danger)]"
                                 : "text-[var(--color-ink-muted)]"
                             }`}
                           >
                             Due {formatDate(a.dueDate)}
-                            {overdue ? " · Overdue" : ""}
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
-                          <StatusBadge
-                            status={overdue ? "OVERDUE" : a.status}
-                            label={overdue ? "Overdue" : undefined}
-                          />
+                          {overdue ? (
+                            <StatusBadge status="OVERDUE" label="Overdue" />
+                          ) : signal === "warning" ? (
+                            <StatusBadge status="DUE_TODAY" label="Due soon" />
+                          ) : (
+                            <StatusBadge status="ON_TRACK" label="On track" />
+                          )}
                           {canCompleteActions ? (
                             <Button
                               variant="success"
@@ -832,25 +816,58 @@ export function SalesExecutiveDashboard({
                   })}
                 </ul>
               )}
-            </SectionCard>
+            </DashPanel>
+
+            <DashPanel
+              id="se-reviews"
+              title="Reviews"
+              description="Recent weekly reviews and resulting actions"
+              aside={
+                <PanelLink href={seWorkspaceHref(profile.id, "reviews")}>
+                  View all
+                </PanelLink>
+              }
+            >
+              {recentReviews.length === 0 ? (
+                <DashEmpty
+                  title="No weekly reviews yet"
+                  description="Reviews from your Team Lead or Commando will appear here."
+                />
+              ) : (
+                <ul className="dash-list">
+                  {recentReviews.map((r) => (
+                    <li key={r.id}>
+                      <div className="flex items-start justify-between gap-2">
+                        <Link
+                          href={`/weekly-reviews/${r.id}?returnTo=${encodeURIComponent(seWorkspaceHref(profile.id, "reviews"))}`}
+                          className="text-[13px] font-semibold text-[var(--color-ink)] hover:underline"
+                        >
+                          {r.weekLabel || "Weekly review"}
+                        </Link>
+                        <StatusBadge status={r.status} />
+                      </div>
+                      <p className="mt-1 text-meta">
+                        {formatDate(r.meetingDate || r.weekStartDate)}
+                        {r.nextWeekAction ? ` · ${r.nextWeekAction}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DashPanel>
           </div>
 
-          {/* SWOT */}
-          <SectionCard
+          <DashPanel
+            id="se-swot"
             title="SWOT"
-            subtitle="Separated by who recorded it — sources are not merged"
-            action={
+            description="Separated by who recorded it — sources are not merged"
+            aside={
               canEditSelfSwot ? (
-                <Link
-                  href={swotHref}
-                  className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                >
-                  Add my SWOT →
-                </Link>
+                <PanelLink href={swotHref}>Add my SWOT</PanelLink>
               ) : null
             }
           >
-            <div className="grid gap-3 p-4 sm:grid-cols-3 sm:px-5">
+            <div className="grid gap-3 px-6 pb-6 sm:grid-cols-3">
               <SwotTile item={tlSwot} title={swotSourceLabel("TEAM_LEAD")} />
               <SwotTile
                 item={selfSwot}
@@ -861,34 +878,28 @@ export function SalesExecutiveDashboard({
                 title={swotSourceLabel("COMMANDO")}
               />
             </div>
-          </SectionCard>
+          </DashPanel>
 
-          {/* Latest feedback */}
-          <SectionCard
+          <DashPanel
+            id="se-feedback"
+            tone="bare"
             title="Latest feedback"
-            subtitle="Recent guidance from Team Lead or Commando"
-            action={
-              <Link
-                href={seWorkspaceHref(profile.id, "feedback")}
-                className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-              >
-                View all →
-              </Link>
+            description="Recent guidance from Team Lead or Commando"
+            aside={
+              <PanelLink href={seWorkspaceHref(profile.id, "feedback")}>
+                View all
+              </PanelLink>
             }
           >
             {feedback.length === 0 ? (
-              <EmptyBlock
-                icon={Info}
+              <DashEmpty
                 title="No feedback yet"
                 description="Guidance from your Team Lead or Commando will appear here."
               />
             ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
+              <ul className="dash-list">
                 {feedback.slice(0, 3).map((f) => (
-                  <li
-                    key={f.id}
-                    className="flex items-start gap-3 px-4 py-3.5 sm:px-5"
-                  >
+                  <li key={f.id} className="flex items-start gap-3">
                     <Avatar name={personName(f.createdBy)} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -911,209 +922,123 @@ export function SalesExecutiveDashboard({
                 ))}
               </ul>
             )}
-          </SectionCard>
+          </DashPanel>
         </div>
 
-        {/* SECONDARY */}
-        <aside className="space-y-4 xl:col-span-4">
-          <SectionCard title="Quick actions">
-            <ul className="p-2">
-              {[
-                canEditSelfSwot
-                  ? {
-                      href: swotHref,
-                      label: "Add my SWOT",
-                      icon: Plus,
-                    }
-                  : null,
-                {
-                  href: seWorkspaceHref(profile.id, "work-log"),
-                  label: "Add work log",
-                  icon: Plus,
-                },
-                {
-                  href: seWorkspaceHref(profile.id, "history"),
-                  label: "View history",
-                  icon: History,
-                },
-                {
-                  href: seWorkspaceHref(profile.id, "performance"),
-                  label: "Open performance",
-                  icon: Target,
-                },
-                {
-                  href: seWorkspaceHref(profile.id, "eisenhower"),
-                  label: "Open monthly planning",
-                  icon: LayoutGrid,
-                },
-              ]
-                .filter(Boolean)
-                .map((item) => {
-                  const Icon = item!.icon;
-                  return (
-                    <li key={item!.href}>
-                      <Link
-                        href={item!.href}
-                        className="flex items-center gap-2.5 rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-surface-2)]"
-                      >
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-canvas-2)] text-[var(--color-ink-muted)]">
-                          <Icon size={14} strokeWidth={1.75} aria-hidden />
-                        </span>
-                        {item!.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-            </ul>
-          </SectionCard>
-
-          <SectionCard
-            title="Performance progress"
-            subtitle="Snapshot of your current and recent state"
-            action={
-              <Link
-                href={seWorkspaceHref(profile.id, "performance")}
-                className="text-[12px] font-medium text-[var(--color-brand)] hover:underline"
-              >
-                Full details →
-              </Link>
-            }
-          >
-            <div className="grid grid-cols-2 gap-2.5 p-3 sm:p-4">
-              {(
-                [
-                  {
-                    label: "Open actions",
-                    value: openActions.length,
-                    hint:
-                      overdueActions.length > 0
-                        ? `${overdueActions.length} overdue`
-                        : "None overdue",
-                    tone: "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success-ring)]",
-                    icon: ListChecks,
-                  },
-                  {
-                    label: "Reviews",
-                    value: reviews.length,
-                    hint: `${submittedReviews.length} submitted`,
-                    tone: "bg-[var(--status-info-bg)] text-[var(--status-info)] ring-[var(--status-info-ring)]",
-                    icon: ClipboardList,
-                  },
-                  {
-                    label: "Days under Commando",
-                    value: underIntervention
-                      ? (daysUnder ?? profile.totalDaysUnderCommando)
-                      : profile.totalDaysUnderCommando || 0,
-                    hint: underIntervention
-                      ? "Current intervention"
-                      : "Lifetime total",
-                    tone: "bg-[var(--color-brand-soft)] text-[var(--color-brand)] ring-[var(--color-brand-ring)]",
-                    icon: Flag,
-                  },
-                  {
-                    label: "Monthly planning",
-                    value: currentMonthTasks.length,
-                    hint: "Eisenhower items this month",
-                    tone: "bg-[var(--status-warn-bg)] text-[var(--status-warn)] ring-[var(--status-warn-ring)]",
-                    icon: LayoutGrid,
-                  },
-                ] as const
-              ).map((m) => {
-                const Icon = m.icon;
+        <aside className="space-y-5 xl:col-span-4">
+          <DashPanel id="se-quick-actions" title="Quick actions">
+            <ul className="px-3 pb-3">
+              {quickActions.map((item) => {
+                const Icon = item.icon;
                 return (
-                  <div
-                    key={m.label}
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)]/40 p-3"
-                  >
-                    <span
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] ring-1 ring-inset ${m.tone}`}
-                      aria-hidden
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className="flex items-center gap-2.5 rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-brand-soft)]"
                     >
-                      <Icon size={13} strokeWidth={1.75} />
-                    </span>
-                    <p className="mt-2 text-[11px] font-medium text-[var(--color-ink-muted)]">
-                      {m.label}
-                    </p>
-                    <p className="mt-0.5 text-[1.25rem] font-semibold tabular-nums tracking-tight text-[var(--color-ink)]">
-                      {m.value}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-[var(--color-ink-subtle)]">
-                      {m.hint}
-                    </p>
-                  </div>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand-soft)] text-[var(--color-brand)]">
+                        <Icon size={14} strokeWidth={1.75} aria-hidden />
+                      </span>
+                      {item.label}
+                    </Link>
+                  </li>
                 );
               })}
-            </div>
-          </SectionCard>
+            </ul>
+          </DashPanel>
 
-          <SectionCard
-            title="Monthly Eisenhower summary"
-            subtitle="Compact view of this month's planning"
-            action={
-              <Link
-                href={seWorkspaceHref(profile.id, "eisenhower")}
-                className="text-[12px] font-medium text-[var(--color-brand)] hover:underline"
-              >
-                Open Eisenhower →
-              </Link>
+          <DashPanel
+            id="se-progress"
+            title="Performance progress"
+            description="Snapshot of your current and recent state"
+            aside={
+              <PanelLink href={seWorkspaceHref(profile.id, "performance")}>
+                Details
+              </PanelLink>
             }
           >
-            <div className="grid grid-cols-2 gap-2.5 p-3 sm:p-4">
+            <div className="dash-mini-stats">
+              {progressStats.map((m) => (
+                <div key={m.label}>
+                  <p className="text-[1.5rem] font-bold leading-none tabular-nums tracking-tight text-[var(--color-ink)]">
+                    {m.value}
+                  </p>
+                  <p className="mt-2 text-[12px] font-semibold text-[var(--color-ink)]">
+                    {m.label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[var(--color-ink-muted)]">
+                    {m.hint}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </DashPanel>
+
+          <DashPanel
+            id="se-eisenhower"
+            title="Monthly Eisenhower"
+            description="This month's planning by quadrant"
+            aside={
+              <PanelLink href={seWorkspaceHref(profile.id, "eisenhower")}>
+                Open
+              </PanelLink>
+            }
+          >
+            <div className="dash-mini-stats">
               {eisenhowerCounts.map((cell) => {
                 const Icon = cell.icon;
                 return (
-                  <div
-                    key={cell.key}
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)]/40 p-3"
-                  >
+                  <div key={cell.key} className="flex items-start gap-3">
                     <span
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] ring-1 ring-inset ${cell.iconClass}`}
+                      className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ring-1 ring-inset ${cell.iconClass}`}
                       aria-hidden
                     >
                       <Icon size={13} strokeWidth={1.75} />
                     </span>
-                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-ink-muted)]">
-                      {cell.title}
-                    </p>
-                    <p className="mt-0.5 text-[1.25rem] font-semibold tabular-nums text-[var(--color-ink)]">
-                      {cell.count}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-[var(--color-ink-subtle)]">
-                      {cell.subtitle}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-[1.25rem] font-bold leading-none tabular-nums text-[var(--color-ink)]">
+                        {cell.count}
+                      </p>
+                      <p className="mt-1.5 text-[12px] font-semibold text-[var(--color-ink)]">
+                        {cell.title}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-ink-muted)]">
+                        {cell.subtitle}
+                      </p>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </SectionCard>
+          </DashPanel>
 
           {canViewSupport ? (
-            <SectionCard
+            <DashPanel
+              id="se-support"
               title="Support"
-              subtitle={
+              description={
                 supportNames.length > 0
                   ? `Support team: ${supportNames.join(" · ")}`
                   : "Sales Support tasks assigned to help you"
               }
-              action={
-                <Link
-                  href={seWorkspaceHref(profile.id, "support")}
-                  className="text-[12px] font-medium text-[var(--color-brand)] hover:underline"
-                >
-                  View support →
-                </Link>
+              aside={
+                <PanelLink href={seWorkspaceHref(profile.id, "support")}>
+                  View
+                </PanelLink>
               }
             >
               {activeSupport.length === 0 ? (
-                <EmptyBlock
-                  icon={Users}
+                <DashEmpty
                   title="No active support tasks"
                   description="When Support is assigned work for you, it will appear here."
                 />
               ) : (
-                <ul className="divide-y divide-[var(--color-line)]">
+                <ul className="dash-list">
                   {activeSupport.slice(0, 4).map((t) => (
-                    <li key={t.id} className="px-4 py-3 sm:px-5">
+                    <li
+                      key={t.id}
+                      data-signal={t.isOverdue ? "critical" : "positive"}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-[13px] font-semibold text-[var(--color-ink)]">
                           {t.title}
@@ -1122,7 +1047,7 @@ export function SalesExecutiveDashboard({
                           status={t.isOverdue ? "OVERDUE" : t.status}
                         />
                       </div>
-                      <p className="mt-1 text-[12px] text-[var(--color-ink-muted)]">
+                      <p className="mt-1 text-meta">
                         {personName(t.salesSupportUser)} · Due{" "}
                         {formatDate(t.dueDate)}
                       </p>
@@ -1130,7 +1055,7 @@ export function SalesExecutiveDashboard({
                   ))}
                 </ul>
               )}
-            </SectionCard>
+            </DashPanel>
           ) : null}
         </aside>
       </div>

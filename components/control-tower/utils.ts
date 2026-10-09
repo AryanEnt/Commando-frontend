@@ -205,7 +205,7 @@ export function statusTone(status: WorkflowStatus) {
     };
   }
   return {
-    badge: "PENDING" as const,
+    badge: "WATCH" as const,
     label: "Watch",
   };
 }

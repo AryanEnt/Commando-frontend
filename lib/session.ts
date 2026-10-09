@@ -30,6 +30,23 @@ export function clearSession() {
   listeners.forEach((fn) => fn(null, null));
 }
 
+const LOGOUT_REASON_KEY = "commando_logout_reason";
+
+export type LogoutReason = "SESSION_REPLACED";
+
+export function setLogoutReason(reason: LogoutReason) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LOGOUT_REASON_KEY, reason);
+}
+
+/** Returns and clears the reason the last session ended, if any. */
+export function consumeLogoutReason(): LogoutReason | null {
+  if (typeof window === "undefined") return null;
+  const reason = window.localStorage.getItem(LOGOUT_REASON_KEY);
+  window.localStorage.removeItem(LOGOUT_REASON_KEY);
+  return reason === "SESSION_REPLACED" ? reason : null;
+}
+
 export function subscribeSession(listener: SessionListener) {
   listeners.add(listener);
   return () => {

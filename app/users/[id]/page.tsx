@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type ManagedUserDetail } from "@/lib/api";
+import { api, errorMessage, type ManagedUserDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { roleLabel } from "@/lib/labels";
 import { formatDateTime } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -67,11 +67,18 @@ function Callout({
   );
 }
 
-function detectRoleChangeBlock(user: ManagedUserDetail): string | null {
-  if (user.role.code !== "SALES_EXECUTIVE") return null;
+function detectRoleChangeBlock(
+  user: ManagedUserDetail,
+  targetRole: string,
+): string | null {
+  if (user.role.code !== "SALES_EXECUTIVE" || targetRole === user.role.code) {
+    return null;
+  }
   if (user.profile?.currentAssignment) {
     return "This user has an active Sales Executive assignment. Resolve the active assignment before changing their role.";
   }
+  // SE ↔ SSE is a designation switch: the profile is archived, not blocking.
+  if (targetRole === "SALES_SUPPORT_EXECUTIVE") return null;
   if (user.profile && !user.profile.archivedAt) {
     return "This user has a Sales Executive profile. Archive or resolve the profile before changing their role.";
   }
@@ -83,7 +90,6 @@ export default function UserDetailPage() {
   const id = params.id;
   const router = useRouter();
   const { token, hasPermission, user: me } = useAuth();
-  const { pushToast } = useToast();
   const [user, setUser] = useState<ManagedUserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +121,7 @@ export default function UserDetailPage() {
         email: res.data.user.email,
       });
       setRoleCode(res.data.user.role.code);
-      setRoleBlockReason(detectRoleChangeBlock(res.data.user));
+      setRoleBlockReason(null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load user");
@@ -140,9 +146,9 @@ export default function UserDetailPage() {
       });
       setUser(res.data.user);
       setEditing(false);
-      pushToast("User updated", "success");
+      toast.success("User updated");
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Update failed", "error");
+      toast.error(errorMessage(err, "Unable to update user"));
     } finally {
       setBusy(false);
     }
@@ -155,9 +161,9 @@ export default function UserDetailPage() {
       const res = await api.updateUserStatus(token, user.id, !user.isActive);
       setUser(res.data.user);
       setStatusConfirm(false);
-      pushToast(user.isActive ? "User deactivated" : "User activated", "success");
+      toast.success(user.isActive ? "User deactivated" : "User reactivated");
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Update failed", "error");
+      toast.error(errorMessage(err, "Unable to update user status"));
     } finally {
       setBusy(false);
     }
@@ -170,14 +176,12 @@ export default function UserDetailPage() {
       const res = await api.updateUserRole(token, user.id, roleCode);
       setUser(res.data.user);
       setRoleCode(res.data.user.role.code);
-      setRoleBlockReason(detectRoleChangeBlock(res.data.user));
+      setRoleBlockReason(null);
       setRoleConfirm(false);
-      pushToast("Role updated", "success");
+      toast.success("Role updated");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Role change failed";
-      setRoleBlockReason(msg);
+      setRoleBlockReason(errorMessage(err, "Unable to change role"));
       setRoleConfirm(false);
-      pushToast(msg, "error");
     } finally {
       setBusy(false);
     }
@@ -185,13 +189,21 @@ export default function UserDetailPage() {
 
   const fullName = user ? `${user.firstName} ${user.lastName}` : "";
   const roleUnchanged = Boolean(user && roleCode === user.role.code);
-  const roleChangeBlocked = Boolean(roleBlockReason);
+  const roleBlockMessage =
+    roleBlockReason ?? (user ? detectRoleChangeBlock(user, roleCode) : null);
+  const roleChangeBlocked = Boolean(roleBlockMessage);
   const canSubmitRoleChange =
     Boolean(user) && !roleUnchanged && !roleChangeBlocked && !busy;
 
   const roleConfirmMessage = useMemo(() => {
     if (!user) return "";
-    return `Change ${fullName} from ${roleLabel(user.role.code)} to ${roleLabel(roleCode)}?`;
+    const base = `Change ${fullName} from ${roleLabel(user.role.code)} to ${roleLabel(roleCode)}?`;
+    const isDesignationSwitch =
+      ["SALES_EXECUTIVE", "SALES_SUPPORT_EXECUTIVE"].includes(user.role.code) &&
+      ["SALES_EXECUTIVE", "SALES_SUPPORT_EXECUTIVE"].includes(roleCode);
+    return isDesignationSwitch
+      ? `${base}\n\nOnly the designation changes. Their profile, tasks, activities, logs, notes, reviews, performance and all other history stay intact and remain linked to them.`
+      : base;
   }, [user, fullName, roleCode]);
 
   if (loading) {
@@ -458,9 +470,7 @@ export default function UserDetailPage() {
                 value={roleCode}
                 onChange={(e) => {
                   setRoleCode(e.target.value);
-                  if (roleBlockReason && !detectRoleChangeBlock(user)) {
-                    setRoleBlockReason(null);
-                  }
+                  setRoleBlockReason(null);
                 }}
                 disabled={busy}
               >
@@ -479,13 +489,15 @@ export default function UserDetailPage() {
 
               {roleChangeBlocked ? (
                 <Callout tone="warning" title="Role change blocked">
-                  {roleBlockReason}
+                  {roleBlockMessage}
                 </Callout>
               ) : (
                 <Callout tone="info" title="Safety check">
                   Role changes are blocked when active assignments or an SE
-                  profile still depend on the current role. The server enforces
-                  this rule even if the UI allows submission.
+                  profile still depend on the current role. Switching between
+                  Sales Executive and Sales Support keeps all existing data.
+                  The server enforces these rules even if the UI allows
+                  submission.
                 </Callout>
               )}
 

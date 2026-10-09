@@ -30,7 +30,7 @@ export function ControlTowerHeader({
             Control Tower
           </h1>
           <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-[var(--color-ink-muted)]">
-            Here's what's happening across the platform today.
+            Here&apos;s what&apos;s happening across the platform today.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

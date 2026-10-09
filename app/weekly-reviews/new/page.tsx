@@ -1,22 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { WeeklyReviewCreateForm } from "@/components/weekly-reviews/WeeklyReviewCreateForm";
 import { ErrorState } from "@/components/ui";
 
 export default function NewWeeklyReviewPage() {
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [profileId, setProfileId] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const cancelHref =
@@ -59,7 +56,6 @@ export default function NewWeeklyReviewPage() {
           value={profileId}
           onChange={(id) => setProfileId(id)}
         />
-        {error ? <ErrorState message={error} /> : null}
         {profileId ? (
           <WeeklyReviewCreateForm
             profileId={profileId}
@@ -67,7 +63,6 @@ export default function NewWeeklyReviewPage() {
             onSubmit={async (payload) => {
               if (!token) return;
               setSubmitting(true);
-              setError(null);
               try {
                 const res = await api.createWeeklyReview(token, {
                   salesExecutiveProfileId: profileId,
@@ -83,10 +78,9 @@ export default function NewWeeklyReviewPage() {
                   nextWeekActions: payload.nextWeekActions,
                   followUpActions: payload.followUpActions,
                 });
-                pushToast(
-                  "Weekly review created — actions tracked for next week.",
-                  "success",
-                );
+                toast.success("Weekly review created", {
+                  description: "Actions are tracked for next week.",
+                });
                 if (user?.roleCode === "TEAM_LEAD") {
                   router.push(
                     `/weekly-reviews/${res.data.review.id}?returnTo=${encodeURIComponent(`/profiles/${profileId}/reviews`)}`,
@@ -95,10 +89,7 @@ export default function NewWeeklyReviewPage() {
                   router.push(`/weekly-reviews/${res.data.review.id}`);
                 }
               } catch (err) {
-                const msg =
-                  err instanceof ApiError ? err.message : "Failed to create";
-                setError(msg);
-                pushToast(msg, "error");
+                toast.error(errorMessage(err, "Unable to create weekly review"));
               } finally {
                 setSubmitting(false);
               }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { RoleCode } from "@/lib/navigation";
 import { seSectionFromPathname, type SeSection } from "@/lib/se-workspace-nav";
@@ -19,6 +19,9 @@ import {
   type SeAlertCounts,
   type SeNavAlertItem,
 } from "@/lib/se-nav-alerts";
+
+const INBOX_POLL_MS = 90_000;
+const INBOX_STALE_MS = 30_000;
 
 function parseAt(value: string | null | undefined) {
   if (!value) return 0;
@@ -239,6 +242,8 @@ export function useSeNavAlerts(opts: {
   const { enabled, token, userId, roleCode = null, profileId, pathname } = opts;
   const [counts, setCounts] = useState<SeAlertCounts>({});
   const [items, setItems] = useState<SeNavAlertItem[]>([]);
+  const inFlightRef = useRef(false);
+  const lastLoadedAtRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!enabled || !token || !userId) {
@@ -246,6 +251,8 @@ export function useSeNavAlerts(opts: {
       setItems([]);
       return;
     }
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       const next = await loadRoleInboxItems({
         token,
@@ -258,17 +265,29 @@ export function useSeNavAlerts(opts: {
     } catch {
       setCounts({});
       setItems([]);
+    } finally {
+      lastLoadedAtRef.current = Date.now();
+      inFlightRef.current = false;
     }
   }, [enabled, token, userId, roleCode, profileId]);
 
   useEffect(() => {
     void refresh();
     if (!enabled) return;
-    const onFocus = () => void refresh();
-    window.addEventListener("focus", onFocus);
-    const id = window.setInterval(() => void refresh(), 45_000);
+    // Hidden tabs don't poll; coming back refreshes only if the inbox is stale.
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadedAtRef.current < INBOX_STALE_MS) return;
+      void refresh();
+    };
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, INBOX_POLL_MS);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfStale);
       window.clearInterval(id);
     };
   }, [enabled, refresh]);

@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api, ApiError, type ProfileDetail } from "@/lib/api";
+import { api, errorMessage, type ProfileDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { personName } from "@/lib/labels";
 import { Avatar, ErrorState, LoadingState } from "@/components/ui";
 
@@ -16,8 +16,8 @@ type Props = {
   permission: string;
   returnHref: (profileId: string) => string;
   returnLabel?: string;
-  /** When false, callers handle their own success toast. Default true. */
-  successToast?: boolean;
+  /** Success toast text; `false` when callers show their own. */
+  successToast?: string | false;
   children: (ctx: {
     profile: ProfileDetail;
     profileId: string;
@@ -38,13 +38,12 @@ export function SeContextualCreatePage({
   permission,
   returnHref,
   returnLabel,
-  successToast = true,
+  successToast = "Saved",
   children,
 }: Props) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const profileId = params.id;
   const [profile, setProfile] = useState<ProfileDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +60,7 @@ export function SeContextualCreatePage({
         setError(null);
       })
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "Could not load profile"),
+        setError(errorMessage(err, "Unable to load profile")),
       )
       .finally(() => setLoading(false));
   }, [token, profileId]);
@@ -122,7 +121,7 @@ export function SeContextualCreatePage({
         setSubmitting,
         setError,
         onSuccess: (href) => {
-          if (successToast) pushToast("Saved", "success");
+          if (successToast) toast.success(successToast);
           router.push(href);
         },
       })}
@@ -130,12 +129,11 @@ export function SeContextualCreatePage({
   );
 }
 
+/** Failures render inline in the page's error slot, so no toast is raised as well. */
 export function handleApiSubmit(
   err: unknown,
   setError: (v: string | null) => void,
-  pushToast: (msg: string, tone?: "error" | "success" | "info") => void,
+  fallback = "Unable to save changes",
 ) {
-  const msg = err instanceof ApiError ? err.message : "Failed to save";
-  setError(msg);
-  pushToast(msg, "error");
+  setError(errorMessage(err, fallback));
 }

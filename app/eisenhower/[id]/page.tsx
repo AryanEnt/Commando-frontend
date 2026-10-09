@@ -6,12 +6,12 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   api,
-  ApiError,
+  errorMessage,
   type EisenhowerCategory,
   type EisenhowerTask,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import {
   Button,
   DateTimeCell,
@@ -45,7 +45,6 @@ function EisenhowerTaskDetail() {
   const router = useRouter();
   const returnTo = searchParams.get("returnTo");
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [task, setTask] = useState<EisenhowerTask | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -97,14 +96,12 @@ function EisenhowerTaskDetail() {
       });
       setTask(res.data.task);
       setEditing(false);
-      pushToast("Priority updated", "success");
+      toast.success("Priority updated");
       if (returnTo) {
         router.push(returnTo);
       }
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to save";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to save priority"));
     } finally {
       setBusy(false);
     }

@@ -9,6 +9,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
+  swotDetailHref,
+  swotKindLabel,
   swotSourceLabel,
   swotSubjectName,
   swotSubjectRoleLabel,
@@ -46,6 +48,8 @@ export default function SwotListPage() {
 function SwotListContent() {
   const { token, hasPermission, user } = useAuth();
   const searchParams = useSearchParams();
+  const listQuery = searchParams.toString();
+  const listHref = listQuery ? `/swot?${listQuery}` : "/swot";
   const [items, setItems] = useState<SwotItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -129,7 +133,7 @@ function SwotListContent() {
           isSse
             ? "Your Self, Team Lead, and Commando SWOT streams — kept separate by source."
             : isAdmin
-              ? "Read-only Super Admin reporting. Filter by team, Commando, Sales Executive, and SWOT source."
+              ? "Super Admin view of every SWOT. Filter by team, Commando, Sales Executive, and SWOT source; open a SWOT to correct its points."
               : "Source-aware historical SWOT records. New entries never overwrite prior ones."
         }
         actions={
@@ -250,7 +254,7 @@ function SwotListContent() {
                     <td className="px-3 py-2">
                       <p className="font-medium">{swotSubjectName(item)}</p>
                       <p className="text-xs text-slate-500">
-                        {swotSubjectRoleLabel(item)}
+                        {swotKindLabel(item)} · {swotSubjectRoleLabel(item)}
                       </p>
                     </td>
                     <td className="px-3 py-2">{item.team?.name ?? "—"}</td>
@@ -268,7 +272,7 @@ function SwotListContent() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Link
-                        href={`/swot/${item.id}`}
+                        href={swotDetailHref(item.id, listHref)}
                         className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
                       >
                         View

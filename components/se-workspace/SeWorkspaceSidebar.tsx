@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
+import { formatDate } from "@/lib/dates";
 import { Icons } from "@/components/icons";
 import { Avatar } from "@/components/ui";
 import {
@@ -106,6 +107,7 @@ export function SeWorkspaceSidebar({
   section,
   roleCode,
   onAddDailyLog,
+  viewOnlyUntil,
 }: {
   profileId: string;
   displayName: string;
@@ -115,6 +117,7 @@ export function SeWorkspaceSidebar({
   section: SeSection;
   roleCode: string;
   onAddDailyLog?: () => void;
+  viewOnlyUntil?: string;
 }) {
   const groups = seGroupedNavForRole(roleCode);
 
@@ -162,6 +165,11 @@ export function SeWorkspaceSidebar({
           >
             + Daily Log
           </button>
+        ) : viewOnlyUntil ? (
+          <p className="viewonly-pill mt-3 w-full justify-center">
+            <Lock size={12} strokeWidth={2.25} aria-hidden />
+            View-only until {formatDate(viewOnlyUntil)}
+          </p>
         ) : null}
       </div>
 

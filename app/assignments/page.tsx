@@ -4,12 +4,12 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, type Assignment, type ProfileListItem } from "@/lib/api";
+import { api, errorMessage, type Assignment, type ProfileListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ProfileSearchSelect } from "@/components/ProfileSearchSelect";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { PaginationControls } from "@/components/PaginationControls";
 import {
   Button,
@@ -41,7 +41,6 @@ export default function AssignmentsPage() {
 function AssignmentsContent() {
   const { token, user, hasPermission } = useAuth();
   const searchParams = useSearchParams();
-  const { pushToast } = useToast();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [currentOnly, setCurrentOnly] = useState(
     searchParams.get("currentOnly") === "true",
@@ -120,7 +119,7 @@ function AssignmentsContent() {
         teamId: form.teamId,
         startedAt: combineLocalDateTime(form.startDate, form.startTime),
       });
-      pushToast("Assignment created", "success");
+      toast.success("Assignment created");
       setForm({
         salesExecutiveProfileId: "",
         commandoUserId: "",
@@ -137,10 +136,7 @@ function AssignmentsContent() {
       setAssignments(res.data.assignments);
       setTotal(res.data.total);
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Failed to create assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to create assignment"));
     }
   }
 

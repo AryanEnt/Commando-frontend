@@ -61,7 +61,7 @@ export function CommandCenter({
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div
         role="tablist"
         aria-label="Control tower queues"
@@ -100,7 +100,7 @@ export function CommandCenter({
       </div>
 
       {tab === "priority" ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <AttentionPanel alerts={alerts} />
           <AwaitingAcknowledgement
             pendingReferrals={attention.pendingReferrals}
@@ -110,7 +110,7 @@ export function CommandCenter({
       ) : null}
 
       {tab === "requests" ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <AttentionPanel alerts={alerts} filterCodes={REQUEST_CODES} />
           <AwaitingAcknowledgement
             pendingReferrals={attention.pendingReferrals}
@@ -119,9 +119,10 @@ export function CommandCenter({
       ) : null}
 
       {tab === "interventions" ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <AttentionPanel alerts={alerts} filterCodes={INTERVENTION_CODES} />
           <WorkflowHealth
+            id="ct-workflow-health-interventions"
             rows={workflowRows.filter(
               (r) =>
                 r.category === "interventions" || r.category === "requests",
@@ -131,7 +132,7 @@ export function CommandCenter({
       ) : null}
 
       {tab === "overdue" ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <AttentionPanel alerts={alerts} filterCodes={OVERDUE_CODES} />
           <OverdueActionsPanel overdueActions={attention.overdueActions} />
         </div>

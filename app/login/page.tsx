@@ -1,142 +1,275 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 import { resolveOwnSalesProfileId } from "@/lib/own-profile";
-import { useToast } from "@/lib/toast-context";
-import { useEffect, useState } from "react";
+import { consumeLogoutReason } from "@/lib/session";
+import { Button, PasswordInput, TextInput } from "@/components/ui";
+import { Icons } from "@/components/icons";
+import { Brand, PerformanceVisual } from "@/components/auth/PerformanceVisual";
+
+type Phase = "idle" | "submitting" | "success";
+type FieldName = "email" | "password";
+type FieldErrors = Partial<Record<FieldName, string>>;
+
+const EMAIL_ID = "login-email";
+const PASSWORD_ID = "login-password";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUCCESS_DELAY_MS = 450;
+
+function validateField(name: FieldName, value: string): string | undefined {
+  if (name === "email") {
+    const email = value.trim();
+    if (!email) return "Enter your email address";
+    if (!EMAIL_PATTERN.test(email)) return "Enter a valid email address";
+    return undefined;
+  }
+  return value ? undefined : "Enter your password";
+}
+
+/** Never distinguish unknown email from wrong password. */
+function submitErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 400 || err.status === 401) return "Incorrect email or password.";
+    if (err.status === 429) return "Too many attempts. Try again shortly.";
+  }
+  return "Something went wrong. Try again.";
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 export default function LoginPage() {
-  const { login, user, loading, token } = useAuth();
-  const { pushToast } = useToast();
+  const { login, user, token } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function goHome(roleCode: string, accessToken: string) {
-    if (roleCode === "SALES_EXECUTIVE") {
-      try {
-        const profileId = await resolveOwnSalesProfileId(accessToken);
-        if (profileId) {
-          router.replace(`/profiles/${profileId}`);
-          return;
-        }
-      } catch {
-        /* fall through */
-      }
-    }
-    router.replace("/dashboard");
-  }
+  const [values, setValues] = useState<Record<FieldName, string>>({ email: "", password: "" });
+  const [touched, setTouched] = useState<Record<FieldName, boolean>>({
+    email: false,
+    password: false,
+  });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const submittingRef = useRef(false);
+  const navigatedRef = useRef(false);
 
   useEffect(() => {
-    if (!loading && user && token) {
-      void goHome(user.roleCode, token);
+    if (consumeLogoutReason() === "SESSION_REPLACED") {
+      setSessionNotice(
+        "You were signed out because your account was signed in on another device.",
+      );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, token]);
+  }, []);
 
-  async function onSubmit(e: FormEvent) {
+  const goHome = useCallback(
+    async (roleCode: string, accessToken: string) => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
+      if (roleCode === "SALES_EXECUTIVE") {
+        try {
+          const profileId = await resolveOwnSalesProfileId(accessToken);
+          if (profileId) {
+            router.replace(`/profiles/${profileId}`);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      router.replace("/dashboard");
+    },
+    [router],
+  );
+
+  // Already signed in when landing here; a fresh sign-in navigates from onSubmit.
+  useEffect(() => {
+    if (phase === "idle" && user && token) void goHome(user.roleCode, token);
+  }, [phase, user, token, goHome]);
+
+  function onChange(name: FieldName, value: string) {
+    setValues((prev) => ({ ...prev, [name]: value }));
+    if (touched[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
+    }
+    if (submitError) setSubmitError(null);
+  }
+
+  function onBlur(name: FieldName) {
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    setFieldErrors((prev) => ({ ...prev, [name]: validateField(name, values[name]) }));
+  }
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSubmitting(true);
-    setError(null);
+    if (submittingRef.current || phase === "success") return;
+
+    const errors: FieldErrors = {
+      email: validateField("email", values.email),
+      password: validateField("password", values.password),
+    };
+    setTouched({ email: true, password: true });
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      document.getElementById(errors.email ? EMAIL_ID : PASSWORD_ID)?.focus();
+      return;
+    }
+
+    submittingRef.current = true;
+    setSubmitError(null);
+    setSessionNotice(null);
+    setPhase("submitting");
     try {
-      const data = await login(email, password);
-      pushToast("Signed in.", "success");
-      await goHome(data.user.roleCode, data.accessToken);
+      const data = await login(values.email.trim(), values.password);
+      setPhase("success");
+      window.setTimeout(
+        () => void goHome(data.user.roleCode, data.accessToken),
+        prefersReducedMotion() ? 0 : SUCCESS_DELAY_MS,
+      );
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "We couldn't sign you in. Please try again.";
-      setError(message);
-      pushToast(message, "error");
+      setPhase("idle");
+      setSubmitError(submitErrorMessage(err));
+      if (err instanceof ApiError && err.status === 401) {
+        const password = document.getElementById(PASSWORD_ID) as HTMLInputElement | null;
+        password?.focus();
+        password?.select();
+      }
     } finally {
-      setSubmitting(false);
+      submittingRef.current = false;
     }
   }
 
-  if (loading || user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] text-sm text-[var(--color-ink-muted)]">
-        {user ? "Redirecting…" : "Loading…"}
-      </div>
-    );
-  }
+  const busy = phase !== "idle";
+  const redirecting = phase === "idle" && Boolean(user);
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[22rem_1fr]">
-      <aside className="hidden flex-col justify-between border-r border-[var(--color-line)] bg-[var(--color-brand-soft)] px-8 py-10 text-[var(--color-ink)] lg:flex">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--color-brand-dark)]">
-            COMMANDO
-          </p>
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
-            Sales performance intervention
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-muted)]">
-            Identify struggling executives, intervene early, coach
-            systematically, and keep a complete history.
-          </p>
-        </div>
-        <p className="text-xs text-[var(--color-ink-subtle)]">
-          Soft Precision · Sales Performance
-        </p>
-      </aside>
-      <div className="flex items-center justify-center bg-[var(--color-canvas)] px-4">
-        <form onSubmit={onSubmit} className="w-full max-w-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-brand-dark)] lg:hidden">
-            Commando
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Sign in</h2>
-          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-            Use your role workspace.
-          </p>
-
-          <label className="mt-8 block text-sm font-medium" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)]"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            required
-          />
-
-          <label className="mt-4 block text-sm font-medium" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            className="mt-1 h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)]"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-
-          {error && (
-            <p className="mt-3 text-sm text-[var(--status-danger)]" role="alert">
-              {error}
+    <div className="auth-page">
+      <aside className="auth-brand">
+        <Brand />
+        <div className="auth-hero">
+          <div className="auth-hero-copy">
+            <p className="auth-headline">
+              Build a stronger
+              <br />
+              sales team.
             </p>
-          )}
+            <p className="mt-5 max-w-[470px] text-[17px] leading-relaxed text-[var(--color-ink-muted)]">
+              See performance clearly, identify where executives need support, and turn coaching
+              into measurable growth.
+            </p>
+          </div>
+          <PerformanceVisual />
+        </div>
+      </aside>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-6 h-10 w-full rounded-[var(--radius-sm)] bg-[var(--color-brand)] text-sm font-medium text-[var(--color-brand-on)] hover:bg-[var(--color-brand-hover)] disabled:opacity-60"
-          >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
+      <main className="auth-main">
+        <div className="auth-form-wrap" data-state={phase}>
+          {redirecting ? (
+            <p role="status" className="text-sm text-[var(--color-ink-muted)]">
+              Opening your workspace…
+            </p>
+          ) : (
+            <>
+              <p className="text-[14px] font-medium text-[var(--color-ink-muted)]">Welcome back</p>
+              <h1 className="mt-2 text-[clamp(30px,2.5vw,36px)] font-semibold leading-[1.15] tracking-[-0.025em] text-[var(--color-ink)]">
+                Sign in to Commando
+              </h1>
+              <p className="mt-3 text-[15.5px] leading-relaxed text-[var(--color-ink-muted)]">
+                Access your workspace and keep your team moving forward.
+              </p>
+
+              <form onSubmit={onSubmit} noValidate className="mt-5">
+                <div className="auth-alert mb-1" role="alert" aria-atomic="true">
+                  {submitError ? (
+                    <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--status-danger-ring)] bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm text-[var(--color-ink)]">
+                      <Icons.alert
+                        size={16}
+                        className="mt-0.5 shrink-0 text-[var(--status-danger)]"
+                      />
+                      <span>{submitError}</span>
+                    </div>
+                  ) : sessionNotice ? (
+                    <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--color-brand-ring)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm text-[var(--color-ink)]">
+                      <Icons.alert
+                        size={16}
+                        className="mt-0.5 shrink-0 text-[var(--color-brand)]"
+                      />
+                      <span>{sessionNotice}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <TextInput
+                    id={EMAIL_ID}
+                    label="Email"
+                    type="email"
+                    name="email"
+                    inputMode="email"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-required="true"
+                    value={values.email}
+                    onChange={(e) => onChange("email", e.target.value)}
+                    onBlur={() => onBlur("email")}
+                    readOnly={busy}
+                    error={touched.email ? fieldErrors.email : undefined}
+                    reserveMessageSpace
+                  />
+                  <PasswordInput
+                    id={PASSWORD_ID}
+                    label="Password"
+                    name="password"
+                    autoComplete="current-password"
+                    aria-required="true"
+                    value={values.password}
+                    onChange={(e) => onChange("password", e.target.value)}
+                    onBlur={() => onBlur("password")}
+                    readOnly={busy}
+                    error={touched.password ? fieldErrors.password : undefined}
+                    reserveMessageSpace
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  className={`auth-submit mt-5 w-full ${busy ? "cursor-progress" : ""}`}
+                  aria-busy={phase === "submitting" || undefined}
+                >
+                  {phase === "submitting" ? (
+                    <>
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none"
+                        aria-hidden
+                      />
+                      Signing in…
+                    </>
+                  ) : phase === "success" ? (
+                    <>
+                      <Icons.check size={16} />
+                      Signed in
+                    </>
+                  ) : (
+                    <>
+                      Sign in
+                      <ArrowRight size={16} strokeWidth={2} className="auth-arrow" aria-hidden />
+                    </>
+                  )}
+                </Button>
+                <p role="status" className="sr-only">
+                  {phase === "success" ? "Signed in. Opening your workspace…" : ""}
+                </p>
+              </form>
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

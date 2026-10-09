@@ -2,9 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { personName } from "@/lib/labels";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import {
@@ -41,7 +41,6 @@ function CommandoRequestForm() {
   const { token, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { pushToast } = useToast();
   const [profiles, setProfiles] = useState<RequestableProfile[]>([]);
   const [search, setSearch] = useState("");
   const [profileId, setProfileId] = useState(
@@ -112,12 +111,10 @@ function CommandoRequestForm() {
         requestReason: requestReason.trim(),
         note: note.trim() || null,
       });
-      pushToast("Request sent to the Team Lead", "success");
+      toast.success("Request sent to the Team Lead");
       router.push(`/referrals/${res.data.referral.id}`);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Could not submit the request",
-      );
+      setError(errorMessage(err, "Unable to submit the request"));
     } finally {
       setSubmitting(false);
     }

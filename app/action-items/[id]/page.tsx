@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type ActionItemDetail } from "@/lib/api";
+import { api, errorMessage, type ActionItemDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { dueIsoFromInputs, formatDue, toLocalDateInput, toLocalTimeInput } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DueDateTimePicker } from "@/components/DueDateTimePicker";
@@ -26,7 +26,6 @@ export default function ActionItemDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [item, setItem] = useState<ActionItemDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -136,19 +135,15 @@ export default function ActionItemDetailPage() {
           summaryBaseline.current = res.data.actionItem.summary ?? "";
           setItem(res.data.actionItem);
           setSummaryStatus("saved");
-        } catch (err) {
+        } catch {
           setSummaryStatus("error");
-          pushToast(
-            err instanceof ApiError ? err.message : "Failed to save summary",
-            "error",
-          );
         }
       })();
     }, 700);
     return () => {
       if (summaryTimer.current) clearTimeout(summaryTimer.current);
     };
-  }, [summaryDraft, token, item?.id, canEditSummary, pushToast]);
+  }, [summaryDraft, token, item?.id, canEditSummary]);
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -163,12 +158,10 @@ export default function ActionItemDetailPage() {
         dueDate: dueIsoFromInputs(form.dueDate, form.dueTime),
       });
       setEditing(false);
-      pushToast("Assignment updated", "success");
+      toast.success("Assignment updated");
       await load();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to save";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to save assignment"));
     } finally {
       setBusy(false);
     }
@@ -182,15 +175,15 @@ export default function ActionItemDetailPage() {
       const fn =
         action === "complete" ? api.completeActionItem : api.expireActionItem;
       await fn(token, item.id);
-      pushToast(
-        action === "complete" ? "Assignment completed" : "Assignment expired",
-        "success",
-      );
+      toast.success(action === "complete" ? "Assignment completed" : "Assignment expired");
       await load();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(
+        errorMessage(
+          err,
+          action === "complete" ? "Unable to complete assignment" : "Unable to expire assignment",
+        ),
+      );
     } finally {
       setBusy(false);
     }
@@ -207,12 +200,10 @@ export default function ActionItemDetailPage() {
         description: replaceForm.description.trim() || null,
         dueDate: dueIsoFromInputs(replaceForm.dueDate, replaceForm.dueTime),
       });
-      pushToast("Replacement assignment created", "success");
+      toast.success("Replacement assignment created");
       router.replace(`/action-items/${res.data.actionItem.id}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to replace";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to create replacement"));
     } finally {
       setBusy(false);
     }

@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
 import { sseWorkspaceHref } from "@/lib/sse-workspace";
+import { ChangeDesignationButton } from "@/components/ChangeDesignationButton";
 import {
   EmptyState,
   ErrorState,
@@ -214,12 +215,20 @@ export default function SupportRosterPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={sseWorkspaceHref(row.userId)}
-                      className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                    >
-                      Open workspace
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={sseWorkspaceHref(row.userId)}
+                        className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+                      >
+                        Open workspace
+                      </Link>
+                      <ChangeDesignationButton
+                        userId={row.userId}
+                        name={personName(row)}
+                        currentRole="SALES_SUPPORT_EXECUTIVE"
+                        onChanged={load}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

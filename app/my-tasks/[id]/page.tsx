@@ -4,9 +4,9 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError, type SupportTask } from "@/lib/api";
+import { api, errorMessage, type SupportTask } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -37,7 +37,6 @@ function MyTaskDetail() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo");
   const { token, hasPermission, user } = useAuth();
-  const { pushToast } = useToast();
   const [task, setTask] = useState<SupportTask | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,12 +88,9 @@ function MyTaskDetail() {
       });
       setTask(res.data.task);
       setBlockOpen(false);
-      pushToast("Task status updated", "success");
+      toast.success("Task status updated");
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Status update failed";
-      pushToast(msg, "error");
-      setError(msg);
+      toast.error(errorMessage(err, "Unable to update task status"));
     } finally {
       setBusy(false);
     }
@@ -110,11 +106,9 @@ function MyTaskDetail() {
       });
       setTask(res.data.task);
       setProgressBody("");
-      pushToast("Progress note added", "success");
+      toast.success("Progress note added");
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Could not add note";
-      pushToast(msg, "error");
-      setError(msg);
+      toast.error(errorMessage(err, "Unable to add note"));
     } finally {
       setBusy(false);
     }

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Plus, UserPlus } from "lucide-react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type SalesSupportLink,
   type SeSupportTeamContext,
   type SupportTask,
@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AssignSupportTaskDrawer } from "@/components/support-team/AssignSupportTaskDrawer";
 import { AssignSupportPersonDrawer } from "@/components/support-team/SupportTeamPanel";
@@ -49,7 +49,6 @@ export function SeSupportPanel({
   onChanged,
 }: Props) {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const canViewWorkLog = hasPermission("DAILY_WORK_LOG_VIEW");
   const [assignOpen, setAssignOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
@@ -76,14 +75,11 @@ export function SeSupportPanel({
     setEndBusy(true);
     try {
       await api.endSalesSupportLink(token, endTarget.id);
-      pushToast("Support assignment ended", "success");
+      toast.success("Support assignment ended");
       setEndTarget(null);
       await onChanged();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not end assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to end assignment"));
     } finally {
       setEndBusy(false);
     }

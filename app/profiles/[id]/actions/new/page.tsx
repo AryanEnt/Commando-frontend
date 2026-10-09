@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import { dueIsoFromInputs } from "@/lib/dates";
 import {
   SeContextualCreatePage,
@@ -20,6 +19,7 @@ export default function ContextualActionNewPage() {
       description="Creates an active follow-up for this Sales Executive."
       permission="ACTION_ITEM_CREATE"
       returnHref={(id) => `/profiles/${id}/actions`}
+      successToast="Action item created"
     >
       {({ profileId, submitting, setSubmitting, setError, onSuccess }) => (
         <ActionForm
@@ -48,7 +48,6 @@ function ActionForm({
   onSuccess: (href: string) => void;
 }) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -70,7 +69,7 @@ function ActionForm({
       });
       onSuccess(`/profiles/${profileId}/actions`);
     } catch (err) {
-      handleApiSubmit(err, setError, pushToast);
+      handleApiSubmit(err, setError, "Unable to create action item");
     } finally {
       setSubmitting(false);
     }

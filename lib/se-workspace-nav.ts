@@ -209,7 +209,7 @@ const ROLE_SECTIONS: Record<RoleCode, SeSection[]> = {
     "support",
     "feedback",
     "history",
-    "performance",
+    "swot",
   ],
   SALES_SUPPORT_EXECUTIVE: ["overview", "support", "actions", "history"],
   SUPER_ADMIN: [
@@ -366,10 +366,10 @@ export function seNavForRole(roleCode: string): SeNavItem[] {
         if (navItem.section === "history") {
           return { ...navItem, label: "History", sectionGroup: "Development" };
         }
-        if (navItem.section === "performance") {
+        if (navItem.section === "swot") {
           return {
             ...navItem,
-            label: "Performance",
+            label: "SWOT",
             sectionGroup: "Development",
           };
         }
@@ -461,4 +461,35 @@ export function seCreateHref(
       // Priorities are created via Daily Log (urgency + importance).
       return `/profiles/${profileId}/coaching/new`;
   }
+}
+
+export type SwotCreateHrefOptions = {
+  fresh?: boolean;
+  /** Defaults to the SE workspace SWOT section. */
+  returnTo?: string;
+  /** Shown immediately on the form so the header does not wait on getProfile. */
+  name?: string;
+  /** SE user id — lets the form submit without waiting on getProfile. */
+  subjectUserId?: string;
+};
+
+/** User SWOT form; `fresh` opens it blank instead of pre-filled from the current version. */
+export function seSwotCreateHref(
+  profileId: string,
+  freshOrOptions: boolean | SwotCreateHrefOptions = false,
+) {
+  const opts =
+    typeof freshOrOptions === "boolean"
+      ? { fresh: freshOrOptions }
+      : freshOrOptions;
+  const params = new URLSearchParams();
+  params.set("profileId", profileId);
+  params.set(
+    "returnTo",
+    opts.returnTo ?? `/profiles/${profileId}/swot`,
+  );
+  if (opts.subjectUserId) params.set("subjectUserId", opts.subjectUserId);
+  if (opts.name?.trim()) params.set("name", opts.name.trim());
+  if (opts.fresh) params.set("fresh", "1");
+  return `/swot/new?${params.toString()}`;
 }

@@ -8,15 +8,17 @@ import {
   type DailyLog,
   type FeedbackItem,
   type MonitoringRecord,
+  type SubjectHandoffReport,
   type SupportTask,
   type SwotItem,
   type WeeklyReview,
 } from "@/lib/api";
+import { HandoffReportArticle } from "@/components/assignments/HandoffReportsPanel";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
 import { formatSwotField } from "@/lib/swot-points";
-import { swotSourceLabel } from "@/lib/swot-display";
+import { swotDetailHref, swotSourceLabel, useSwotDetailHref } from "@/lib/swot-display";
 import { useSseWorkspace } from "@/lib/sse-workspace-context";
 import {
   SSE_LIVE_SECTIONS,
@@ -33,6 +35,11 @@ import { CoachingDailyLogsSection } from "@/components/daily-logs/CoachingDailyL
 import { SeFeedbackPanel } from "@/components/se-workspace/SeFeedbackPanel";
 import { SeChecklistWorkspace } from "@/components/monitoring/SeChecklistWorkspace";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ProfileSwotPanel } from "@/components/swot/ProfileSwotPanel";
+import {
+  SwotQuietState,
+  SwotWorkspaceView,
+} from "@/components/swot/SwotSections";
 import {
   ButtonLink,
   EmptyState,
@@ -42,6 +49,55 @@ import {
 
 function latestBySource(swots: SwotItem[], source: SwotItem["source"]) {
   return swots.find((s) => s.source === source) ?? null;
+}
+
+function SseProfileSwots({
+  swots,
+  returnTo,
+}: {
+  swots: SwotItem[];
+  returnTo: string;
+}) {
+  const byProfile = new Map<string, { name: string; items: SwotItem[] }>();
+  for (const s of swots) {
+    if (s.subjectType !== "PROFILE" || !s.salesExecutiveProfileId) continue;
+    const group = byProfile.get(s.salesExecutiveProfileId) ?? {
+      name: s.profile?.displayName ?? "Sales Executive",
+      items: [],
+    };
+    group.items.push(s);
+    byProfile.set(s.salesExecutiveProfileId, group);
+  }
+
+  if (byProfile.size === 0) {
+    return (
+      <ProfileSwotPanel
+        profileId={null}
+        swots={[]}
+        canUpdate={false}
+        returnTo={returnTo}
+        viewerIsSelf
+        showHistory={false}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {[...byProfile.entries()].map(([profileId, group]) => (
+        <ProfileSwotPanel
+          key={profileId}
+          profileId={profileId}
+          swots={group.items}
+          canUpdate={false}
+          returnTo={returnTo}
+          viewerIsSelf
+          title={group.name}
+          showHistory={false}
+        />
+      ))}
+    </div>
+  );
 }
 
 function SectionFrame({
@@ -82,6 +138,7 @@ function SwotTile({
   item: SwotItem | null;
   title: string;
 }) {
+  const swotHref = useSwotDetailHref();
   return (
     <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface-2)] p-3">
       <div className="flex items-center justify-between gap-2">
@@ -90,7 +147,7 @@ function SwotTile({
         </p>
         {item ? (
           <Link
-            href={`/swot/${item.id}`}
+            href={swotHref(item.id)}
             className="text-[11px] font-medium text-[var(--color-brand)] hover:underline"
           >
             Open
@@ -184,11 +241,16 @@ export function SseWorkspaceContent() {
   const section = sseSectionFromPathname(pathname);
 
   const [swots, setSwots] = useState<SwotItem[]>([]);
+  const [profileSwots, setProfileSwots] = useState<SwotItem[]>([]);
   const [tasks, setTasks] = useState<SupportTask[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [monitoring, setMonitoring] = useState<MonitoringRecord[]>([]);
   const [reviews, setReviews] = useState<WeeklyReview[]>([]);
+  const [handoffReports, setHandoffReports] = useState<SubjectHandoffReport[]>(
+    [],
+  );
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [sectionLoading, setSectionLoading] = useState(false);
 
   const isManager =
@@ -201,6 +263,7 @@ export function SseWorkspaceContent() {
     (user?.roleCode === "TEAM_LEAD" ||
       user?.roleCode === "COMMANDO_EXECUTIVE");
   const canViewSwot = hasPermission("SWOT_VIEW");
+  const viewerIsSubject = Boolean(user && user.id === userId);
   const canViewWorkLog = hasPermission("DAILY_WORK_LOG_VIEW");
   const canViewTasks = hasPermission("SALES_SUPPORT_TASK_VIEW");
   const canViewLogs = hasPermission("DAILY_LOG_VIEW");
@@ -219,6 +282,8 @@ export function SseWorkspaceContent() {
   const canCreateReviews =
     hasPermission("WEEKLY_REVIEW_CREATE") &&
     user?.roleCode !== "SUPER_ADMIN";
+  const canViewHandoffReports =
+    user?.roleCode === "TEAM_LEAD" || user?.roleCode === "SUPER_ADMIN";
 
   useEffect(() => {
     const legacy = searchParams.get("tab");
@@ -258,6 +323,22 @@ export function SseWorkspaceContent() {
             if (!cancelled) setSwots([]);
           }),
       );
+      if (section === "swot" && viewerIsSubject) {
+        jobs.push(
+          api
+            .getSwotList(token, {
+              subjectType: "PROFILE",
+              // The SSE's own scope returns Profile SWOT shared on profiles they support.
+              pageSize: 50,
+            })
+            .then((res) => {
+              if (!cancelled) setProfileSwots(res.data.items);
+            })
+            .catch(() => {
+              if (!cancelled) setProfileSwots([]);
+            }),
+        );
+      }
     }
 
     if (
@@ -346,6 +427,32 @@ export function SseWorkspaceContent() {
       );
     }
 
+    if (
+      canViewHandoffReports &&
+      (section === "overview" ||
+        section === "interventions" ||
+        section === "timeline")
+    ) {
+      jobs.push(
+        api
+          .getSubjectHandoffReports(token, userId)
+          .then((res) => {
+            if (cancelled) return;
+            setHandoffReports(res.data.reports);
+            setHandoffError(null);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            setHandoffReports([]);
+            setHandoffError(
+              err instanceof Error
+                ? err.message
+                : "Couldn't load Commando handoff reports",
+            );
+          }),
+      );
+    }
+
     void Promise.all(jobs).finally(() => {
       if (!cancelled) setSectionLoading(false);
     });
@@ -357,13 +464,45 @@ export function SseWorkspaceContent() {
     token,
     userId,
     section,
+    viewerIsSubject,
     canViewSwot,
     canViewTasks,
     canViewLogs,
     canViewFeedback,
     canViewMonitoring,
     canViewReviews,
+    canViewHandoffReports,
   ]);
+
+  async function openHandoffAttachment(
+    assignmentId: string,
+    attachmentId: string,
+  ) {
+    if (!token) return;
+    setHandoffError(null);
+    try {
+      const res = await api.getHandoffAttachmentUrl(
+        token,
+        assignmentId,
+        attachmentId,
+      );
+      window.open(res.data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setHandoffError(
+        err instanceof Error ? err.message : "Couldn't open this document",
+      );
+    }
+  }
+
+  function handoffContext(r: SubjectHandoffReport) {
+    return (
+      <>
+        Intervention on {r.assignment.profile.displayName} · Commando{" "}
+        {personName(r.assignment.commando)} · {formatDate(r.period.start)} –{" "}
+        {formatDate(r.period.end)}
+      </>
+    );
+  }
 
   const selfSwot = useMemo(
     () => latestBySource(swots, "SALES_SUPPORT_EXECUTIVE"),
@@ -391,7 +530,7 @@ export function SseWorkspaceContent() {
         at: s.createdAt,
         title: `${swotSourceLabel(s.source)} SWOT`,
         detail: s.versionNumber ? `Version ${s.versionNumber}` : "Recorded",
-        href: `/swot/${s.id}`,
+        href: swotDetailHref(s.id, pathname),
       });
     }
     for (const t of tasks) {
@@ -412,10 +551,18 @@ export function SseWorkspaceContent() {
         href: `/profiles/${link.salesExecutiveProfileId}`,
       });
     }
+    for (const r of handoffReports) {
+      events.push({
+        at: r.createdAt,
+        title: "Commando handoff report",
+        detail: `${personName(r.createdBy)} · ${r.assignment.profile.displayName} intervention`,
+        href: sseWorkspaceHref(userId, "interventions"),
+      });
+    }
     return events.sort(
       (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
     );
-  }, [swots, tasks, subject?.links, userId]);
+  }, [swots, tasks, subject?.links, handoffReports, userId, pathname]);
 
   if (!isManager) {
     return (
@@ -503,7 +650,7 @@ export function SseWorkspaceContent() {
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-line)] px-4 py-3">
             <div>
               <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">
-                Executive SWOT
+                User SWOT
               </h2>
               <p className="mt-0.5 text-meta">Latest by source</p>
             </div>
@@ -594,7 +741,90 @@ export function SseWorkspaceContent() {
             </ul>
           )}
         </section>
+
+        {canViewHandoffReports && handoffReports[0] ? (
+          <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] lg:col-span-2">
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--color-line)] px-4 py-3">
+              <div>
+                <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">
+                  Latest Commando handoff
+                </h2>
+                <p className="mt-0.5 text-meta">
+                  From {personName(handoffReports[0].createdBy)} ·{" "}
+                  {formatDate(handoffReports[0].createdAt)}
+                </p>
+              </div>
+              <ButtonLink
+                href={sseWorkspaceHref(userId, "interventions")}
+                variant="ghost"
+                size="sm"
+              >
+                {handoffReports.length > 1
+                  ? `All ${handoffReports.length}`
+                  : "Open"}
+              </ButtonLink>
+            </div>
+            <div className="p-4">
+              <HandoffReportArticle
+                report={handoffReports[0]}
+                context={handoffContext(handoffReports[0])}
+                onOpenAttachment={(id) =>
+                  void openHandoffAttachment(
+                    handoffReports[0]!.assignment.id,
+                    id,
+                  )
+                }
+              />
+            </div>
+          </section>
+        ) : null}
       </div>
+    );
+  }
+
+  if (section === "interventions") {
+    return (
+      <SectionFrame
+        title="Intervention"
+        description="Commando handoff reports written about this Sales Support when an intervention on a linked Sales Executive ended."
+      >
+        {!canViewHandoffReports ? (
+          <EmptyState
+            title="Handoff reports unavailable"
+            description="Commando handoff reports are visible to the Team Lead and Super Admin only."
+          />
+        ) : handoffReports.length === 0 ? (
+          handoffError ? (
+            <ErrorState message={handoffError} />
+          ) : (
+            <EmptyState
+              title="No handoff reports yet"
+              description="When a Commando hands back a linked Sales Executive, their write-up about this Sales Support appears here."
+            />
+          )
+        ) : (
+          <section className="surface space-y-4 p-4 sm:p-5">
+            {handoffReports.map((r) => (
+              <HandoffReportArticle
+                key={r.id}
+                report={r}
+                context={handoffContext(r)}
+                onOpenAttachment={(id) =>
+                  void openHandoffAttachment(r.assignment.id, id)
+                }
+              />
+            ))}
+            {handoffError ? (
+              <p
+                className="m-0 text-sm text-[var(--status-danger)]"
+                role="alert"
+              >
+                {handoffError}
+              </p>
+            ) : null}
+          </section>
+        )}
+      </SectionFrame>
     );
   }
 
@@ -602,13 +832,10 @@ export function SseWorkspaceContent() {
     return (
       <SectionFrame
         title="SWOT"
-        description="Executive SWOT for this Sales Support (self, Team Lead, Commando)."
-        primary={
-          canCreateSwot ? (
-            <ButtonLink href={sseSwotCreateHref(userId)} size="sm">
-              Update SWOT
-            </ButtonLink>
-          ) : null
+        description={
+          viewerIsSubject
+            ? "Two separate SWOTs: User SWOT is about you as a person, Profile SWOT is about an account you support. Updating one never changes the other."
+            : `Two separate SWOTs for ${subject.displayName}: User SWOT is about the person, Profile SWOT is about an account they support. Updating one never changes the other.`
         }
       >
         {!canViewSwot ? (
@@ -617,43 +844,32 @@ export function SseWorkspaceContent() {
             description="You do not have permission to view SWOT."
           />
         ) : (
-          <div className="grid gap-3 lg:grid-cols-3">
-            <SwotTile item={selfSwot} title="Self" />
-            <SwotTile item={tlSwot} title="Team Lead" />
-            <SwotTile item={commandoSwot} title="Commando" />
-          </div>
+          <SwotWorkspaceView
+            swots={swots}
+            historySwots={[...swots, ...profileSwots]}
+            viewerIsSubject={viewerIsSubject}
+            viewerRole={user?.roleCode}
+            returnTo={pathname}
+            userSwotLinks={
+              canCreateSwot
+                ? {
+                    updateHref: sseSwotCreateHref(userId),
+                    newHref: sseSwotCreateHref(userId, true),
+                  }
+                : null
+            }
+            profileSection={
+              viewerIsSubject ? (
+                <SseProfileSwots swots={profileSwots} returnTo={pathname} />
+              ) : (
+                <SwotQuietState>
+                  Profile SWOT belongs to the Sales Executive profile. Open the
+                  Sales Executive workspace to view or add it.
+                </SwotQuietState>
+              )
+            }
+          />
         )}
-        {canViewSwot && swots.length > 0 ? (
-          <section className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-            <div className="border-b border-[var(--color-line)] px-4 py-3">
-              <h3 className="text-[14px] font-semibold">All versions</h3>
-            </div>
-            <ul className="divide-y divide-[var(--color-line)]">
-              {swots.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/swot/${s.id}`}
-                    className="flex justify-between gap-3 px-4 py-3 text-sm hover:bg-[var(--color-surface-2)]"
-                  >
-                    <span>
-                      <span className="font-medium">
-                        {swotSourceLabel(s.source)}
-                      </span>
-                      <span className="text-[var(--color-ink-muted)]">
-                        {" · "}
-                        {personName(s.createdBy)}
-                        {s.versionNumber ? ` · v${s.versionNumber}` : ""}
-                      </span>
-                    </span>
-                    <span className="text-xs tabular-nums text-[var(--color-ink-subtle)]">
-                      {formatDate(s.createdAt)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </SectionFrame>
     );
   }
@@ -1012,7 +1228,7 @@ export function SseWorkspaceContent() {
     return (
       <SectionFrame
         title="Timeline"
-        description="Recent SWOT, tasks, and link activity for this Sales Support."
+        description="Recent SWOT, tasks, link activity, and Commando handoffs for this Sales Support."
       >
         {timelineEvents.length === 0 ? (
           <EmptyState
@@ -1081,7 +1297,7 @@ export function SseWorkspaceContent() {
               <div className="p-4">
                 <EmptyState
                   title="No SWOT history"
-                  description="Executive SWOT versions will appear here."
+                  description="User SWOT versions will appear here."
                 />
               </div>
             ) : (
@@ -1089,7 +1305,7 @@ export function SseWorkspaceContent() {
                 {swots.map((s) => (
                   <li key={s.id}>
                     <Link
-                      href={`/swot/${s.id}`}
+                      href={swotDetailHref(s.id, pathname)}
                       className="flex justify-between gap-3 px-4 py-3 text-sm hover:bg-[var(--color-surface-2)]"
                     >
                       <span>

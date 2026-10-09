@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, ApiError, type Referral } from "@/lib/api";
+import { api, ApiError, errorMessage, type Referral } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { personName } from "@/lib/labels";
 import { formatDateTime } from "@/lib/dates";
 import {
@@ -18,12 +18,19 @@ import {
   referralStatusLabel,
 } from "@/lib/referral-phase";
 import { StatusBadge } from "@/components/StatusBadge";
+import { HandoffReportDialog } from "@/components/assignments/HandoffReportDialog";
 import {
   ManagementPacketWizard,
   emptyProvideForm,
+  performanceSnapshotPayload,
   type ProvideForm,
 } from "@/components/referrals/ManagementPacketWizard";
 import { ManagementPacketReadonly } from "@/components/referrals/ManagementPacketReadonly";
+import {
+  PerformanceSnapshotReadonly,
+  type SnapshotCardSubject,
+} from "@/components/referrals/PerformanceSnapshot";
+import { InterventionSwotPair } from "@/components/swot/InterventionSwotPair";
 import {
   Button,
   ConfirmDialog,
@@ -37,15 +44,15 @@ export default function ReferralDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { token, user, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [referral, setReferral] = useState<Referral | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
-  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [showHandoff, setShowHandoff] = useState(false);
   const [provideForm, setProvideForm] = useState<ProvideForm>(emptyProvideForm);
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
+  const [refreshingSwots, setRefreshingSwots] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,25 +94,23 @@ export default function ReferralDetailPage() {
       setReferral(res.data.referral);
       setConfirmComplete(false);
       if (action === "begin") {
-        pushToast("Intervention started", "success");
+        toast.success("Intervention started");
       }
       if (action === "complete") {
-        pushToast("Handoff closed", "success");
+        toast.success("Handoff closed");
       }
     } catch (err) {
       setError(
-        err instanceof ApiError
-          ? err.status === 403
-            ? "You don't have permission to perform this action."
-            : err.message
-          : "Action failed",
+        err instanceof ApiError && err.status === 403
+          ? "You don't have permission to perform this action."
+          : errorMessage(err, "Unable to complete this action"),
       );
     } finally {
       setBusy(false);
     }
   }
 
-  async function submitProvideInformation() {
+  async function submitProvideInformation(subjects: SnapshotCardSubject[]) {
     if (!token || !params.id) return;
     setBusy(true);
     setError(null);
@@ -120,21 +125,41 @@ export default function ReferralDetailPage() {
         priority1: provideForm.priority1,
         priority2: provideForm.priority2,
         priority3: provideForm.priority3,
+        performanceSnapshot: performanceSnapshotPayload(provideForm, subjects),
       });
       setReferral(res.data.referral);
-      setConfirmApprove(false);
-      pushToast(
-        "Approved — management context handed to Commando",
-        "success",
-      );
+      toast.success("Approved and sent to Commando", {
+        description: "The performance snapshot and management context are now with the Commando.",
+      });
     } catch (err) {
       setError(
-        err instanceof ApiError
-          ? err.message
-          : "Unable to approve this intervention. Refresh and try again.",
+        errorMessage(err, "Unable to approve this intervention. Refresh and try again."),
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function refreshSwots() {
+    if (!token || !params.id) return;
+    setRefreshingSwots(true);
+    try {
+      const res = await api.getReferral(token, params.id);
+      const fresh = res.data.referral;
+      setReferral((prev) =>
+        prev
+          ? {
+              ...prev,
+              userSwots: fresh.userSwots,
+              profileSwot: fresh.profileSwot,
+              teamLeadUserSwots: fresh.teamLeadUserSwots,
+            }
+          : fresh,
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Couldn't refresh SWOTs"));
+    } finally {
+      setRefreshingSwots(false);
     }
   }
 
@@ -148,39 +173,21 @@ export default function ReferralDetailPage() {
       });
       setReferral(res.data.referral);
       setShowReject(false);
-      pushToast("Request rejected", "success");
+      toast.success("Request rejected");
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Could not reject request",
-      );
+      setError(errorMessage(err, "Unable to reject request"));
     } finally {
       setBusy(false);
     }
   }
 
-  async function endStuckAssignment() {
-    if (!token || !referral?.assignment?.id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.endAssignment(token, referral.assignment.id, {
-        status: "COMPLETED",
-        completionReason: "Intervention completed from referral workspace",
-      });
-      const res = await api.getReferral(token, referral.id);
-      setReferral(res.data.referral);
-      setConfirmComplete(false);
-      pushToast("Intervention completed", "success");
-      router.push(`/profiles/${referral.salesExecutiveProfileId}`);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Could not end the active intervention",
-      );
-    } finally {
-      setBusy(false);
-    }
+  function onInterventionCompleted() {
+    if (!referral) return;
+    setShowHandoff(false);
+    toast.success("Intervention completed", {
+      description: "Your handoff report is with the Team Lead.",
+    });
+    router.push(`/profiles/${referral.salesExecutiveProfileId}`);
   }
 
   if (error && !referral) {
@@ -221,6 +228,18 @@ export default function ReferralDetailPage() {
   const isCommando = user?.roleCode === "COMMANDO_EXECUTIVE";
   const isTeamLead =
     user?.roleCode === "TEAM_LEAD" || user?.roleCode === "SUPER_ADMIN";
+  const snapshotSubjects: SnapshotCardSubject[] =
+    referral.snapshotSubjects && referral.snapshotSubjects.length > 0
+      ? referral.snapshotSubjects
+      : [
+          {
+            userId: (referral.profile as { userId?: string }).userId ?? "",
+            name: referral.profileName,
+            role: "SALES_EXECUTIVE",
+            period: null,
+          },
+        ];
+  const performanceSnapshots = referral.performanceSnapshots ?? [];
 
   return (
     <div className="space-y-6">
@@ -368,8 +387,14 @@ export default function ReferralDetailPage() {
           setForm={setProvideForm}
           busy={busy}
           commandoName={personName(referral.commando)}
-          assignedSupport={referral.assignedSupport ?? []}
-          onApprove={() => setConfirmApprove(true)}
+          subjects={snapshotSubjects}
+          profileId={referral.salesExecutiveProfileId}
+          teamLeadUserSwots={referral.teamLeadUserSwots ?? []}
+          profileSwot={referral.profileSwot ?? null}
+          swotReturnTo={`/referrals/${referral.id}`}
+          refreshingSwots={refreshingSwots}
+          onRefreshSwots={() => void refreshSwots()}
+          onApprove={() => void submitProvideInformation(snapshotSubjects)}
           onReject={() => setShowReject(true)}
         />
       )}
@@ -410,12 +435,33 @@ export default function ReferralDetailPage() {
         </section>
       )}
 
+      {!pendingInfo && performanceSnapshots.length > 0 && (
+        <PerformanceSnapshotReadonly
+          referralId={referral.id}
+          snapshots={performanceSnapshots}
+          evidence={referral.snapshotEvidence ?? []}
+        />
+      )}
+
       {/* Read-only management packet after handoff */}
       {showPacket && !pendingInfo && referral.status !== "REJECTED" && (
         <section className="surface p-4 sm:p-5">
           <ManagementPacketReadonly referral={referral} />
         </section>
       )}
+
+      {referral.status !== "REJECTED" &&
+        !(canProvide && pendingInfo && isTeamLead) &&
+        (referral.profileSwot ||
+          (referral.userSwots?.length ?? 0) > 0 ||
+          (referral.teamLeadUserSwots ?? []).some((p) => p.swot)) && (
+          <InterventionSwotPair
+            userSwots={referral.userSwots ?? []}
+            profileSwot={referral.profileSwot ?? null}
+            personSwots={referral.teamLeadUserSwots ?? []}
+            workspaceHref={`${profileHref}/swot`}
+          />
+        )}
 
       {/* Primary actions — role + phase specific */}
       {(canAcknowledge ||
@@ -456,7 +502,7 @@ export default function ReferralDetailPage() {
               <Button
                 variant="secondary"
                 disabled={busy}
-                onClick={() => setConfirmComplete(true)}
+                onClick={() => setShowHandoff(true)}
               >
                 Complete intervention
               </Button>
@@ -487,37 +533,25 @@ export default function ReferralDetailPage() {
       )}
 
       <ConfirmDialog
-        open={confirmApprove}
-        title="Approve Intervention Request?"
-        message={`This will:\n\n• Approve the Commando's request\n• Provide the management packet to ${personName(referral.commando)}\n• Start the active intervention workflow\n• Make the management packet read-only for the Commando\n\nYour assessment will remain associated with you as Team Lead.`}
-        confirmLabel="Approve & Provide Information"
+        open={confirmComplete}
+        title="Close this handoff?"
+        message="This closes the Team Lead request only. The Sales Executive stays on your active list while the assignment is Active."
+        confirmLabel="Close handoff"
         busy={busy}
-        onConfirm={() => void submitProvideInformation()}
-        onCancel={() => setConfirmApprove(false)}
+        onConfirm={() => void runAction("complete")}
+        onCancel={() => setConfirmComplete(false)}
       />
 
-      <ConfirmDialog
-        open={confirmComplete}
-        title={
-          canEndStuckAssignment
-            ? "Complete this intervention?"
-            : "Close this handoff?"
-        }
-        message={
-          canEndStuckAssignment
-            ? "This ends the active assignment. The Sales Executive leaves your active list. Historical records stay available."
-            : "This closes the Team Lead request only. The Sales Executive stays on your active list while the assignment is Active."
-        }
-        confirmLabel={
-          canEndStuckAssignment ? "Complete intervention" : "Close handoff"
-        }
-        busy={busy}
-        onConfirm={() =>
-          void (canEndStuckAssignment
-            ? endStuckAssignment()
-            : runAction("complete"))
-        }
-        onCancel={() => setConfirmComplete(false)}
+      <HandoffReportDialog
+        open={showHandoff}
+        assignmentId={referral.assignment?.id ?? null}
+        profileName={referral.profile.displayName}
+        endInput={{
+          status: "COMPLETED",
+          completionReason: "Intervention completed from referral workspace",
+        }}
+        onCancel={() => setShowHandoff(false)}
+        onCompleted={onInterventionCompleted}
       />
     </div>
   );

@@ -2,9 +2,9 @@
 
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { api, ApiError, type ActivityType } from "@/lib/api";
+import { api, errorMessage, type ActivityType } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   AdminPageShell,
@@ -46,7 +46,6 @@ function previewCode(name: string): string {
 
 export default function ActivityTypesPage() {
   const { token, hasPermission } = useAuth();
-  const { pushToast } = useToast();
   const [items, setItems] = useState<ActivityType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,23 +130,18 @@ export default function ActivityTypesPage() {
           name: draft.name.trim(),
           description: draft.description.trim() || undefined,
         });
-        pushToast("Activity type created successfully", "success");
+        toast.success("Activity type created");
       } else if (editing) {
         await api.updateActivityType(token, editing.id, {
           name: draft.name.trim(),
           description: draft.description.trim() || null,
         });
-        pushToast("Activity type updated successfully", "success");
+        toast.success("Activity type updated");
       }
       setDrawerMode(null);
       await load();
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : "Could not save this activity type";
-      pushToast(msg, "error");
-      setError(msg);
+      setError(errorMessage(err, "Unable to save this activity type"));
     } finally {
       setSaving(false);
     }
@@ -163,19 +157,15 @@ export default function ActivityTypesPage() {
           ? new Date().toISOString()
           : null,
       });
-      pushToast(
+      toast.success(
         pendingToggle.isActive
           ? "Activity type deactivated"
           : "Activity type activated",
-        "success",
       );
       setPendingToggle(null);
       await load();
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Update failed",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to update status"));
     } finally {
       setToggling(false);
     }
@@ -186,14 +176,15 @@ export default function ActivityTypesPage() {
     setDeleting(true);
     try {
       const res = await api.deleteActivityType(token, pendingDelete.id);
-      pushToast(res.data.message, "success");
+      if (res.data.deleted) {
+        toast.success("Activity type deleted");
+      } else {
+        toast.info("Activity type deactivated", { description: res.data.message });
+      }
       setPendingDelete(null);
       await load();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not delete activity type",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to delete activity type"));
     } finally {
       setDeleting(false);
     }
@@ -326,23 +317,22 @@ export default function ActivityTypesPage() {
                   <AdminTd className="text-right">
                     <div className="flex flex-wrap items-center justify-end gap-1">
                       <Button
-                        variant="ghost"
+                        variant="info-soft"
                         size="sm"
                         onClick={() => openEdit(item)}
                       >
                         Edit
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant={item.isActive ? "warn-soft" : "success-soft"}
                         size="sm"
                         onClick={() => setPendingToggle(item)}
                       >
                         {item.isActive ? "Deactivate" : "Activate"}
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="danger-soft"
                         size="sm"
-                        className="text-[var(--status-danger)]"
                         onClick={() => setPendingDelete(item)}
                       >
                         Delete

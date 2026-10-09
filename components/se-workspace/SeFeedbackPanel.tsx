@@ -5,13 +5,13 @@ import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { MessageSquareText, Plus, CheckCircle2 } from "lucide-react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type FeedbackItem,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { personName } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import {
   Avatar,
   Button,
@@ -157,7 +157,6 @@ export function SeFeedbackPanel({
   returnBaseHref,
 }: Props) {
   const { token, user } = useAuth();
-  const { pushToast } = useToast();
   const isSe = user?.roleCode === "SALES_EXECUTIVE";
   const feedbackBase =
     returnBaseHref ??
@@ -225,15 +224,12 @@ export function SeFeedbackPanel({
           : { salesExecutiveProfileId: profileId! }),
         body: draft.trim(),
       });
-      pushToast("Feedback added", "success");
+      toast.success("Feedback added");
       setDraft("");
       setDrawerOpen(false);
       onFeedbackChanged?.();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not add feedback",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to add feedback"));
     } finally {
       setSubmitting(false);
     }
@@ -244,15 +240,10 @@ export function SeFeedbackPanel({
     setAckingId(id);
     try {
       await api.acknowledgeFeedback(token, id);
-      pushToast("Feedback acknowledged", "success");
+      toast.success("Feedback acknowledged");
       onFeedbackChanged?.();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError
-          ? err.message
-          : "Could not acknowledge feedback",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to acknowledge feedback"));
     } finally {
       setAckingId(null);
     }

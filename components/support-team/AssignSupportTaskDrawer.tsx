@@ -3,13 +3,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type SalesSupportLink,
   type SupportTask,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import {
   Button,
   Drawer,
@@ -86,7 +86,6 @@ export function AssignSupportTaskDrawer({
   onCreated,
 }: Props) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -139,14 +138,11 @@ export function AssignSupportTaskDrawer({
         shouldDo: doItems,
         shouldNotDo: dontItems,
       });
-      pushToast("Support task assigned", "success");
+      toast.success("Support task assigned");
       onCreated(res.data.task);
       onClose();
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : "Could not assign task";
-      setError(msg);
-      pushToast(msg, "error");
+      setError(errorMessage(err, "Unable to assign task"));
     } finally {
       setBusy(false);
     }

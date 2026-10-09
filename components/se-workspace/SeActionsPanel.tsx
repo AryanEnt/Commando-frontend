@@ -10,9 +10,9 @@ import {
   ListChecks,
   Plus,
 } from "lucide-react";
-import { api, type ActionItem } from "@/lib/api";
+import { api, errorMessage, type ActionItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { formatDue } from "@/lib/dates";
 import { personName } from "@/lib/labels";
 import { seCreateHref, seWorkspaceHref } from "@/lib/se-workspace-nav";
@@ -168,7 +168,6 @@ export function SeActionsPanel({
   activeIntervention = false,
 }: Props) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [preset, setPreset] = useState<DuePreset>("all");
   const [listView, setListView] = useState<ListView>("active");
   const [dueFrom, setDueFrom] = useState("");
@@ -296,14 +295,11 @@ export function SeActionsPanel({
     setCompletingId(id);
     try {
       await api.completeActionItem(token, id);
-      pushToast("Assignment completed", "success");
+      toast.success("Assignment completed");
       await onChanged?.();
       setListView("history");
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Could not complete assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to complete assignment"));
     } finally {
       setCompletingId(null);
     }

@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { api, type Team } from "@/lib/api";
+import { api, errorMessage, type Team } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { roleLabel } from "@/lib/labels";
 import {
   Button,
@@ -60,11 +60,9 @@ function defaultTeamChoice(
 
 export default function CreateUserPage() {
   const { token, hasPermission, user } = useAuth();
-  const { pushToast } = useToast();
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
 
@@ -248,7 +246,6 @@ export default function CreateUserPage() {
     e.preventDefault();
     if (!token || !validate()) return;
     setSubmitting(true);
-    setError(null);
     try {
       let resolvedTeamId: string | null =
         form.teamId || (supportOnly ? teams[0]?.id : undefined) || null;
@@ -270,7 +267,7 @@ export default function CreateUserPage() {
 
       if (form.roleCode === "SALES_EXECUTIVE") {
         if (!resolvedTeamId) {
-          setError("Sales Executives must be placed on a team");
+          toast.warning("Sales Executives must be placed on a team");
           setSubmitting(false);
           return;
         }
@@ -287,11 +284,10 @@ export default function CreateUserPage() {
           displayName,
           employeeCode: form.employeeCode.trim() || null,
         });
-        pushToast(
+        toast.success(
           form.teamChoice === "new"
             ? "Sales Executive and team created"
             : "Sales Executive created",
-          "success",
         );
         if (canCreateAny) {
           router.push(`/users/${res.data.user.id}`);
@@ -310,13 +306,12 @@ export default function CreateUserPage() {
         isActive: form.isActive === "true",
         teamId: resolvedTeamId,
       });
-      pushToast(
+      toast.success(
         supportOnly
           ? "Sales Support Executive created"
           : form.teamChoice === "new"
             ? "User and team created"
             : "User created",
-        "success",
       );
       if (canCreateAny) {
         router.push(`/users/${res.data.user.id}`);
@@ -326,9 +321,7 @@ export default function CreateUserPage() {
         router.push("/teams");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to create user";
-      setError(msg);
-      pushToast(msg, "error");
+      toast.error(errorMessage(err, "Unable to create user"));
     } finally {
       setSubmitting(false);
     }
@@ -360,7 +353,6 @@ export default function CreateUserPage() {
         }
       />
 
-      {error && <ErrorState message={error} />}
       {supportOnly && fieldErrors.teamId ? (
         <ErrorState message={fieldErrors.teamId} />
       ) : null}

@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Flag, MessageSquareText, UserRound } from "lucide-react";
-import { api, type FeedbackItem } from "@/lib/api";
+import { api, errorMessage, type FeedbackItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { personName } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
@@ -19,7 +19,6 @@ import {
 
 export default function FeedbackDetailPage() {
   const { token, user } = useAuth();
-  const { pushToast } = useToast();
   const params = useParams();
   const searchParams = useSearchParams();
   const id = String(params.id);
@@ -68,12 +67,9 @@ export default function FeedbackDetailPage() {
     try {
       const res = await api.acknowledgeFeedback(token, item.id);
       setItem(res.data.feedback);
-      pushToast("Feedback acknowledged", "success");
+      toast.success("Feedback acknowledged");
     } catch (err) {
-      pushToast(
-        err instanceof Error ? err.message : "Could not acknowledge feedback",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to acknowledge feedback"));
     } finally {
       setAcking(false);
     }

@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDue, formatTime } from "@/lib/dates";
-import { formatSwotField } from "@/lib/swot-points";
+import { SwotQuadrantGrid } from "@/components/swot/SwotQuadrant";
 import { personName } from "@/lib/labels";
 import {
   currentWeekMondayYmd,
@@ -1411,6 +1411,10 @@ function DailyLogsPane({
                       </button>
                       {open ? (
                         <div className="wr-expand">
+                          <Detail
+                            label={e.activityType?.name ?? "Activity type"}
+                            value={e.activityType?.description}
+                          />
                           <Detail label="Observation" value={e.observation} />
                           <Detail label="Evidence" value={e.evidence} />
                           <Detail label="SE response" value={e.seResponse} />
@@ -1816,38 +1820,7 @@ function SwotGrid({
 }: {
   swot: NonNullable<WeeklyReviewHub["swot"]>[number];
 }) {
-  const cells = [
-    {
-      label: "Strengths",
-      value: formatSwotField(swot.strengthPoints, swot.strength),
-      tone: "strength",
-    },
-    {
-      label: "Weaknesses",
-      value: formatSwotField(swot.weaknessPoints, swot.weakness),
-      tone: "weakness",
-    },
-    {
-      label: "Opportunities",
-      value: formatSwotField(swot.opportunityPoints, swot.opportunity),
-      tone: "opportunity",
-    },
-    {
-      label: "Threats",
-      value: formatSwotField(swot.threatPoints, swot.threat),
-      tone: "threat",
-    },
-  ];
-  return (
-    <div className="wr-swot-grid">
-      {cells.map((c) => (
-        <div key={c.label} className={`wr-swot-cell is-${c.tone}`}>
-          <p className="wr-swot-label">{c.label}</p>
-          <p className="wr-swot-body">{c.value || "—"}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return <SwotQuadrantGrid swot={swot} />;
 }
 
 function EisenhowerPane({

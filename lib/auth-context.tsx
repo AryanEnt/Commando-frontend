@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { api, refreshAccessToken, type AuthUser } from "@/lib/api";
@@ -31,11 +32,13 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const KEEP_ALIVE_MS = 8 * 60 * 1000;
+const FOCUS_REFRESH_MIN_GAP_MS = 5 * 60 * 1000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastKeepAliveRef = useRef(0);
 
   useEffect(() => {
     return subscribeSession((nextToken, nextUser) => {
@@ -78,15 +81,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
+    // The session was just validated or issued, so it counts as fresh.
+    if (!lastKeepAliveRef.current) lastKeepAliveRef.current = Date.now();
 
     const keepAlive = () => {
+      lastKeepAliveRef.current = Date.now();
       void refreshAccessToken();
+    };
+    // Each refresh rotates the refresh token (DB writes), so window switching must not trigger one every time.
+    const keepAliveIfDue = () => {
+      if (Date.now() - lastKeepAliveRef.current >= FOCUS_REFRESH_MIN_GAP_MS) {
+        keepAlive();
+      }
     };
 
     const id = window.setInterval(keepAlive, KEEP_ALIVE_MS);
-    const onFocus = () => keepAlive();
+    const onFocus = () => keepAliveIfDue();
     const onVisible = () => {
-      if (document.visibilityState === "visible") keepAlive();
+      if (document.visibilityState === "visible") keepAliveIfDue();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);

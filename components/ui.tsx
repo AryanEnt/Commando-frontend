@@ -3,8 +3,11 @@
 import Link from "next/link";
 import {
   useEffect,
+  useId,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -12,11 +15,22 @@ import {
 import { Icons } from "@/components/icons";
 
 const inputClass =
-  "mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-[var(--text-body)] leading-snug text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
+  "field-input mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-[var(--text-body)] leading-snug text-[var(--color-ink)] placeholder:text-[var(--color-ink-subtle)] transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-brand)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-soft)] disabled:cursor-not-allowed disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-ink-subtle)]";
 
 const labelClass = "block text-[var(--text-label)] font-medium text-[var(--color-ink)]";
 
-type ButtonVariant = "primary" | "secondary" | "soft" | "success" | "danger" | "ghost";
+type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "outline"
+  | "soft"
+  | "success"
+  | "danger"
+  | "ghost"
+  | "info-soft"
+  | "warn-soft"
+  | "success-soft"
+  | "danger-soft";
 type ButtonSize = "sm" | "md" | "lg";
 
 function buttonClassName(
@@ -43,7 +57,7 @@ export function PageHeader({
   breadcrumbs?: React.ReactNode;
 }) {
   return (
-    <header className="page-hero mb-1 space-y-3">
+    <header className="page-hero space-y-3">
       {breadcrumbs ? <div className="min-w-0">{breadcrumbs}</div> : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 max-w-2xl">
@@ -65,9 +79,12 @@ export function PageHeader({
 
 export function StatusPill({
   tone = "neutral",
+  icon,
   children,
 }: {
   tone?: "success" | "warn" | "danger" | "info" | "neutral";
+  /** Replaces the status dot. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   const tones = {
@@ -84,7 +101,7 @@ export function StatusPill({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[var(--text-meta)] font-medium ring-1 ring-inset ${tones[tone]}`}
     >
-      <span className="status-dot" aria-hidden />
+      {icon ?? <span className="status-dot" aria-hidden />}
       {children}
     </span>
   );
@@ -156,17 +173,57 @@ export function ButtonLink({
   );
 }
 
+function FieldMessage({
+  id,
+  hint,
+  error,
+  reserveSpace,
+}: {
+  id?: string;
+  hint?: string;
+  error?: string;
+  reserveSpace?: boolean;
+}) {
+  if (error) {
+    return (
+      <span
+        id={id}
+        className="field-message mt-1 block text-xs font-normal text-[var(--status-danger)]"
+        role="alert"
+      >
+        {error}
+      </span>
+    );
+  }
+  if (hint) {
+    return (
+      <span
+        id={id}
+        className="field-message mt-1 block text-xs font-normal text-[var(--color-ink-muted)]"
+      >
+        {hint}
+      </span>
+    );
+  }
+  return reserveSpace ? (
+    <span className="field-message mt-1 block text-xs" aria-hidden />
+  ) : null;
+}
+
 export function Field({
   label,
   hint,
   error,
   required,
+  reserveMessageSpace,
   children,
 }: {
   label: string;
   hint?: string;
   error?: string;
   required?: boolean;
+  /** Keep a message line reserved so errors appearing don't shift layout. */
+  reserveMessageSpace?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -179,19 +236,11 @@ export function Field({
         </span>
       ) : null}
       {children}
-      {hint && !error ? (
-        <span className="mt-1 block text-xs font-normal text-[var(--color-ink-muted)]">
-          {hint}
-        </span>
-      ) : null}
-      {error ? (
-        <span
-          className="mt-1 block text-xs font-normal text-[var(--status-danger)]"
-          role="alert"
-        >
-          {error}
-        </span>
-      ) : null}
+      <FieldMessage
+        hint={hint}
+        error={error}
+        reserveSpace={reserveMessageSpace}
+      />
     </label>
   );
 }
@@ -201,17 +250,99 @@ export function TextInput({
   hint,
   error,
   required,
+  reserveMessageSpace,
   className = "",
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
   error?: string;
+  reserveMessageSpace?: boolean;
 }) {
   return (
-    <Field label={label} hint={hint} error={error} required={required}>
-      <input className={`${inputClass} h-10 ${className}`} required={required} {...props} />
+    <Field
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
+      reserveMessageSpace={reserveMessageSpace}
+    >
+      <input
+        className={`${inputClass} h-10 ${className}`}
+        required={required}
+        aria-invalid={error ? true : undefined}
+        {...props}
+      />
     </Field>
+  );
+}
+
+/**
+ * Password field with a show/hide toggle. The label is linked by id (not
+ * wrapping) so the toggle's name doesn't leak into the input's accessible name.
+ */
+export function PasswordInput({
+  label,
+  hint,
+  error,
+  required,
+  reserveMessageSpace,
+  className = "",
+  id: idProp,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  label: string;
+  hint?: string;
+  error?: string;
+  reserveMessageSpace?: boolean;
+}) {
+  const autoId = useId();
+  const id = idProp ?? autoId;
+  const messageId = `${id}-message`;
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        {required ? (
+          <span className="text-[var(--status-danger)]" aria-hidden>
+            {" "}
+            *
+          </span>
+        ) : null}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          className={`${inputClass} h-10 pr-11 ${className}`}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || hint ? messageId : undefined}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? "Hide password" : "Show password"}
+          aria-pressed={visible}
+          aria-controls={id}
+          disabled={props.disabled}
+          className="password-toggle absolute right-1 top-[calc(50%+0.1875rem)] inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="password-toggle-icon" data-visible={visible}>
+            {visible ? <Icons.eyeOff size={17} /> : <Icons.eye size={17} />}
+          </span>
+        </button>
+      </div>
+      <FieldMessage
+        id={messageId}
+        hint={hint}
+        error={error}
+        reserveSpace={reserveMessageSpace}
+      />
+    </div>
   );
 }
 
@@ -265,7 +396,7 @@ export function SelectField({
 
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-brand-ring)] bg-[var(--color-surface)] px-3.5 py-3 shadow-[var(--shadow-sm)]">
+    <div className="surface-card flex flex-wrap items-end gap-3 px-5 py-4">
       {children}
     </div>
   );
@@ -883,11 +1014,17 @@ export function ConfirmDialog({
 export function Avatar({
   name,
   size = "md",
+  tone = "brand",
 }: {
   name: string;
   size?: "sm" | "md" | "lg";
+  tone?: "brand" | "neutral";
 }) {
   const sizes = { sm: "h-7 w-7 text-[10px]", md: "h-9 w-9 text-xs", lg: "h-12 w-12 text-sm" };
+  const tones = {
+    brand: "bg-[var(--color-brand-soft)] text-[var(--color-brand-dark)]",
+    neutral: "bg-[var(--status-neutral-bg)] text-[var(--color-ink-muted)]",
+  };
   const parts = name.trim().split(/\s+/);
   const letters =
     parts.length >= 2
@@ -895,7 +1032,7 @@ export function Avatar({
       : name.slice(0, 2).toUpperCase();
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--color-brand-soft)] font-semibold text-[var(--color-brand-dark)] ${sizes[size]}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${tones[tone]} ${sizes[size]}`}
       aria-hidden
     >
       {letters || "?"}
@@ -925,18 +1062,67 @@ export function SectionHeader({
   );
 }
 
+export function tabId(idBase: string, value: string) {
+  return `${idBase}-tab-${value}`;
+}
+
+export function tabPanelId(idBase: string, value: string) {
+  return `${idBase}-panel-${value}`;
+}
+
+/** WAI-ARIA tabs keyboard model: ←/→ wrap, Home/End jump. */
+export function nextTabIndex(
+  key: string,
+  index: number,
+  count: number,
+): number | null {
+  if (index < 0 || count === 0) return null;
+  if (key === "ArrowRight") return (index + 1) % count;
+  if (key === "ArrowLeft") return (index - 1 + count) % count;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
+
+/**
+ * Accessible tab list (roving tabindex, ←/→/Home/End). Pair with `TabPanel`
+ * using the same `idBase` so tabs and panels reference each other.
+ */
 export function Tabs<T extends string>({
   value,
   onChange,
   options,
+  idBase: idBaseProp,
+  ariaLabel,
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: Array<{ value: T; label: string }>;
+  options: Array<{ value: T; label: ReactNode; icon?: ReactNode }>;
+  idBase?: string;
+  ariaLabel?: string;
 }) {
+  const generatedId = useId();
+  const idBase = idBaseProp ?? generatedId;
+
+  function focusTab(next: T) {
+    onChange(next);
+    if (typeof document !== "undefined") {
+      document.getElementById(tabId(idBase, next))?.focus();
+    }
+  }
+
+  function onKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>) {
+    const index = options.findIndex((o) => o.value === value);
+    const nextIndex = nextTabIndex(e.key, index, options.length);
+    if (nextIndex == null) return;
+    e.preventDefault();
+    focusTab(options[nextIndex]!.value);
+  }
+
   return (
     <div
       role="tablist"
+      aria-label={ariaLabel}
       className="flex flex-nowrap gap-1 overflow-x-auto border-b border-[var(--color-line)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {options.map((opt) => {
@@ -944,20 +1130,49 @@ export function Tabs<T extends string>({
         return (
           <button
             key={opt.value}
+            id={tabId(idBase, opt.value)}
             type="button"
             role="tab"
             aria-selected={active}
-            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition ${
+            aria-controls={tabPanelId(idBase, opt.value)}
+            tabIndex={active ? 0 : -1}
+            className={`-mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-ring)] ${
               active
                 ? "border-[var(--color-brand)] font-medium text-[var(--color-brand-dark)]"
                 : "border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
             }`}
             onClick={() => onChange(opt.value)}
+            onKeyDown={onKeyDown}
           >
+            {opt.icon}
             {opt.label}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+export function TabPanel({
+  idBase,
+  value,
+  children,
+  className = "",
+}: {
+  idBase: string;
+  value: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={tabPanelId(idBase, value)}
+      aria-labelledby={tabId(idBase, value)}
+      tabIndex={0}
+      className={`focus-visible:outline-none ${className}`.trim()}
+    >
+      {children}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
-  ApiError,
+  errorMessage,
   type EligibleSupportUser,
   type SalesSupportLink,
   type SeSupportTeamContext,
@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { formatDate } from "@/lib/dates";
 import { personName, responsibilityTypeLabel } from "@/lib/labels";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "@/lib/toast";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AssignSupportTaskDrawer } from "@/components/support-team/AssignSupportTaskDrawer";
 import {
@@ -73,7 +73,6 @@ export function SupportTeamPanel({
   onChanged,
 }: Props) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [assignOpen, setAssignOpen] = useState(false);
   const [taskAssignOpen, setTaskAssignOpen] = useState(false);
   const [taskPresetLinkId, setTaskPresetLinkId] = useState<string | null>(null);
@@ -110,14 +109,11 @@ export function SupportTeamPanel({
     setEndBusy(true);
     try {
       await api.endSalesSupportLink(token, endTarget.id);
-      pushToast("Support assignment ended", "success");
+      toast.success("Support assignment ended");
       setEndTarget(null);
       await onChanged();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not end assignment",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to end assignment"));
     } finally {
       setEndBusy(false);
     }
@@ -400,7 +396,6 @@ export function AssignSupportPersonDrawer({
   onAssigned: () => void | Promise<void>;
 }) {
   const { token } = useAuth();
-  const { pushToast } = useToast();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [users, setUsers] = useState<EligibleSupportUser[]>([]);
@@ -449,11 +444,7 @@ export function AssignSupportPersonDrawer({
       .catch((err) => {
         if (cancelled) return;
         setUsers([]);
-        setLoadError(
-          err instanceof ApiError
-            ? err.message
-            : "Unable to load eligible support users.",
-        );
+        setLoadError(errorMessage(err, "Unable to load eligible support users."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -478,16 +469,10 @@ export function AssignSupportPersonDrawer({
         responsibilityType: responsibilityType || null,
         note: note.trim() || null,
       });
-      pushToast(
-        `${personName(selected)} assigned to ${profileName}`,
-        "success",
-      );
+      toast.success(`${personName(selected)} assigned to ${profileName}`);
       await onAssigned();
     } catch (err) {
-      pushToast(
-        err instanceof ApiError ? err.message : "Could not assign support",
-        "error",
-      );
+      toast.error(errorMessage(err, "Unable to assign support"));
     } finally {
       setSubmitting(false);
     }

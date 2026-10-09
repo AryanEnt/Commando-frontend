@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   api,
   type ActionItem,
@@ -12,12 +12,14 @@ import {
   type SupportTask,
   type WeeklyReview,
 } from "@/lib/api";
+import {
+  buildAttentionItems,
+  formatRelativeTime,
+  toTitleCase,
+} from "@/lib/attention";
 import { formatDate, formatWhen } from "@/lib/dates";
 import { personName } from "@/lib/labels";
-import {
-  isPendingTeamLeadReview,
-  referralStatusLabel,
-} from "@/lib/referral-phase";
+import { isPendingTeamLeadReview } from "@/lib/referral-phase";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   Avatar,
@@ -25,28 +27,19 @@ import {
   EmptyState,
   ErrorState,
   PageHeader,
-  PulseGrid,
-  PulseStat,
-  Skeleton,
-  TableFrame,
 } from "@/components/ui";
+import {
+  DashEmpty,
+  DashHero,
+  DashPanel,
+  DashSkeleton,
+  HealthSummary,
+  KpiStat,
+  type SignalTone,
+} from "@/components/dashboard/DashboardKit";
+import { NeedsAttentionCard } from "@/components/dashboard/NeedsAttentionCard";
 
 type LoadState = "loading" | "ready" | "error";
-
-type AttentionReason =
-  | "pending_request"
-  | "overdue_actions"
-  | "overdue_support"
-  | "draft_review";
-
-type SeAttentionRow = {
-  profile: ProfileListItem;
-  reasons: AttentionReason[];
-  pendingReferral: Referral | null;
-  overdueActionCount: number;
-  overdueSupportCount: number;
-  draftReviewCount: number;
-};
 
 type FollowUpItem = {
   id: string;
@@ -57,7 +50,6 @@ type FollowUpItem = {
   meta: string;
   href: string;
   actionLabel: string;
-  severity: "critical" | "warning" | "watch";
 };
 
 type ActivityItem = {
@@ -66,6 +58,15 @@ type ActivityItem = {
   meta: string;
   when: string;
   href: string;
+};
+
+const FOLLOW_UP_BADGE: Record<
+  FollowUpItem["kind"],
+  { status: string; label: string }
+> = {
+  action: { status: "OVERDUE", label: "Overdue action" },
+  support: { status: "NEEDS_ATTENTION", label: "Overdue support" },
+  review: { status: "WATCH", label: "Draft review" },
 };
 
 function isActionOverdue(item: ActionItem) {
@@ -88,88 +89,22 @@ function submittedLabel(iso: string) {
   return formatDate(iso);
 }
 
-function reasonLabel(reasons: AttentionReason[], row: SeAttentionRow) {
-  const parts: string[] = [];
-  if (reasons.includes("pending_request")) {
-    parts.push("Commando request awaiting your review");
-  }
-  if (reasons.includes("overdue_actions")) {
-    parts.push(
-      `${row.overdueActionCount} overdue action${row.overdueActionCount === 1 ? "" : "s"}`,
-    );
-  }
-  if (reasons.includes("overdue_support")) {
-    parts.push(
-      `${row.overdueSupportCount} overdue support task${row.overdueSupportCount === 1 ? "" : "s"}`,
-    );
-  }
-  if (reasons.includes("draft_review")) {
-    parts.push(
-      `${row.draftReviewCount} draft review${row.draftReviewCount === 1 ? "" : "s"}`,
-    );
-  }
-  return parts.join(" · ");
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-function nextActionForSe(row: SeAttentionRow) {
-  if (row.pendingReferral) {
-    return {
-      href: `/referrals/${row.pendingReferral.id}`,
-      label: "Review request",
-    };
-  }
-  if (row.overdueActionCount > 0) {
-    return {
-      href: `/profiles/${row.profile.id}/actions`,
-      label: "Open actions",
-    };
-  }
-  if (row.overdueSupportCount > 0) {
-    return {
-      href: `/profiles/${row.profile.id}/support`,
-      label: "Open support",
-    };
-  }
-  if (row.draftReviewCount > 0) {
-    return {
-      href: `/profiles/${row.profile.id}/reviews`,
-      label: "Open reviews",
-    };
-  }
-  return {
-    href: `/profiles/${row.profile.id}`,
-    label: "Open workspace",
-  };
-}
-
-function TeamLeadSkeleton() {
-  return (
-    <div
-      className="space-y-6"
-      aria-busy="true"
-      aria-label="Loading Team Lead dashboard"
-    >
-      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)]">
-        <div className="grid grid-cols-2 sm:grid-cols-5">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="border-r border-b border-[var(--color-line)] px-4 py-3.5 last:border-r-0 sm:border-b-0"
-            >
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="mt-2 h-7 w-10" />
-              <Skeleton className="mt-2 h-3 w-20" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <Skeleton className="h-48 w-full rounded-[var(--radius-md)]" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-40 w-full rounded-[var(--radius-md)]" />
-        <Skeleton className="h-40 w-full rounded-[var(--radius-md)]" />
-      </div>
-    </div>
-  );
+/** Open work for one executive, e.g. "2 overdue actions · 1 draft review". */
+function openWorkSummary(counts: {
+  overdueActions: number;
+  overdueSupport: number;
+  draftReviews: number;
+}): string {
+  const parts = [
+    counts.overdueActions > 0 ? plural(counts.overdueActions, "overdue action") : null,
+    counts.overdueSupport > 0 ? plural(counts.overdueSupport, "overdue support task") : null,
+    counts.draftReviews > 0 ? plural(counts.draftReviews, "draft review") : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "No overdue work";
 }
 
 export function TeamLeadDashboard({
@@ -238,13 +173,29 @@ export function TeamLeadDashboard({
     void load();
   }, [load]);
 
-  const pendingByProfile = useMemo(() => {
-    const map = new Map<string, Referral>();
-    for (const r of pendingRequests) {
-      map.set(r.salesExecutiveProfileId, r);
-    }
-    return map;
-  }, [pendingRequests]);
+  const attentionItems = useMemo(
+    () => buildAttentionItems(pendingRequests),
+    [pendingRequests],
+  );
+  /** Executives with an overdue action or a pending request (KPI + health ring). */
+  const attentionCount = useMemo(
+    () =>
+      new Set([
+        ...overdueActions.map((a) => a.salesExecutiveProfileId),
+        ...pendingRequests.map((r) => r.salesExecutiveProfileId),
+      ]).size,
+    [overdueActions, pendingRequests],
+  );
+
+  /** Oldest request first, matching the attention card. */
+  const requestQueue = useMemo(
+    () =>
+      [...pendingRequests].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      ),
+    [pendingRequests],
+  );
+  const showRequestTeam = new Set(pendingRequests.map((r) => r.teamId)).size > 1;
 
   const overdueActionsByProfile = useMemo(() => {
     const map = new Map<string, ActionItem[]>();
@@ -277,44 +228,6 @@ export function TeamLeadDashboard({
     return map;
   }, [draftReviews]);
 
-  const attentionRows = useMemo((): SeAttentionRow[] => {
-    const rows: SeAttentionRow[] = [];
-    for (const profile of profiles) {
-      const pendingReferral = pendingByProfile.get(profile.id) ?? null;
-      const actions = overdueActionsByProfile.get(profile.id) ?? [];
-      const support = overdueSupportByProfile.get(profile.id) ?? [];
-      const drafts = draftReviewsByProfile.get(profile.id) ?? [];
-      const reasons: AttentionReason[] = [];
-      if (pendingReferral) reasons.push("pending_request");
-      if (actions.length) reasons.push("overdue_actions");
-      if (support.length) reasons.push("overdue_support");
-      if (drafts.length) reasons.push("draft_review");
-      if (reasons.length === 0) continue;
-      rows.push({
-        profile,
-        reasons,
-        pendingReferral,
-        overdueActionCount: actions.length,
-        overdueSupportCount: support.length,
-        draftReviewCount: drafts.length,
-      });
-    }
-    // Priority: pending request → overdue actions → support → drafts
-    const rank = (r: SeAttentionRow) => {
-      if (r.reasons.includes("pending_request")) return 0;
-      if (r.reasons.includes("overdue_actions")) return 1;
-      if (r.reasons.includes("overdue_support")) return 2;
-      return 3;
-    };
-    return rows.sort((a, b) => rank(a) - rank(b) || a.profile.displayName.localeCompare(b.profile.displayName));
-  }, [
-    profiles,
-    pendingByProfile,
-    overdueActionsByProfile,
-    overdueSupportByProfile,
-    draftReviewsByProfile,
-  ]);
-
   const followUps = useMemo((): FollowUpItem[] => {
     const items: FollowUpItem[] = [];
     for (const a of overdueActions.slice(0, 6)) {
@@ -327,7 +240,6 @@ export function TeamLeadDashboard({
         meta: `Due ${formatDate(a.dueDate)}`,
         href: `/profiles/${a.salesExecutiveProfileId}/actions`,
         actionLabel: "Open",
-        severity: "critical",
       });
     }
     for (const t of overdueSupport.slice(0, 4)) {
@@ -340,7 +252,6 @@ export function TeamLeadDashboard({
         meta: t.dueDate ? `Due ${formatDate(t.dueDate)}` : "Overdue",
         href: `/profiles/${t.salesExecutiveProfileId}/support`,
         actionLabel: "Open",
-        severity: "warning",
       });
     }
     for (const r of draftReviews.slice(0, 4)) {
@@ -351,10 +262,9 @@ export function TeamLeadDashboard({
         title: r.weekLabel || "Weekly review draft",
         seName: r.profile?.displayName ?? "Sales Support",
         seId: r.salesExecutiveProfileId,
-        meta: "Draft — not submitted",
+        meta: "Not submitted",
         href: `/profiles/${r.salesExecutiveProfileId}/reviews`,
         actionLabel: "Continue",
-        severity: "watch",
       });
     }
     return items.slice(0, 10);
@@ -390,57 +300,49 @@ export function TeamLeadDashboard({
       .slice(0, 8);
   }, [pendingRequests, assignments]);
 
-  const pulse = [
-    {
-      label: "Sales Executives",
-      value: profilesTotal,
-      hint: "In your scope",
-      href: "/profiles",
-      warn: false,
-      tone: "brand" as const,
-    },
+  const overdueFollowUps = overdueActions.length + overdueSupport.length;
+  const kpis: {
+    label: string;
+    value: number;
+    hint: string;
+    href: string;
+    tone: SignalTone;
+  }[] = [
     {
       label: "Needing attention",
-      value: attentionRows.length,
-      hint: attentionRows.length ? "Exceptions on your team" : "None right now",
+      value: attentionCount,
+      hint: "Overdue actions or Commando requests",
       href: "#se-attention",
-      warn: attentionRows.length > 0,
-      tone: attentionRows.length > 0 ? ("warn" as const) : ("success" as const),
+      tone: attentionCount > 0 ? "warning" : "neutral",
     },
     {
-      label: "Active interventions",
-      value: assignments.length,
-      hint: "Under Commando now",
-      href: "#active-interventions",
-      warn: false,
-      tone: "accent" as const,
+      label: "Overdue follow-ups",
+      value: overdueFollowUps,
+      hint:
+        draftReviews.length > 0
+          ? `${draftReviews.length} draft review${draftReviews.length === 1 ? "" : "s"} also open`
+          : "Actions and support tasks",
+      href: "#management-followups",
+      tone: overdueFollowUps > 0 ? "critical" : "neutral",
     },
     {
       label: "Pending requests",
       value: pendingRequests.length,
       hint: "Awaiting your decision",
       href: "#commando-requests",
-      warn: pendingRequests.length > 0,
-      tone: pendingRequests.length > 0 ? ("info" as const) : ("brand" as const),
+      tone: pendingRequests.length > 0 ? "info" : "neutral",
     },
     {
-      label: "Overdue follow-ups",
-      value: overdueActions.length + overdueSupport.length,
-      hint:
-        draftReviews.length > 0
-          ? `${draftReviews.length} draft review${draftReviews.length === 1 ? "" : "s"} also open`
-          : "Actions + support tasks",
-      href: "#management-followups",
-      warn: overdueActions.length + overdueSupport.length > 0,
-      tone:
-        overdueActions.length + overdueSupport.length > 0
-          ? ("danger" as const)
-          : ("success" as const),
+      label: "Active interventions",
+      value: assignments.length,
+      hint: "Under Commando now",
+      href: "#active-interventions",
+      tone: "neutral",
     },
   ];
 
   return (
-    <div className="space-y-6 lg:space-y-7">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Team Lead"
         title="Team Lead Dashboard"
@@ -449,13 +351,13 @@ export function TeamLeadDashboard({
           <div className="flex flex-wrap gap-2">
             <ButtonLink
               href="/users/sales-executives/new"
-              variant="secondary"
+              variant="outline"
               size="sm"
             >
               <Plus size={14} aria-hidden />
               Add Sales Executive
             </ButtonLink>
-            <ButtonLink href="/users/new" variant="secondary" size="sm">
+            <ButtonLink href="/users/new" variant="outline" size="sm">
               <Plus size={14} aria-hidden />
               Add Sales Support
             </ButtonLink>
@@ -463,466 +365,291 @@ export function TeamLeadDashboard({
         }
       />
 
-      {state === "loading" && <TeamLeadSkeleton />}
+      {state === "loading" && (
+        <DashSkeleton label="Loading Team Lead dashboard" />
+      )}
       {state === "error" && error && (
         <ErrorState message={error} onRetry={() => void load()} />
       )}
 
-      {state === "ready" && (
+      {state === "ready" && profilesTotal === 0 && (
+        <EmptyState
+          title="No Sales Executives yet"
+          description="Add a Sales Executive to start managing your team."
+          actionHref="/users/sales-executives/new"
+          actionLabel="Add Sales Executive"
+          icon="emptyUsers"
+        />
+      )}
+
+      {state === "ready" && profilesTotal > 0 && (
         <>
-          {/* 1 — Team pulse */}
-          <section aria-labelledby="team-pulse-heading">
-            <div className="mb-2.5">
-              <h2 id="team-pulse-heading" className="text-section-title">
-                Team pulse
-              </h2>
-              <p className="mt-0.5 text-meta">
-                Coverage across your Sales Executives — you remain permanent owner
-              </p>
-            </div>
-            <PulseGrid>
-                {pulse.map((cell) => (
-                  <PulseStat key={cell.label} {...cell} />
-                ))}
-            </PulseGrid>
-          </section>
-
-          {/* 2 — SEs needing attention (primary) */}
-          <section
-            id="se-attention"
-            aria-labelledby="se-attention-heading"
-            className={`overflow-hidden rounded-[var(--radius-md)] border shadow-[var(--shadow-sm)] ${
-              attentionRows.length > 0
-                ? "border-[var(--status-warn-ring)] bg-[var(--color-surface)]"
-                : "border-[var(--color-line)] bg-[var(--color-surface)]"
-            }`}
+          <DashHero
+            anchor={
+              <HealthSummary
+                title="Team health"
+                healthy={profiles.length - attentionCount}
+                attention={attentionCount}
+                healthyLabel="On track"
+                attentionLabel="Needs attention"
+                emptyText="No Sales Executives in scope"
+              />
+            }
           >
-            <div
-              className={`flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3.5 sm:px-5 ${
-                attentionRows.length > 0
-                  ? "border-[var(--status-warn-ring)] bg-[var(--status-warn-bg)]"
-                  : "border-[var(--color-line)] bg-[var(--color-surface-2)]"
-              }`}
-            >
-              <div>
-                <p className="text-eyebrow">Priority</p>
-                <h2
-                  id="se-attention-heading"
-                  className="mt-1 text-section-title text-[1.05rem]"
-                >
-                  Sales Executives needing attention
-                </h2>
-                <p className="mt-0.5 text-meta">
-                  {attentionRows.length > 0
-                    ? `${attentionRows.length} Sales Executive${attentionRows.length === 1 ? "" : "s"} with open exceptions`
-                    : "No open exceptions on your team"}
-                </p>
-              </div>
-              {attentionRows.length === 0 ? (
-                <span
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)]"
-                  aria-hidden
-                >
-                  <CheckCircle2 size={18} />
-                </span>
-              ) : (
-                <StatusBadge
-                  status="NEEDS_ATTENTION"
-                  label={`${attentionRows.length} need review`}
-                />
-              )}
-            </div>
+            {kpis.map((kpi) => (
+              <KpiStat key={kpi.label} {...kpi} />
+            ))}
+          </DashHero>
 
-            {attentionRows.length === 0 ? (
-              <div className="px-4 py-8 sm:px-5">
-                <p className="text-[13px] font-medium text-[var(--status-success)]">
-                  Your team looks healthy
-                </p>
-                <p className="mt-1.5 max-w-lg text-meta leading-relaxed">
-                  No pending Commando request reviews, overdue actions, overdue
-                  support tasks, or draft weekly reviews in scope.
-                </p>
-              </div>
+          <NeedsAttentionCard
+            items={attentionItems}
+            viewAllHref="#commando-requests"
+          />
+
+          <div className="grid gap-5 lg:grid-cols-12 lg:items-start">
+            <DashPanel
+              id="commando-requests"
+              tone="brand"
+              title="Intervention request queue"
+              description="Why each Commando asked for an intervention and what the executive already has open, oldest first"
+              className="lg:col-span-7"
+            >
+              {requestQueue.length === 0 ? (
+                <DashEmpty
+                  title="No requests in the queue"
+                  description="Commando intervention requests appear here when they need your review and management context."
+                />
+              ) : (
+                <ul className="dash-list">
+                  {requestQueue.map((r) => {
+                    const name = toTitleCase(r.profile?.displayName || r.profileName);
+                    const reason =
+                      r.requestReason?.trim() ||
+                      r.supportRequiredFromCommando?.trim() ||
+                      null;
+                    const openWork = openWorkSummary({
+                      overdueActions:
+                        overdueActionsByProfile.get(r.salesExecutiveProfileId)?.length ?? 0,
+                      overdueSupport:
+                        overdueSupportByProfile.get(r.salesExecutiveProfileId)?.length ?? 0,
+                      draftReviews:
+                        draftReviewsByProfile.get(r.salesExecutiveProfileId)?.length ?? 0,
+                    });
+                    return (
+                      <li
+                        key={r.id}
+                        className="flex flex-wrap items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/profiles/${r.salesExecutiveProfileId}`}
+                            className="block truncate text-[13px] font-semibold text-[var(--color-ink)] hover:underline"
+                            title={name}
+                          >
+                            {name}
+                          </Link>
+                          <p className="mt-0.5 text-meta">
+                            Requested by {toTitleCase(personName(r.commando))},{" "}
+                            <time dateTime={r.createdAt} title={formatWhen(r.createdAt)}>
+                              {formatRelativeTime(r.createdAt)}
+                            </time>
+                            {showRequestTeam ? ` · ${r.team.name}` : ""}
+                          </p>
+                          <p className="mt-1.5 line-clamp-2 text-[13px] text-[var(--color-ink)]">
+                            <span className="text-[var(--color-ink-muted)]">Reason: </span>
+                            {reason ?? "No reason given"}
+                          </p>
+                          <p className="mt-1 text-meta">Open work: {openWork}</p>
+                        </div>
+                        <Link
+                          href={`/referrals/${r.id}`}
+                          className="shrink-0 text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
+                          aria-label={`Provide information for ${name}'s intervention request`}
+                        >
+                          Provide information
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </DashPanel>
+
+            <DashPanel
+              id="management-followups"
+              title="Reviews, actions & support"
+              description="Overdue work and draft reviews across your team"
+              className="lg:col-span-5"
+            >
+              {followUps.length === 0 ? (
+                <DashEmpty
+                  tone="positive"
+                  title="No overdue management follow-ups"
+                  description="Overdue actions, overdue support tasks, and draft weekly reviews will appear here."
+                />
+              ) : (
+                <ul className="dash-list">
+                  {followUps.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge {...FOLLOW_UP_BADGE[item.kind]} />
+                          <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                            {item.title}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-meta">
+                          <Link
+                            href={`/profiles/${item.seId}`}
+                            className="font-medium text-[var(--color-ink)] hover:underline"
+                          >
+                            {item.seName}
+                          </Link>
+                          {" · "}
+                          {item.meta}
+                        </p>
+                      </div>
+                      <Link
+                        href={item.href}
+                        className="shrink-0 text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
+                      >
+                        {item.actionLabel}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DashPanel>
+          </div>
+
+          <DashPanel
+            id="active-interventions"
+            title="Active interventions"
+            description="Temporary Commando coaching — you remain permanent owner"
+          >
+            {assignments.length === 0 ? (
+              <DashEmpty
+                title="No active Commando interventions"
+                description="Sales Executives on your team are under normal management."
+              />
             ) : (
-              <TableFrame>
-                <table className="w-full min-w-[44rem] text-left text-[13px]">
+              <div className="overflow-x-auto">
+                <table className="dash-table w-full min-w-[40rem] text-left text-[13px]">
                   <thead>
-                    <tr className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)]/60 text-eyebrow">
-                      <th className="px-4 py-2.5 font-semibold sm:px-5">
-                        Sales Executive
-                      </th>
-                      <th className="px-3 py-2.5 font-semibold">Team</th>
-                      <th className="px-3 py-2.5 font-semibold">State</th>
-                      <th className="px-3 py-2.5 font-semibold">Commando</th>
-                      <th className="px-3 py-2.5 font-semibold">Why attention</th>
-                      <th className="px-4 py-2.5 font-semibold sm:px-5">
-                        <span className="sr-only">Action</span>
+                    <tr>
+                      <th className="min-w-[13rem]">Sales Executive</th>
+                      <th>Commando</th>
+                      <th className="w-[8rem]">Duration</th>
+                      <th>Attention</th>
+                      <th>
+                        <span className="sr-only">Open</span>
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--color-line)]">
-                    {attentionRows.map((row) => {
-                      const assignment = row.profile.currentAssignment;
-                      const next = nextActionForSe(row);
+                  <tbody>
+                    {assignments.map((a) => {
+                      const seName =
+                        a.profile?.displayName ?? "Sales Executive";
+                      const seId = a.profile?.id ?? a.salesExecutiveProfileId;
+                      const overdueN =
+                        overdueActionsByProfile.get(seId)?.length ?? 0;
+                      const followUpN =
+                        (overdueSupportByProfile.get(seId)?.length ?? 0) +
+                        (draftReviewsByProfile.get(seId)?.length ?? 0);
+                      const signal: SignalTone =
+                        overdueN > 0
+                          ? "critical"
+                          : followUpN > 0
+                            ? "warning"
+                            : "positive";
                       return (
-                        <tr
-                          key={row.profile.id}
-                          className="transition hover:bg-[var(--color-surface-2)]/50"
-                        >
-                          <td className="px-4 py-3 align-top sm:px-5">
+                        <tr key={a.id} data-signal={signal}>
+                          <td>
                             <Link
-                              href={`/profiles/${row.profile.id}`}
-                              className="inline-flex items-center gap-2.5 font-medium text-[var(--color-ink)] hover:underline"
+                              href={`/profiles/${seId}`}
+                              className="inline-flex items-center gap-2.5 font-semibold text-[var(--color-ink)] hover:underline"
                             >
-                              <Avatar
-                                name={row.profile.displayName}
-                                size="sm"
-                              />
-                              {row.profile.displayName}
+                              <Avatar name={seName} size="sm" />
+                              {seName}
                             </Link>
+                            <p className="mt-0.5 pl-[2.375rem] text-meta">
+                              {a.team.name}
+                            </p>
                           </td>
-                          <td className="px-3 py-3 align-top text-meta">
-                            {row.profile.team.name}
-                          </td>
-                          <td className="px-3 py-3 align-top">
-                            {assignment ? (
+                          <td>
+                            <p className="text-meta">{personName(a.commando)}</p>
+                            <div className="mt-1">
                               <StatusBadge
                                 status="UNDER_INTERVENTION"
-                                label="Under intervention"
+                                label="Active intervention"
+                              />
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap">
+                            <span className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                              {a.totalDaysUnderCommando}
+                            </span>
+                            <span className="ml-1 text-meta">
+                              {a.totalDaysUnderCommando === 1 ? "day" : "days"}
+                            </span>
+                            <p className="mt-0.5 text-[11px] text-[var(--color-ink-subtle)]">
+                              Since {formatWhen(a.startedAt)}
+                            </p>
+                          </td>
+                          <td>
+                            {signal === "critical" ? (
+                              <StatusBadge status="OVERDUE" label="Overdue" />
+                            ) : signal === "warning" ? (
+                              <StatusBadge
+                                status="NEEDS_ATTENTION"
+                                label="Needs follow-up"
                               />
                             ) : (
-                              <StatusBadge
-                                status="NORMAL_MANAGEMENT"
-                                label="Normal management"
-                              />
+                              <StatusBadge status="ON_TRACK" label="On track" />
                             )}
                           </td>
-                          <td className="px-3 py-3 align-top text-meta">
-                            {assignment
-                              ? personName(assignment.commando)
-                              : "—"}
-                          </td>
-                          <td className="max-w-xs px-3 py-3 align-top text-meta">
-                            {reasonLabel(row.reasons, row)}
-                          </td>
-                          <td className="px-4 py-3 align-top text-right sm:px-5">
-                            <Link
-                              href={next.href}
-                              className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+                          <td className="text-right">
+                            <ButtonLink
+                              href={`/profiles/${seId}`}
+                              variant="outline"
+                              size="sm"
+                              className="whitespace-nowrap"
                             >
-                              {next.label}
-                            </Link>
+                              Open workspace
+                            </ButtonLink>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </TableFrame>
+              </div>
             )}
-          </section>
+          </DashPanel>
 
-          {/* 3 + 4 — Requests | Active interventions */}
-          <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
-            <section
-              id="commando-requests"
-              aria-labelledby="requests-heading"
-              className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] lg:col-span-6"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-                <div>
-                  <h2 id="requests-heading" className="text-section-title">
-                    Commando requests
-                  </h2>
-                  <p className="mt-0.5 text-meta">
-                    Pending requests — not active interventions
-                  </p>
-                </div>
-                {pendingRequests.length > 0 ? (
-                  <StatusBadge
-                    status="NEEDS_ATTENTION"
-                    label={`${pendingRequests.length} awaiting you`}
-                  />
-                ) : null}
-              </div>
-
-              {pendingRequests.length === 0 ? (
-                <div className="px-4 py-6 sm:px-5">
-                  <p className="text-[13px] font-medium text-[var(--status-success)]">
-                    No requests need your decision
-                  </p>
-                  <p className="mt-1 text-meta">
-                    Commando requests appear here when they need Team Lead
-                    review and management context.
-                  </p>
-                </div>
-              ) : (
-                <TableFrame>
-                  <table className="w-full min-w-[28rem] text-left text-[13px]">
-                    <thead>
-                      <tr className="border-b border-[var(--color-line)] text-eyebrow">
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          Sales Executive
-                        </th>
-                        <th className="px-3 py-2.5 font-semibold">Commando</th>
-                        <th className="px-3 py-2.5 font-semibold">Status</th>
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          <span className="sr-only">Action</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--color-line)]">
-                      {pendingRequests.map((r) => {
-                        const reason =
-                          r.requestReason?.trim() ||
-                          r.supportRequiredFromCommando?.trim() ||
-                          null;
-                        return (
-                          <tr
-                            key={r.id}
-                            className="transition hover:bg-[var(--color-surface-2)]/50"
-                          >
-                            <td className="px-4 py-3 align-top sm:px-5">
-                              <Link
-                                href={`/profiles/${r.salesExecutiveProfileId}`}
-                                className="font-medium text-[var(--color-ink)] hover:underline"
-                              >
-                                {r.profileName}
-                              </Link>
-                              <p className="mt-0.5 text-meta">
-                                {r.team.name} · {submittedLabel(r.createdAt)}
-                              </p>
-                              {reason ? (
-                                <p className="mt-1 line-clamp-2 text-meta">
-                                  {reason}
-                                </p>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-3 align-top text-meta">
-                              {personName(r.commando)}
-                            </td>
-                            <td className="px-3 py-3 align-top">
-                              <StatusBadge
-                                status="PENDING"
-                                label="Pending request"
-                              />
-                              <p className="mt-1 text-[11px] text-[var(--color-ink-subtle)]">
-                                {referralStatusLabel(r)}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3 align-top text-right sm:px-5">
-                              <Link
-                                href={`/referrals/${r.id}`}
-                                className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                              >
-                                Provide information
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableFrame>
-              )}
-            </section>
-
-            <section
-              id="active-interventions"
-              aria-labelledby="interventions-heading"
-              className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] lg:col-span-6"
-            >
-              <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-                <h2 id="interventions-heading" className="text-section-title">
-                  Active interventions
-                </h2>
-                <p className="mt-0.5 text-meta">
-                  Temporary Commando coaching — you remain permanent owner
-                </p>
-              </div>
-
-              {assignments.length === 0 ? (
-                <div className="px-4 py-6 sm:px-5">
-                  <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                    No active Commando interventions
-                  </p>
-                  <p className="mt-1 text-meta">
-                    Sales Executives on your team are under normal management.
-                  </p>
-                </div>
-              ) : (
-                <TableFrame>
-                  <table className="w-full min-w-[28rem] text-left text-[13px]">
-                    <thead>
-                      <tr className="border-b border-[var(--color-line)] text-eyebrow">
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          Sales Executive
-                        </th>
-                        <th className="px-3 py-2.5 font-semibold">Commando</th>
-                        <th className="px-3 py-2.5 font-semibold">Duration</th>
-                        <th className="px-4 py-2.5 font-semibold sm:px-5">
-                          <span className="sr-only">Open</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--color-line)]">
-                      {assignments.map((a) => {
-                        const seName =
-                          a.profile?.displayName ?? "Sales Executive";
-                        const seId =
-                          a.profile?.id ?? a.salesExecutiveProfileId;
-                        return (
-                          <tr
-                            key={a.id}
-                            className="transition hover:bg-[var(--color-surface-2)]/50"
-                          >
-                            <td className="px-4 py-3 align-top sm:px-5">
-                              <Link
-                                href={`/profiles/${seId}`}
-                                className="font-medium text-[var(--color-ink)] hover:underline"
-                              >
-                                {seName}
-                              </Link>
-                              <p className="mt-0.5 text-meta">{a.team.name}</p>
-                            </td>
-                            <td className="px-3 py-3 align-top text-meta">
-                              {personName(a.commando)}
-                              <div className="mt-1">
-                                <StatusBadge
-                                  status="UNDER_INTERVENTION"
-                                  label="Active"
-                                />
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 align-top text-meta tabular-nums">
-                              {a.totalDaysUnderCommando}{" "}
-                              {a.totalDaysUnderCommando === 1 ? "day" : "days"}
-                              <p className="mt-0.5 text-[11px] text-[var(--color-ink-subtle)]">
-                                Since {formatWhen(a.startedAt)}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3 align-top text-right sm:px-5">
-                              <Link
-                                href={`/profiles/${seId}`}
-                                className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                              >
-                                Open workspace
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableFrame>
-              )}
-            </section>
-          </div>
-
-          {/* 5 — Reviews / Actions / Support */}
-          <section
-            id="management-followups"
-            aria-labelledby="followups-heading"
-            className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]"
-          >
-            <div className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-              <h2 id="followups-heading" className="text-section-title">
-                Reviews, actions & support
-              </h2>
-              <p className="mt-0.5 text-meta">
-                Overdue work and draft reviews across your Sales Executives
-              </p>
-            </div>
-
-            {followUps.length === 0 ? (
-              <div className="px-4 py-6 sm:px-5">
-                <p className="text-[13px] font-medium text-[var(--status-success)]">
-                  No overdue management follow-ups
-                </p>
-                <p className="mt-1 text-meta">
-                  Overdue actions, overdue support tasks, and draft weekly
-                  reviews will appear here.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-[var(--color-line)]">
-                {followUps.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge
-                          status={
-                            item.severity === "critical"
-                              ? "OVERDUE"
-                              : item.severity === "warning"
-                                ? "NEEDS_ATTENTION"
-                                : "DRAFT"
-                          }
-                          label={
-                            item.kind === "action"
-                              ? "Action"
-                              : item.kind === "support"
-                                ? "Support"
-                                : "Review"
-                          }
-                        />
-                        <p className="text-[13px] font-medium text-[var(--color-ink)]">
-                          {item.title}
-                        </p>
-                      </div>
-                      <p className="mt-1 text-meta">
-                        <Link
-                          href={`/profiles/${item.seId}`}
-                          className="font-medium text-[var(--color-ink)] hover:underline"
-                        >
-                          {item.seName}
-                        </Link>
-                        {" · "}
-                        {item.meta}
-                      </p>
-                    </div>
-                    <Link
-                      href={item.href}
-                      className="shrink-0 text-[13px] font-medium text-[var(--color-brand)] hover:underline"
-                    >
-                      {item.actionLabel}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* 6 — Recent signals (from real request/assignment data; no audit invent) */}
           {recentActivity.length > 0 ? (
-            <section
-              aria-labelledby="activity-heading"
-              className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]"
-            >
-              <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3.5 sm:px-5">
-                <div>
-                  <h2 id="activity-heading" className="text-section-title">
-                    Recent team activity
-                  </h2>
-                  <p className="mt-0.5 text-meta">
-                    Live requests and active interventions in your scope
-                  </p>
-                </div>
+            <DashPanel
+              id="team-activity"
+              tone="bare"
+              title="Recent team activity"
+              description="Live requests and active interventions in your scope"
+              aside={
                 <Link
                   href="/profiles"
                   className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
                 >
                   All Sales Executives
                 </Link>
-              </div>
-              <ul className="divide-y divide-[var(--color-line)]">
+              }
+            >
+              <ul className="dash-list">
                 {recentActivity.map((item) => (
                   <li
                     key={item.id}
-                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5"
+                    className="flex flex-wrap items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium text-[var(--color-ink)]">
@@ -930,16 +657,16 @@ export function TeamLeadDashboard({
                       </p>
                       <p className="mt-0.5 text-meta">{item.meta}</p>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
+                    <div className="flex shrink-0 items-center gap-4">
                       <time
                         dateTime={item.when}
-                        className="text-[11px] tabular-nums text-[var(--color-ink-subtle)]"
+                        className="text-[12px] tabular-nums text-[var(--color-ink-subtle)]"
                       >
                         {submittedLabel(item.when)}
                       </time>
                       <Link
                         href={item.href}
-                        className="text-[13px] font-medium text-[var(--color-brand)] hover:underline"
+                        className="text-[13px] font-semibold text-[var(--color-brand)] hover:underline"
                       >
                         View
                       </Link>
@@ -947,17 +674,7 @@ export function TeamLeadDashboard({
                   </li>
                 ))}
               </ul>
-            </section>
-          ) : null}
-
-          {profilesTotal === 0 ? (
-            <EmptyState
-              title="No Sales Executives yet"
-              description="Add a Sales Executive to start managing your team."
-              actionHref="/users/sales-executives/new"
-              actionLabel="Add Sales Executive"
-              icon="emptyUsers"
-            />
+            </DashPanel>
           ) : null}
         </>
       )}
