@@ -2875,6 +2875,12 @@ export type SnapshotFields = {
   salesAchieved?: number | null;
   salesTarget?: number | null;
   achievementPct?: number | null;
+  monthlySales?: SnapshotMonthlySale[] | null;
+};
+
+export type SnapshotMonthlySale = {
+  month: string;
+  salesAchieved: number;
 };
 
 export type SnapshotEvidenceUpload = {

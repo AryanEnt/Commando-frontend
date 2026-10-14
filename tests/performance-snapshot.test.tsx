@@ -8,6 +8,7 @@ import {
   emptySnapshotDraft,
   periodLabel,
   sanitizeAmountInput,
+  snapshotMonths,
   snapshotMissing,
   toSnapshotFields,
   type SnapshotDraft,
@@ -83,19 +84,85 @@ describe("snapshot validation", () => {
 
 describe("snapshot numbers and period", () => {
   it("computes achievement from sales and target, else keeps the typed %", () => {
-    expect(draftAchievement({ ...complete, salesAchieved: "84,200", salesTarget: "100000" })).toBe(84.2);
+    expect(
+      draftAchievement({
+        ...complete,
+        monthlySales: [{ month: "2026-09", salesAchieved: "84,200" }],
+        salesTarget: "100000",
+      }),
+    ).toBe(84.2);
     expect(draftAchievement({ ...complete, achievementPct: "70" })).toBe(70);
     expect(draftAchievement(complete)).toBeNull();
+  });
+
+  it("validates and includes up to three month-specific sales values", () => {
+    const draft: SnapshotDraft = {
+      ...complete,
+      monthlySales: [
+        { month: "2026-07", salesAchieved: "10,000" },
+        { month: "2026-08", salesAchieved: "20,000" },
+        { month: "2026-09", salesAchieved: "30,000" },
+      ],
+      salesTarget: "100000",
+    };
+    expect(toSnapshotFields(draft)).toMatchObject({
+      salesAchieved: 60000,
+      achievementPct: 60,
+      monthlySales: [
+        { month: "2026-07", salesAchieved: 10000 },
+        { month: "2026-08", salesAchieved: 20000 },
+        { month: "2026-09", salesAchieved: 30000 },
+      ],
+    });
+    expect(
+      snapshotMissing({
+        ...draft,
+        monthlySales: [
+          ...draft.monthlySales.slice(0, 2),
+          { month: "2026-09", salesAchieved: "" },
+        ],
+      }),
+    ).toContain("Monthly sales entry");
+    expect(
+      snapshotMissing({
+        ...draft,
+        monthlySales: [
+          ...draft.monthlySales.slice(0, 2),
+          { month: "2026-08", salesAchieved: "30,000" },
+        ],
+      }),
+    ).toContain("Monthly sales entry");
   });
 
   it("labels the 6-month window by month and short history as all available", () => {
     expect(periodLabel(se.period)).toBe("Apr 2026 – Oct 2026");
     expect(periodLabel(sse.period)).toBe("All available history");
+    expect(snapshotMonths(se.period)).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+      "2026-10",
+      "2026-11",
+      "2026-12",
+    ]);
   });
 
   it("builds the API payload with the SE first and SSEs by user id", () => {
     const payload = performanceSnapshotPayload(
-      formWith({ "u-se": { ...complete, salesAchieved: "50", salesTarget: "100" }, "u-sse": complete }),
+      formWith({
+        "u-se": {
+          ...complete,
+          monthlySales: [{ month: "2026-09", salesAchieved: "50" }],
+          salesTarget: "100",
+        },
+        "u-sse": complete,
+      }),
       [se, sse],
     );
     expect(payload.salesExecutive).toMatchObject({
@@ -104,6 +171,7 @@ describe("snapshot numbers and period", () => {
       salesAchieved: 50,
       salesTarget: 100,
       achievementPct: 50,
+      monthlySales: [{ month: "2026-09", salesAchieved: 50 }],
     });
     expect(payload.salesSupport).toEqual([
       expect.objectContaining({ subjectUserId: "u-sse", note: complete.note }),
@@ -143,17 +211,37 @@ describe("SnapshotSubjectCard", () => {
     expect(html).toContain("Sales numbers");
     expect(html).toContain("Apr 2026 – Oct 2026");
     expect(html).toContain("TL&#x27;s Note");
-    expect(html).not.toContain("<select");
+    expect(html).toContain("<select");
   });
 
-  it("shows the sales number fields straight away, without a toggle", () => {
+  it("shows three month dropdowns and allows more rows to be added", () => {
     const html = renderToStaticMarkup(
       <SnapshotSubjectCard subject={se} draft={emptySnapshotDraft()} onChange={() => {}} />,
     );
-    expect(html).toContain("Sales achieved");
+    expect(html.match(/Choose a month/g)).toHaveLength(3);
+    expect(html).toContain("Jan 2026");
+    expect(html).toContain("Dec 2026");
+    expect(html).toContain("Add month");
     expect(html).toContain("Target");
     expect(html).toContain("Achievement %");
     expect(html).not.toContain("aria-expanded");
+  });
+
+  it("shows selectable month options and a removable sales row", () => {
+    const html = renderToStaticMarkup(
+      <SnapshotSubjectCard
+        subject={se}
+        draft={{
+          ...emptySnapshotDraft(),
+          monthlySales: [{ month: "2026-09", salesAchieved: "84,200" }],
+        }}
+        onChange={() => {}}
+      />,
+    );
+    expect(html).toContain("Sales achieved for month 1");
+    expect(html).toContain('value="84,200"');
+    expect(html).toContain('aria-label="Remove month 1"');
+    expect(html).toContain("Sep 2026");
   });
 
   it("gives the SSE card its own insights and no sales numbers", () => {
@@ -181,6 +269,7 @@ describe("Ready to send review", () => {
           salesAchieved: 84200,
           salesTarget: 100000,
           achievementPct: 84.2,
+          monthlySales: [{ month: "2026-09", salesAchieved: 84200 }],
         }}
       />,
     );
@@ -189,6 +278,7 @@ describe("Ready to send review", () => {
     expect(html).toContain("Inconsistent Results");
     expect(html).toContain("84,200");
     expect(html).toContain("84.2%");
+    expect(html).toContain("Sep 2026");
     expect(html).toContain("Performance has declined");
   });
 
@@ -204,6 +294,7 @@ describe("Ready to send review", () => {
           salesAchieved: null,
           salesTarget: null,
           achievementPct: null,
+          monthlySales: [],
         }}
       />,
     );
@@ -225,6 +316,7 @@ describe("Ready to send review", () => {
           salesAchieved: null,
           salesTarget: null,
           achievementPct: null,
+          monthlySales: [],
         }}
       />,
     );

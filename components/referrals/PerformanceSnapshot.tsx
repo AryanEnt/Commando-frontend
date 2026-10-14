@@ -10,6 +10,8 @@ import {
   FileText,
   MoveRight,
   Paperclip,
+  Plus,
+  Trash2,
   TrendingDown,
   TrendingUp,
   UploadCloud,
@@ -34,6 +36,7 @@ import {
   PERFORMANCE_LEVELS,
   TRENDS,
   draftAchievement,
+  draftMonthlySales,
   evidenceContentType,
   evidenceKind,
   formatAmount,
@@ -41,11 +44,13 @@ import {
   insightOption,
   insightsFor,
   isAchievementComputed,
+  monthLabel,
   performanceLevel,
   periodHeadline,
   periodLabel,
   roleLabelFor,
   sanitizeAmountInput,
+  snapshotMonths,
   snapshotFieldId,
   snapshotMissingParts,
   summaryFromSnapshot,
@@ -54,7 +59,7 @@ import {
   type SnapshotPart,
   type SnapshotSummary,
 } from "@/lib/performance-snapshot";
-import { TextArea, TextInput } from "@/components/ui";
+import { Button, IconButton, SelectField, TextArea, TextInput } from "@/components/ui";
 
 export type SnapshotCardSubject = {
   userId: string;
@@ -184,7 +189,16 @@ export function SnapshotSubjectCard({
   const errorFor = (part: SnapshotPart, message: string) =>
     showErrors && missing.includes(part) ? message : undefined;
   const insightError = errorFor("insight", "Pick at least one option.");
+  const monthlySalesError = errorFor(
+    "monthlySales",
+    "Complete each monthly sales entry and choose a different month for each one.",
+  );
   const achievement = draftAchievement(draft);
+  const monthlySales = draftMonthlySales(draft);
+  const availableMonths = snapshotMonths(subject.period);
+  const monthlySalesTotal =
+    Math.round(monthlySales.reduce((total, entry) => total + entry.salesAchieved, 0) * 100) /
+    100;
   const computed = isAchievementComputed(draft);
   const patch = (p: Partial<SnapshotDraft>) => onChange({ ...draft, ...p });
 
@@ -275,14 +289,94 @@ export function SnapshotSubjectCard({
           <p className="snap-field-label">
             Sales numbers <span className="snap-optional">Optional</span>
           </p>
+          <p className="m-0 text-xs text-[var(--color-ink-muted)]">
+            Choose up to three months from the performance-period years. Add or remove rows as needed.
+          </p>
+          <div className="snap-monthly-sales">
+            {draft.monthlySales.map((entry, index) => (
+              <div className="snap-monthly-sale" key={index}>
+                <SelectField
+                  label={`Month ${index + 1}`}
+                  value={entry.month}
+                  onChange={(e) => {
+                    const monthlySales = draft.monthlySales.map((sale, saleIndex) =>
+                      saleIndex === index ? { ...sale, month: e.target.value } : sale,
+                    );
+                    patch({ monthlySales });
+                  }}
+                >
+                  <option value="">Choose a month</option>
+                  {availableMonths.map((month) => (
+                    <option
+                      key={month}
+                      value={month}
+                      disabled={draft.monthlySales.some(
+                        (sale, saleIndex) => saleIndex !== index && sale.month === month,
+                      )}
+                    >
+                      {monthLabel(month)}
+                    </option>
+                  ))}
+                </SelectField>
+                <TextInput
+                  label={`Sales achieved for month ${index + 1}`}
+                  inputMode="decimal"
+                  placeholder="84,200"
+                  value={entry.salesAchieved}
+                  onChange={(e) => {
+                    const monthlySales = draft.monthlySales.map((sale, saleIndex) =>
+                      saleIndex === index
+                        ? { ...sale, salesAchieved: sanitizeAmountInput(e.target.value) }
+                        : sale,
+                    );
+                    patch({ monthlySales });
+                  }}
+                />
+                <IconButton
+                  variant="ghost"
+                  size="sm"
+                  className="snap-monthly-sale-remove"
+                  label={`Remove month ${index + 1}`}
+                  onClick={() =>
+                    patch({
+                      monthlySales: draft.monthlySales.filter(
+                        (_, saleIndex) => saleIndex !== index,
+                      ),
+                    })
+                  }
+                >
+                  <Trash2 size={15} aria-hidden />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+          {monthlySalesError ? (
+            <SnapFieldError id={`${fieldId("monthlySales")}-error`}>
+              {monthlySalesError}
+            </SnapFieldError>
+          ) : null}
+          {monthlySales.length > 0 ? (
+            <div className="snap-achievement">
+              <span className="snap-field-label">Sales achieved total</span>
+              <strong>{formatAmount(monthlySalesTotal)}</strong>
+            </div>
+          ) : null}
+          {draft.monthlySales.length < Math.min(12, availableMonths.length) ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="snap-add-month"
+              onClick={() =>
+                patch({
+                  monthlySales: [...draft.monthlySales, { month: "", salesAchieved: "" }],
+                })
+              }
+            >
+              <Plus size={15} aria-hidden />
+              Add month
+            </Button>
+          ) : null}
           <div className="snap-numbers">
-            <TextInput
-              label="Sales achieved"
-              inputMode="decimal"
-              placeholder="84,200"
-              value={draft.salesAchieved}
-              onChange={(e) => patch({ salesAchieved: sanitizeAmountInput(e.target.value) })}
-            />
             <TextInput
               label="Target"
               inputMode="decimal"
@@ -490,7 +584,10 @@ export function SnapshotSummaryCard({ summary }: { summary: SnapshotSummary }) {
   const level = summary.overallPerformance ? performanceLevel(summary.overallPerformance) : null;
   const trend = summary.trend ? trendOption(summary.trend) : null;
   const hasNumbers =
-    summary.salesAchieved != null || summary.salesTarget != null || summary.achievementPct != null;
+    summary.salesAchieved != null ||
+    summary.salesTarget != null ||
+    summary.achievementPct != null ||
+    summary.monthlySales.length > 0;
   return (
     <article className="snap-summary" aria-label={`${summary.name} snapshot`}>
       <header className="snap-card-head">
@@ -529,9 +626,15 @@ export function SnapshotSummaryCard({ summary }: { summary: SnapshotSummary }) {
       ) : null}
       {hasNumbers ? (
         <dl className="snap-metrics">
+          {summary.monthlySales.map((sale) => (
+            <div key={sale.month}>
+              <dt>Sales · {monthLabel(sale.month)}</dt>
+              <dd>{formatAmount(sale.salesAchieved)}</dd>
+            </div>
+          ))}
           {summary.salesAchieved != null ? (
             <div>
-              <dt>Sales</dt>
+              <dt>{summary.monthlySales.length > 0 ? "Sales total" : "Sales"}</dt>
               <dd>{formatAmount(summary.salesAchieved)}</dd>
             </div>
           ) : null}

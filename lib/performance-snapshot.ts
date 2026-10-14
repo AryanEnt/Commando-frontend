@@ -2,6 +2,7 @@ import type {
   PerformanceSnapshot,
   SnapshotFields,
   SnapshotPerformanceLevel,
+  SnapshotMonthlySale,
   SnapshotPeriod,
   SnapshotSubjectRole,
   SnapshotTrend,
@@ -129,7 +130,7 @@ export type SnapshotDraft = {
   trend: SnapshotTrend | null;
   insights: string[];
   note: string;
-  salesAchieved: string;
+  monthlySales: Array<{ month: string; salesAchieved: string }>;
   salesTarget: string;
   achievementPct: string;
 };
@@ -140,13 +141,13 @@ export function emptySnapshotDraft(): SnapshotDraft {
     trend: null,
     insights: [],
     note: "",
-    salesAchieved: "",
+    monthlySales: Array.from({ length: 3 }, () => ({ month: "", salesAchieved: "" })),
     salesTarget: "",
     achievementPct: "",
   };
 }
 
-export type SnapshotPart = "performance" | "trend" | "insight" | "note";
+export type SnapshotPart = "performance" | "trend" | "insight" | "note" | "monthlySales";
 
 /** Required parts still missing, in display order. */
 export function snapshotMissingParts(
@@ -157,6 +158,13 @@ export function snapshotMissingParts(
   if (!draft.trend) missing.push({ part: "trend", label: "Trend" });
   if (draft.insights.length === 0) missing.push({ part: "insight", label: "Insight" });
   if (!draft.note.trim()) missing.push({ part: "note", label: "TL's note" });
+  const monthlySales = draft.monthlySales.filter((entry) => entry.month || entry.salesAchieved);
+  if (
+    monthlySales.some((entry) => !entry.month || parseAmount(entry.salesAchieved) == null) ||
+    new Set(monthlySales.map((entry) => entry.month)).size !== monthlySales.length
+  ) {
+    missing.push({ part: "monthlySales", label: "Monthly sales entry" });
+  }
   return missing;
 }
 
@@ -184,16 +192,32 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function draftMonthlySales(draft: SnapshotDraft): SnapshotMonthlySale[] {
+  return draft.monthlySales.flatMap((entry) => {
+    const salesAchieved = parseAmount(entry.salesAchieved);
+    return entry.month && salesAchieved != null ? [{ month: entry.month, salesAchieved }] : [];
+  });
+}
+
+function totalMonthlySales(draft: SnapshotDraft): number | null {
+  const entries = draftMonthlySales(draft);
+  return entries.length > 0
+    ? Math.round(
+        entries.reduce((total, entry) => total + entry.salesAchieved, 0) * 100,
+      ) / 100
+    : null;
+}
+
 /** Computed from sales ÷ target when both exist, otherwise the typed percentage. */
 export function draftAchievement(draft: SnapshotDraft): number | null {
-  const sales = parseAmount(draft.salesAchieved);
+  const sales = totalMonthlySales(draft);
   const target = parseAmount(draft.salesTarget);
   if (sales != null && target) return Math.round((sales / target) * 10000) / 100;
   return parseAmount(draft.achievementPct);
 }
 
 export function isAchievementComputed(draft: SnapshotDraft): boolean {
-  return parseAmount(draft.salesAchieved) != null && Boolean(parseAmount(draft.salesTarget));
+  return totalMonthlySales(draft) != null && Boolean(parseAmount(draft.salesTarget));
 }
 
 export function toSnapshotFields(draft: SnapshotDraft): SnapshotFields {
@@ -202,9 +226,10 @@ export function toSnapshotFields(draft: SnapshotDraft): SnapshotFields {
     trend: draft.trend!,
     insights: draft.insights,
     note: draft.note.trim(),
-    salesAchieved: parseAmount(draft.salesAchieved),
+    salesAchieved: totalMonthlySales(draft),
     salesTarget: parseAmount(draft.salesTarget),
     achievementPct: draftAchievement(draft),
+    monthlySales: draftMonthlySales(draft),
   };
 }
 
@@ -220,6 +245,7 @@ export type SnapshotSummary = {
   salesAchieved: number | null;
   salesTarget: number | null;
   achievementPct: number | null;
+  monthlySales: SnapshotMonthlySale[];
 };
 
 export function summaryFromDraft(
@@ -236,6 +262,7 @@ export function summaryFromDraft(
     salesAchieved: fields.salesAchieved ?? null,
     salesTarget: fields.salesTarget ?? null,
     achievementPct: fields.achievementPct ?? null,
+    monthlySales: fields.monthlySales ?? [],
   };
 }
 
@@ -251,7 +278,32 @@ export function summaryFromSnapshot(s: PerformanceSnapshot): SnapshotSummary {
     salesAchieved: s.salesAchieved,
     salesTarget: s.salesTarget,
     achievementPct: s.achievementPct,
+    monthlySales: s.monthlySales ?? [],
   };
+}
+
+export function monthLabel(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year!, monthNumber! - 1, 1).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export function snapshotMonths(period: SnapshotPeriod | null | undefined): string[] {
+  const now = new Date();
+  const start = period ? new Date(period.start) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+  const end = period ? new Date(period.end) : now;
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), 0, 1));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), 11, 1));
+  const months: string[] = [];
+  while (cursor <= last) {
+    months.push(
+      `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`,
+    );
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
 }
 
 export function formatAmount(n: number): string {
